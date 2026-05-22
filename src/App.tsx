@@ -7,6 +7,7 @@ import SMSParseScreen from './screens/SMSParseScreen';
 import MapWorkspace from './screens/MapWorkspace';
 import PreviewScreen from './screens/PreviewScreen';
 import DashboardScreen from './screens/DashboardScreen';
+import LandingScreen from './screens/LandingScreen';
 
 const DEFAULT_MAP_DATA: MapData = {
   hlbNumber: '', center: { lat: 26.4499, lng: 80.3319 },
@@ -79,11 +80,7 @@ export default function App() {
   }
 
   if (!isSignedIn) {
-    return (
-      <div className="h-screen w-screen bg-gray-50 flex items-center justify-center p-4">
-        <SignIn />
-      </div>
-    );
+    return <LandingScreen />;
   }
 
   if (step === 0) {

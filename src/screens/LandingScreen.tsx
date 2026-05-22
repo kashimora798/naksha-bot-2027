@@ -39,9 +39,14 @@ export default function LandingScreen() {
         </div>
 
         <div className="max-w-5xl mx-auto px-6 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs mb-8 border border-orange-200 shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
-            Built for Census 2027
+          <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs border border-orange-200 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+              Built for Census 2027
+            </div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 text-amber-300 font-bold text-xs border border-slate-700 shadow-lg">
+              🏆 1st on the Internet
+            </div>
           </div>
           
           <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight text-slate-900 mb-8 leading-tight font-[Baloo_2]">
@@ -71,7 +76,7 @@ export default function LandingScreen() {
       {/* ─── THE IDEA (THE PROBLEM & SOLUTION) ─── */}
       <section id="idea" className="py-20 bg-white border-y border-slate-100">
         <div className="max-w-6xl mx-auto px-6">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
+          <div className="grid lg:grid-cols-2 gap-16 items-center mb-24">
             <div>
               <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">The Idea</h2>
               <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-6">
@@ -107,6 +112,57 @@ export default function LandingScreen() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Pros and Cons Section */}
+          <div className="grid md:grid-cols-2 gap-8">
+            <div className="bg-white border-2 border-emerald-100 rounded-3xl p-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-bl-full -z-10"></div>
+              <h4 className="text-2xl font-bold font-[Baloo_2] text-slate-900 mb-6 flex items-center gap-3">
+                <span className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-lg">👍</span>
+                Pros of NakshaBot
+              </h4>
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <span className="text-emerald-500 mt-1">✔</span>
+                  <span className="text-slate-700"><strong>Lightning Fast:</strong> Map a block in 15 minutes instead of a full day of walking.</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-emerald-500 mt-1">✔</span>
+                  <span className="text-slate-700"><strong>Official Accuracy:</strong> Uses real satellite data ensuring correct geographical boundaries.</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-emerald-500 mt-1">✔</span>
+                  <span className="text-slate-700"><strong>Clean Export:</strong> Generates crisp, legible PDFs. No more erasing or smudged paper.</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-emerald-500 mt-1">✔</span>
+                  <span className="text-slate-700"><strong>Auto-Routing:</strong> The serpentine path algorithm connects your houses flawlessly.</span>
+                </li>
+              </ul>
+            </div>
+            
+            <div className="bg-white border-2 border-rose-100 rounded-3xl p-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-rose-50 rounded-bl-full -z-10"></div>
+              <h4 className="text-2xl font-bold font-[Baloo_2] text-slate-900 mb-6 flex items-center gap-3">
+                <span className="w-10 h-10 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center text-lg">👎</span>
+                Limitations
+              </h4>
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <span className="text-rose-500 mt-1">✖</span>
+                  <span className="text-slate-700"><strong>Requires Internet:</strong> You need an active data connection to fetch satellite and OSM data.</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-rose-500 mt-1">✖</span>
+                  <span className="text-slate-700"><strong>Field Verification:</strong> While highly accurate, you still need to physically verify building usage.</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="text-rose-500 mt-1">✖</span>
+                  <span className="text-slate-700"><strong>Device Dependency:</strong> Best used on tablets or laptops; phone screens might be too small for complex drawings.</span>
+                </li>
+              </ul>
             </div>
           </div>
         </div>

@@ -3,8 +3,6 @@
 /* Custom fonts */
 @layer base {
   html, body {
-    height: 100vh;
-    overflow: hidden;
     font-family: 'Noto Sans', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

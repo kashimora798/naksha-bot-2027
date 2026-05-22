@@ -31,7 +31,17 @@ export default function App() {
   const update = useCallback((u: Partial<MapData>) => setMapData(p => ({ ...p, ...u })), []);
   const inMap = step >= 3 && step <= 6;
 
-  useEffect(() => { document.body.style.overflow = 'hidden'; document.body.style.height = '100vh'; document.documentElement.style.height = '100vh'; }, []);
+  useEffect(() => {
+    if (isSignedIn && step > 0) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.height = '100vh';
+      document.documentElement.style.height = '100vh';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.body.style.height = 'auto';
+      document.documentElement.style.height = 'auto';
+    }
+  }, [isSignedIn, step]);
 
   // ─── AUTO-SAVE LOGIC ──────────────────────────────────────
   useEffect(() => {

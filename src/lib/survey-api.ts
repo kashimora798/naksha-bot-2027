@@ -6,7 +6,7 @@ import { getBbox } from './geo';
 // ═══════════════════════════════════════════════════════════
 
 // Change this to your API server address
-export const API_BASE = 'http://localhost:3000';
+export const API_BASE = import.meta.env.VITE_API_BASE || 'https://naksha-bot-2027.vercel.app';
 
 const SURVEY_MAP_PROMPT = `Convert this satellite aerial image into a clean official survey map in the style of Survey of India topographic sheets. Use cream white paper background. Roads and lanes must be the dominant visual element — draw main roads as bold double black lines 3px wide with white fill between them, small lanes as single solid black lines 1.5px, footpaths as dashed black lines 1px. Building clusters must be drawn as simple solid black outlined rectangles grouped together, no individual roof details, no irregular shapes, just clean rectangular blocks. Agricultural fields and open land must have only a thin 1px outline with zero fill or hatching inside — fields must appear as empty white outlined polygons, not textured. Trees and vegetation must be represented only as small simple circular outlines 0.5px, no shading, no scribble, placed at the edge of settlement areas only. Water bodies must be light blue filled simple shapes. The entire image must have high contrast black lines on white/cream background. No artistic shading, no pencil texture, no crosshatching anywhere except optionally very light parallel lines inside agricultural fields only. The visual hierarchy must be: roads most prominent, then settlement block outlines, then field boundaries, then vegetation last. This is a government census layout map not an artistic illustration.`;
 

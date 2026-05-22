@@ -26,11 +26,13 @@ export default function DashboardScreen({ onLoadProject, onNewProject }: Props) 
 
   useEffect(() => {
     async function loadProjects() {
+      if (!user?.id) return;
       try {
         const supabase = createSupabaseClient(getToken);
         const { data, error } = await supabase
           .from('projects')
           .select('*')
+          .eq('user_id', user.id)
           .order('updated_at', { ascending: false });
 
         if (error) throw error;
@@ -43,7 +45,7 @@ export default function DashboardScreen({ onLoadProject, onNewProject }: Props) 
       }
     }
     loadProjects();
-  }, [getToken]);
+  }, [getToken, user?.id]);
 
   if (loading) {
     return (
@@ -57,9 +59,12 @@ export default function DashboardScreen({ onLoadProject, onNewProject }: Props) 
     <div className="min-h-screen bg-gray-50 flex flex-col p-6">
       <div className="max-w-4xl w-full mx-auto">
         <header className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold font-[Baloo_2] text-gray-900">NakshaBot</h1>
-            <p className="text-sm text-gray-500">Welcome back, {user?.firstName || 'Surveyor'}</p>
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="NakshaBot Logo" className="w-12 h-12 object-contain" />
+            <div>
+              <h1 className="text-3xl font-bold font-[Baloo_2] text-gray-900">NakshaBot</h1>
+              <p className="text-sm text-gray-500">Welcome back, {user?.firstName || 'Surveyor'}</p>
+            </div>
           </div>
           <SignOutButton>
             <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">

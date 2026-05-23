@@ -121,7 +121,7 @@ export default function App() {
         user={user}
         onLoadProject={(id, data) => {
           setProjectId(id);
-          setMapData({ ...DEFAULT_MAP_DATA, ...data, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
+          setMapData({ ...DEFAULT_MAP_DATA, ...data, projectId: id, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
           // Determine where to resume based on data
           if (data.blocks && data.blocks.length > 0) setStep(7);

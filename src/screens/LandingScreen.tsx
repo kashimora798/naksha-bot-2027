@@ -306,38 +306,55 @@ export default function LandingScreen() {
 
       {/* ─── FOOTER ─── */}
       <footer className="bg-slate-900 text-slate-400 py-16 border-t border-slate-800">
-        <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-4 gap-8">
+        <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-6 gap-8">
           <div className="col-span-2">
             <div className="flex items-center gap-2 mb-4">
               <img src="/logo.png" alt="Logo" className="w-8 h-8 grayscale opacity-70" />
               <span className="font-bold text-xl font-[Baloo_2] text-white tracking-tight">NakshaBot</span>
             </div>
-            <p className="text-sm leading-relaxed max-w-sm">
+            <p className="text-sm leading-relaxed max-w-sm mb-6">
               Empowering Census Enumerators in India with modern, automated, and highly accurate digital mapping tools. Built for efficiency and compliance.
             </p>
+            <div className="flex gap-4">
+              <Link to="/sign-in" className="text-sm font-semibold text-white bg-slate-800 px-4 py-2 rounded hover:bg-slate-700 transition-colors">Log In</Link>
+              <Link to="/sign-up" className="text-sm font-bold bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-500 transition-colors">Create Account</Link>
+            </div>
           </div>
           <div>
-            <h5 className="text-white font-bold mb-4">Product</h5>
-            <ul className="space-y-2 text-sm">
-              <li><a href="#idea" className="hover:text-orange-400 transition-colors">The Idea</a></li>
-              <li><a href="#process" className="hover:text-orange-400 transition-colors">How it Works</a></li>
+            <h5 className="text-white font-bold mb-4">Resources</h5>
+            <ul className="space-y-3 text-sm flex flex-col">
+              <li><Link to="/how-it-works" className="hover:text-orange-400 transition-colors">How it Works</Link></li>
+              <li><Link to="/faq" className="hover:text-orange-400 transition-colors">FAQ</Link></li>
+              <li><Link to="/rules" className="hover:text-orange-400 transition-colors">Map Rules</Link></li>
+              <li><Link to="/schedule" className="hover:text-orange-400 transition-colors">Census Schedule</Link></li>
               <li><a href="#features" className="hover:text-orange-400 transition-colors">Features</a></li>
             </ul>
           </div>
           <div>
-            <h5 className="text-white font-bold mb-4">Account</h5>
-            <ul className="space-y-2 text-sm">
-              <li>
-                <a href="/sign-in" className="hover:text-orange-400 transition-colors">Log In</a>
-              </li>
-              <li>
-                <a href="/sign-up" className="hover:text-orange-400 transition-colors">Create Account</a>
-              </li>
+            <h5 className="text-white font-bold mb-4">Top States</h5>
+            <ul className="space-y-3 text-sm flex flex-col">
+              <li><Link to="/up-census-map" className="hover:text-orange-400 transition-colors">Uttar Pradesh</Link></li>
+              <li><Link to="/maharashtra-census-map" className="hover:text-orange-400 transition-colors">Maharashtra</Link></li>
+              <li><Link to="/bihar-census-map" className="hover:text-orange-400 transition-colors">Bihar</Link></li>
+              <li><Link to="/mp-census-map" className="hover:text-orange-400 transition-colors">Madhya Pradesh</Link></li>
+              <li><Link to="/rajasthan-census-map" className="hover:text-orange-400 transition-colors">Rajasthan</Link></li>
+              <li><Link to="/west-bengal-census-map" className="hover:text-orange-400 transition-colors">West Bengal</Link></li>
             </ul>
           </div>
           <div>
-            <h5 className="text-white font-bold mb-4">Legal & Support</h5>
-            <ul className="space-y-2 text-sm">
+            <h5 className="text-white font-bold mb-4">More States</h5>
+            <ul className="space-y-3 text-sm flex flex-col">
+              <li><Link to="/karnataka-census-map" className="hover:text-orange-400 transition-colors">Karnataka</Link></li>
+              <li><Link to="/tamil-nadu-census-map" className="hover:text-orange-400 transition-colors">Tamil Nadu</Link></li>
+              <li><Link to="/gujarat-census-map" className="hover:text-orange-400 transition-colors">Gujarat</Link></li>
+              <li><Link to="/kerala-census-map" className="hover:text-orange-400 transition-colors">Kerala</Link></li>
+              <li><Link to="/hp-census-map" className="hover:text-orange-400 transition-colors">Himachal Pradesh</Link></li>
+              <li><Link to="/punjab-haryana-census-map" className="hover:text-orange-400 transition-colors">Punjab & Haryana</Link></li>
+            </ul>
+          </div>
+          <div>
+            <h5 className="text-white font-bold mb-4">Legal</h5>
+            <ul className="space-y-3 text-sm flex flex-col">
               <li><a href="/terms" className="hover:text-orange-400 transition-colors">Terms & Conditions</a></li>
               <li><a href="/refunds" className="hover:text-orange-400 transition-colors">Refund Policy</a></li>
               <li><a href="/contact" className="hover:text-orange-400 transition-colors">Contact Us</a></li>

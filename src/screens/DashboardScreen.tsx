@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAuth, useUser, SignOutButton } from '@clerk/clerk-react';
-import { createSupabaseClient } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import type { MapData } from '../types';
 
 export interface Project {
@@ -13,13 +12,12 @@ export interface Project {
 }
 
 interface Props {
+  user: any;
   onLoadProject: (projectId: string, data: Partial<MapData>) => void;
   onNewProject: () => void;
 }
 
-export default function DashboardScreen({ onLoadProject, onNewProject }: Props) {
-  const { getToken } = useAuth();
-  const { user } = useUser();
+export default function DashboardScreen({ user, onLoadProject, onNewProject }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +26,6 @@ export default function DashboardScreen({ onLoadProject, onNewProject }: Props) 
     async function loadProjects() {
       if (!user?.id) return;
       try {
-        const supabase = createSupabaseClient(getToken);
         const { data, error } = await supabase
           .from('projects')
           .select('*')
@@ -45,7 +42,7 @@ export default function DashboardScreen({ onLoadProject, onNewProject }: Props) 
       }
     }
     loadProjects();
-  }, [getToken, user?.id]);
+  }, [user?.id]);
 
   if (loading) {
     return (
@@ -63,14 +60,15 @@ export default function DashboardScreen({ onLoadProject, onNewProject }: Props) 
             <img src="/logo.png" alt="NakshaBot Logo" className="w-12 h-12 object-contain" />
             <div>
               <h1 className="text-3xl font-bold font-[Baloo_2] text-gray-900">NakshaBot</h1>
-              <p className="text-sm text-gray-500">Welcome back, {user?.firstName || 'Surveyor'}</p>
+              <p className="text-sm text-gray-500">Welcome back, {user?.user_metadata?.full_name || user?.email || 'Surveyor'}</p>
             </div>
           </div>
-          <SignOutButton>
-            <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">
-              Sign Out
-            </button>
-          </SignOutButton>
+          <button 
+            onClick={() => supabase.auth.signOut()} 
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            Sign Out
+          </button>
         </header>
 
         {error && (

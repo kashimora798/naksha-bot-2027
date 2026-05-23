@@ -1,17 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { ClerkProvider } from "@clerk/clerk-react";
 import "./index.css";
 import App from "./App";
 import TermsScreen from "./screens/TermsScreen";
 import RefundScreen from "./screens/RefundScreen";
 import ContactScreen from "./screens/ContactScreen";
-
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-
-if (!PUBLISHABLE_KEY) {
-  throw new Error("Missing Publishable Key");
-}
 
 const path = window.location.pathname;
 
@@ -26,8 +19,6 @@ if (path === '/terms' || path === '/terms.html') {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY} afterSignOutUrl="/">
-      <ComponentToRender />
-    </ClerkProvider>
+    <ComponentToRender />
   </StrictMode>
 );

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAuth, SignIn, useUser } from '@clerk/clerk-react';
-import { createSupabaseClient } from './lib/supabase';
+import { supabase } from './lib/supabase';
 import type { MapData } from './types';
 import ProgressBar from './components/ProgressBar';
 import SMSParseScreen from './screens/SMSParseScreen';
@@ -18,8 +17,8 @@ const DEFAULT_MAP_DATA: MapData = {
 };
 
 export default function App() {
-  const { isLoaded, isSignedIn, getToken } = useAuth();
-  const { user } = useUser();
+  const [session, setSession] = useState<any>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [step, setStep] = useState(0); // 0 = Dashboard
   const [projectId, setProjectId] = useState<string | null>(null);
   const [mapData, setMapData] = useState<MapData>(DEFAULT_MAP_DATA);
@@ -30,6 +29,24 @@ export default function App() {
 
   const update = useCallback((u: Partial<MapData>) => setMapData(p => ({ ...p, ...u })), []);
   const inMap = step >= 3 && step <= 6;
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsLoaded(true);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const isSignedIn = !!session;
+  const user = session?.user;
 
   useEffect(() => {
     if (isSignedIn && step > 0) {
@@ -54,7 +71,6 @@ export default function App() {
     const saveTimer = setTimeout(async () => {
       setSaveStatus('saving');
       try {
-        const supabase = createSupabaseClient(getToken);
         const name = `HLB ${mapData.hlbNumber || 'Draft'}`;
 
         if (projectId) {
@@ -82,7 +98,7 @@ export default function App() {
     }, 2000); // 2 second debounce
 
     return () => clearTimeout(saveTimer);
-  }, [mapData, projectId, step, isSignedIn, getToken, user?.id]);
+  }, [mapData, projectId, step, isSignedIn, user?.id]);
 
   // ─── RENDERERS ───────────────────────────────────────────
   if (!isLoaded) {
@@ -96,9 +112,10 @@ export default function App() {
   if (step === 0) {
     return (
       <DashboardScreen
+        user={user}
         onLoadProject={(id, data) => {
           setProjectId(id);
-          setMapData({ ...DEFAULT_MAP_DATA, ...data, enumeratorName: user?.fullName || 'Surveyor' });
+          setMapData({ ...DEFAULT_MAP_DATA, ...data, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
           // Determine where to resume based on data
           if (data.blocks && data.blocks.length > 0) setStep(7);
@@ -109,7 +126,7 @@ export default function App() {
         }}
         onNewProject={() => {
           setProjectId(null);
-          setMapData({ ...DEFAULT_MAP_DATA, enumeratorName: user?.fullName || 'Surveyor' });
+          setMapData({ ...DEFAULT_MAP_DATA, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
           setStep(2); // SMS Parse step
         }}

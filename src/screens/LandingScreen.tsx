@@ -1,6 +1,15 @@
-import { SignInButton, SignUpButton } from '@clerk/clerk-react';
+import { supabase } from '../lib/supabase';
 
 export default function LandingScreen() {
+  const signInWithGoogle = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden selection:bg-orange-200">
       
@@ -17,14 +26,10 @@ export default function LandingScreen() {
             <a href="#features" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">Features</a>
           </div>
           <div className="flex items-center gap-4">
-            <SignInButton mode="modal">
-              <button className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</button>
-            </SignInButton>
-            <SignUpButton mode="modal">
-              <button className="text-sm font-bold bg-slate-900 text-white px-6 py-2.5 rounded-full hover:bg-slate-800 transition-all transform hover:scale-105 active:scale-95 shadow-md">
-                Get Started
-              </button>
-            </SignUpButton>
+            <button onClick={signInWithGoogle} className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</button>
+            <button onClick={signInWithGoogle} className="text-sm font-bold bg-slate-900 text-white px-6 py-2.5 rounded-full hover:bg-slate-800 transition-all transform hover:scale-105 active:scale-95 shadow-md">
+              Get Started
+            </button>
           </div>
         </div>
       </nav>
@@ -59,16 +64,12 @@ export default function LandingScreen() {
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <SignUpButton mode="modal">
-              <button className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 transition-all text-lg flex items-center justify-center gap-2">
-                Start Creating Free <span className="text-xl">→</span>
-              </button>
-            </SignUpButton>
-            <SignInButton mode="modal">
-              <button className="w-full sm:w-auto px-8 py-4 bg-white text-slate-700 font-bold rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all text-lg">
-                Log into Dashboard
-              </button>
-            </SignInButton>
+            <button onClick={signInWithGoogle} className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 transition-all text-lg flex items-center justify-center gap-2">
+              Start Creating Free <span className="text-xl">→</span>
+            </button>
+            <button onClick={signInWithGoogle} className="w-full sm:w-auto px-8 py-4 bg-white text-slate-700 font-bold rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all text-lg">
+              Log into Dashboard
+            </button>
           </div>
         </div>
       </section>
@@ -280,11 +281,9 @@ export default function LandingScreen() {
           <p className="text-xl text-slate-600 mb-10">
             Join other forward-thinking enumerators and prepare for the 2027 Census with the best tools available. Create your account today.
           </p>
-          <SignUpButton mode="modal">
-            <button className="px-10 py-5 bg-slate-900 text-white font-bold rounded-2xl shadow-xl hover:bg-slate-800 hover:-translate-y-1 transition-all text-xl">
-              Create Your First Map
-            </button>
-          </SignUpButton>
+          <button onClick={signInWithGoogle} className="px-10 py-5 bg-slate-900 text-white font-bold rounded-2xl shadow-xl hover:bg-slate-800 hover:-translate-y-1 transition-all text-xl">
+            Create Your First Map
+          </button>
         </div>
       </section>
 
@@ -312,14 +311,10 @@ export default function LandingScreen() {
             <h5 className="text-white font-bold mb-4">Account</h5>
             <ul className="space-y-2 text-sm">
               <li>
-                <SignInButton mode="modal">
-                  <button className="hover:text-orange-400 transition-colors">Log In</button>
-                </SignInButton>
+                <button onClick={signInWithGoogle} className="hover:text-orange-400 transition-colors">Log In</button>
               </li>
               <li>
-                <SignUpButton mode="modal">
-                  <button className="hover:text-orange-400 transition-colors">Create Account</button>
-                </SignUpButton>
+                <button onClick={signInWithGoogle} className="hover:text-orange-400 transition-colors">Create Account</button>
               </li>
             </ul>
           </div>

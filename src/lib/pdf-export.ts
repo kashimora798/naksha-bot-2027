@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature } from '../types';
 import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter } from '../types';
-import { getBbox, polygonArea, generateSerpentinePath, distanceBetween } from './geo';
+import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon } from './geo';
 import { drawSymbolOnCanvas } from './symbols';
 
 // ═══════════════════════════════════════════════════════════

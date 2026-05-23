@@ -130,6 +130,19 @@ export default function App() {
     return () => clearTimeout(saveTimer);
   }, [mapData, projectId, step, isSignedIn, user?.id]);
 
+  const forceSave = async () => {
+    if (!isSignedIn || !projectId) return;
+    try {
+      const name = `HLB ${mapData.hlbNumber || 'Draft'}`;
+      await supabase
+        .from('projects')
+        .update({ name, data: mapData, updated_at: new Date().toISOString() })
+        .eq('id', projectId);
+    } catch (err) {
+      console.error('Force save failed', err);
+    }
+  };
+
   // ─── RENDERERS ───────────────────────────────────────────
   if (!isLoaded) {
     return <div className="h-screen w-screen bg-gray-50 flex items-center justify-center">Loading...</div>;
@@ -150,7 +163,7 @@ export default function App() {
           // Determine where to resume based on data
           if (data.blocks && data.blocks.length > 0) setStep(7);
           else if (data.symbols && data.symbols.length > 0) setStep(5);
-          else if (data.roadsConfirmed) setStep(4);
+          else if (data.roads && data.roads.length > 0) setStep(4);
           else if (data.boundaryClosed) setStep(3);
           else setStep(3);
         }}
@@ -200,7 +213,7 @@ export default function App() {
             <PreviewScreen
               mapData={mapData}
               onBack={() => setStep(5)}
-              onExitToDashboard={() => { setStep(0); setProjectId(null); }}
+              onExitToDashboard={() => { forceSave(); setStep(0); setProjectId(null); }}
             />
           </div>
         )}

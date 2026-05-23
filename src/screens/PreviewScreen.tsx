@@ -137,6 +137,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
 
   useEffect(() => {
     if (mapData.autoExport && mapData.paymentStatus === 'paid' && !exported && !exporting) {
+      mapData.autoExport = false; // Prevent infinite loops on failure
       // Small timeout to allow UI to render first
       const timer = setTimeout(() => {
         handleExport();

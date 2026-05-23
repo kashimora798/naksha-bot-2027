@@ -56,7 +56,7 @@ export default function HowItWorksPage() {
           <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-orange-100 text-orange-600 font-bold mb-4">4</div>
             <h2 className="text-2xl font-bold mb-4">Download & Print</h2>
-            <p className="text-slate-600 mb-4">Once your layout is correct, pay a one-time fee of ₹20 to generate the final PDF. It comes pre-formatted with the official legend, orientation, and metadata required for Census 2027.</p>
+            <p className="text-slate-600 mb-4">Once your layout is correct, you can generate the final PDF for free. It comes pre-formatted with the official legend, orientation, and metadata required for Census 2027.</p>
           </div>
         </div>
 

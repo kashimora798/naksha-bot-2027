@@ -9,7 +9,7 @@ export default function LandingScreen() {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden selection:bg-orange-200">
       <Helmet>
         <title>Nazari Naksha Maker Census 2027 | HLB Map Generator Online</title>
-        <meta name="description" content="Digitize your Nazari Naksha for Census 2027 instantly. Our HLB map generator online is the ultimate tool for enumerators. Start for free, download for ₹20." />
+        <meta name="description" content="Digitize your Nazari Naksha for Census 2027 instantly. Our HLB map generator online is the ultimate tool for enumerators. Completely free to use." />
         <link rel="canonical" href="https://nakshabot.vercel.app/" />
         <script type="application/ld+json">
           {`
@@ -19,12 +19,7 @@ export default function LandingScreen() {
               "name": "NakshaBot",
               "description": "Census 2027 enumerator tool to generate HLB layout maps and Nazari Naksha automatically.",
               "applicationCategory": "Utilities",
-              "operatingSystem": "Web Browser",
-              "offers": {
-                "@type": "Offer",
-                "price": "20.00",
-                "priceCurrency": "INR"
-              }
+              "operatingSystem": "Web Browser"
             }
           `}
         </script>

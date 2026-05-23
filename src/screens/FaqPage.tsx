@@ -15,7 +15,7 @@ const faqs = [
   { q: "How do I show Kutcha and Pucca houses?", a: "Use a square (□) for Pucca (permanent) houses and a triangle (△) for Kutcha (temporary) houses as per the official census manual." },
   { q: "What if there are no roads in my rural block?", a: "In rural areas, use footpaths, cart tracks, streams, or field boundaries (girdawari lines) to demarcate the block." },
   { q: "How do I number buildings in a multi-story apartment?", a: "The apartment building gets one main census building number, while individual flats inside get separate census house numbers." },
-  { q: "Is NakshaBot free to use?", a: "Yes, creating and editing your map is completely free. You only pay a small fee of ₹20 when you are ready to download the final, official PDF." },
+  { q: "Is NakshaBot free to use?", a: "Yes, NakshaBot is completely free to use, from creating your map to downloading the final, official PDF." },
   { q: "Does the app work offline in the field?", a: "Currently, NakshaBot requires an internet connection to load the satellite imagery and auto-detect buildings. You can prepare your maps at home before field visits." }
 ];
 

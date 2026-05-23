@@ -144,14 +144,6 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   }, [mapData.autoExport, mapData.paymentStatus, exported, exporting]);
 
   async function handleExport() {
-    if (mapData.paymentStatus !== 'paid') {
-      alert('Please complete the payment to export.');
-      return;
-    }
-    if ((mapData.exportCount || 0) >= 3) {
-      alert('Export limit reached for this payment. Please purchase another export pack.');
-      return;
-    }
 
     setExporting(true);
     setExportProgress('Rendering map...');
@@ -214,8 +206,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const aspect = orient === 'landscape' ? 297 / 210 : 210 / 297;
   const totalPages = hasBlocks ? blocks.length * 2 + 1 : 2;
   const displayImg = getDisplayImage();
-  const isPaid = mapData.paymentStatus === 'paid';
-  const isLimitReached = isPaid && (mapData.exportCount || 0) >= 3;
+  const isPaid = true;
+  const isLimitReached = false;
 
   // ─── SUCCESS ─────────────────────────────────────────────
   if (exported) {
@@ -274,8 +266,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
               <button onClick={resetView} className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 font-semibold">Reset</button>
             </div>
 
-            {isPaid ? (
-              isLimitReached ? (
+            {isLimitReached ? (
                 <button disabled className="w-full py-4 rounded-xl font-bold text-lg font-[Baloo_2] shadow-sm bg-red-50 text-red-500 border border-red-200">
                    Export Limit Reached (3/3)
                 </button>
@@ -285,14 +276,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   style={{ height: 56 }}>
                   {exporting ? exportProgress || '⏳ Exporting...' : `Export PDF (${totalPages + (aiImg ? 1 : 0)}p) 📥`}
                 </button>
-              )
-            ) : (
-              <button onClick={handlePayment} disabled={paying}
-                className="w-full py-4 rounded-xl font-bold text-lg font-[Baloo_2] shadow-lg transition-all bg-green-500 hover:bg-green-600 text-white active:scale-[0.97]"
-                style={{ height: 56 }}>
-                {paying ? '⏳ Processing...' : 'Pay ₹20 to Export PDF 🔒'}
-              </button>
-            )}
+              )}
           </div>
         )}
 

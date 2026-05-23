@@ -132,7 +132,7 @@ export default function StateLandingPage({ stateKey }: { stateKey: string }) {
         </p>
 
         <Link to="/sign-up" className="inline-flex items-center justify-center px-8 py-4 bg-slate-900 text-white font-bold rounded-2xl shadow-lg hover:-translate-y-1 transition-all text-lg gap-2">
-          Make Your Map Now (₹20) →
+          Make Your Map Now →
         </Link>
       </section>
 
@@ -171,7 +171,7 @@ export default function StateLandingPage({ stateKey }: { stateKey: string }) {
             </div>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <h3 className="font-bold text-lg mb-2">How much does it cost?</h3>
-              <p className="text-slate-600">You can create, edit, and preview your map completely free. You only pay ₹20 once you are satisfied and ready to download the final high-resolution PDF for printing.</p>
+              <p className="text-slate-600">NakshaBot is completely free to use. You can create, edit, preview, and download your final high-resolution PDF at no cost.</p>
             </div>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <h3 className="font-bold text-lg mb-2">Does it work in rural areas of {data.name}?</h3>

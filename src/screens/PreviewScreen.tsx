@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { load } from '@cashfreepayments/cashfree-js';
 import type { MapData, Block } from '../types';
 import { supabase } from '../lib/supabase';
 import { renderMapToCanvas, exportBlockPDF } from '../lib/pdf-export';
@@ -173,14 +174,22 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
   async function handlePayment() {
     setPaying(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-instamojo-payment', {
+      const { data, error } = await supabase.functions.invoke('create-cashfree-payment', {
         body: { projectId: mapData.projectId }
       });
       if (error) throw error;
-      if (data && data.url) {
-        window.location.href = data.url;
+      if (data && data.paymentSessionId) {
+        const cashfree = await load({
+          mode: "sandbox" // change to production when live
+        });
+        if (cashfree) {
+            cashfree.checkout({
+                paymentSessionId: data.paymentSessionId,
+                redirectTarget: "_self"
+            });
+        }
       } else {
-        throw new Error('No payment URL returned');
+        throw new Error('No payment session ID returned');
       }
     } catch (err) {
       console.error(err);

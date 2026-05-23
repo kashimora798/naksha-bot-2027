@@ -172,7 +172,12 @@ export function buildComprehensiveQuery(bbox: { south: number; west: number; nor
   node["shop"~"supermarket|convenience|general|bakery|butcher|clothes"];
   way["shop"~"supermarket|mall"];
   way["historic"];node["historic"];
-  node["name"]["amenity"];node["name"]["shop"];node["name"]["office"];
+  node["name"];
+  way["name"]["building"];
+  way["name"]["amenity"];
+  way["name"]["leisure"];
+  way["name"]["tourism"];
+  way["name"]["shop"];
 );
 out geom;`;
 }
@@ -233,8 +238,8 @@ export function processOverpassData(
       continue;
     }
 
-    // ─── NAMED AMENITIES & PLACES ──────────────────
-    if ((tags.amenity || tags.place) && tags.name) {
+    // ─── ANY OTHER NAMED PLACE / POI ──────────────────
+    if (tags.name && !tags.building && !tags.waterway && tags.natural !== 'water') {
       if (tags.amenity) {
         const st = classifyBuilding(tags);
         symbols.push({
@@ -242,7 +247,13 @@ export function processOverpassData(
           number: null, placed_at: new Date().toISOString(), auto_detected: true, label: tags.name,
         });
       }
-      landmarks.push({ id: crypto.randomUUID(), name: tags.name, type: tags.place || tags.amenity, lat: center.lat, lng: center.lng });
+      landmarks.push({ 
+        id: crypto.randomUUID(), 
+        name: tags.name, 
+        type: tags.amenity || tags.shop || tags.tourism || tags.office || tags.leisure || tags.place || tags.historic || 'point_of_interest', 
+        lat: center.lat, 
+        lng: center.lng 
+      });
       continue;
     }
 
@@ -305,9 +316,9 @@ export function processOverpassData(
       continue;
     }
 
-    // ─── NAMED LANDMARKS ──────────────────────────
-    if (tags.name && (tags.tourism || tags.historic || tags.shop === 'supermarket' || tags.office === 'government')) {
-      landmarks.push({ id: crypto.randomUUID(), name: tags.name, type: tags.tourism || tags.historic || tags.shop || tags.office, lat: center.lat, lng: center.lng });
+    // ─── REMAINING LANDMARKS (if any without name) ──────────────────────────
+    if (!tags.name && (tags.tourism || tags.historic || tags.shop === 'supermarket' || tags.office === 'government')) {
+      landmarks.push({ id: crypto.randomUUID(), name: tags.tourism || tags.historic || 'Landmark', type: tags.tourism || tags.historic || tags.shop || tags.office, lat: center.lat, lng: center.lng });
     }
   }
 

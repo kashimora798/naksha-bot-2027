@@ -135,6 +135,16 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
     }
   }
 
+  useEffect(() => {
+    if (mapData.autoExport && mapData.paymentStatus === 'paid' && !exported && !exporting) {
+      // Small timeout to allow UI to render first
+      const timer = setTimeout(() => {
+        handleExport();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [mapData.autoExport, mapData.paymentStatus, exported, exporting]);
+
   async function handleExport() {
     if (mapData.paymentStatus !== 'paid') {
       alert('Please complete the payment to export.');

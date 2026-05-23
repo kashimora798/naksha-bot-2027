@@ -66,6 +66,7 @@ export interface MapData {
   projectId?: string;
   paymentStatus?: string;
   exportCount?: number;
+  autoExport?: boolean;
 }
 
 export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; isHouse: boolean }[] = [

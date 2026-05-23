@@ -43,7 +43,30 @@ export default function App() {
     });
 
     const params = new URLSearchParams(window.location.search);
-    if (params.get('payment') === 'success') {
+    const isPaymentSuccess = params.get('payment') === 'success';
+    const paymentProjectId = params.get('project_id');
+
+    if (isPaymentSuccess && paymentProjectId) {
+      // 1. Force update the DB locally so they don't have to wait for the webhook
+      supabase.from('projects').update({ payment_status: 'paid' }).eq('id', paymentProjectId).then(() => {
+        // 2. Fetch the project
+        supabase.from('projects').select('*').eq('id', paymentProjectId).single().then(({data}) => {
+          if (data) {
+             setProjectId(data.id);
+             setMapData({ 
+               ...DEFAULT_MAP_DATA, 
+               ...data.data, 
+               projectId: data.id, 
+               paymentStatus: 'paid', 
+               exportCount: data.export_count, 
+               autoExport: true 
+             });
+             setStep(7); // Jump straight to preview screen
+          }
+        });
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (isPaymentSuccess) {
       alert('Payment successful! Your export is now unlocked.');
       window.history.replaceState({}, document.title, window.location.pathname);
     }

@@ -58,11 +58,9 @@ export function clipRoadsToPolygon(elements: any[], boundary: Coordinate[]): any
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
     const coords: Coordinate[] = el.geometry.map((n: any) => ({ lat: n.lat, lng: n.lon }));
     const highway = el.tags?.highway || 'unclassified';
-    if (!lineIntersectsPolygon(coords, boundary)) continue;
-    const segs: Coordinate[][] = []; let cur: Coordinate[] = [];
-    for (const c of coords) { if (pointInPolygon(c, boundary)) { cur.push(c); } else { if (cur.length >= 2) segs.push([...cur]); cur = []; } }
-    if (cur.length >= 2) segs.push(cur);
-    for (const seg of segs) results.push({ coords: seg, highway, osm_id: el.id });
+    if (lineIntersectsPolygon(coords, boundary)) {
+      results.push({ coords: coords, highway, osm_id: el.id });
+    }
   }
   return results;
 }

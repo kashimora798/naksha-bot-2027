@@ -12,7 +12,7 @@ import { drawSymbolOnCanvas } from './symbols';
 // ═══════════════════════════════════════════════════════════
 export function renderMapToCanvas(
   canvas: HTMLCanvasElement, data: MapData, maxW: number, maxH: number,
-  options?: { watermark?: boolean; transparentBg?: boolean; hideSymbols?: boolean }
+  options?: { watermark?: boolean; transparentBg?: boolean; hideSymbols?: boolean; focusBounds?: { south: number, west: number, north: number, east: number } }
 ): void {
   const orient = data.orientation || 'portrait';
   const aspect = orient === 'landscape' ? 297 / 210 : 210 / 297;
@@ -29,9 +29,17 @@ export function renderMapToCanvas(
   }
   if (data.boundaryPins.length < 3) return;
 
-  const bb = getBbox(data.boundaryPins);
-  // NO padding — boundary fills entire canvas
-  const pW = bb.west, pE = bb.east, pS = bb.south, pN = bb.north;
+  let pW: number, pE: number, pS: number, pN: number;
+  if (options?.focusBounds) {
+    const b = options.focusBounds;
+    const pLng = (b.east - b.west) * 0.15;
+    const pLat = (b.north - b.south) * 0.15;
+    pW = b.west - pLng; pE = b.east + pLng;
+    pS = b.south - pLat; pN = b.north + pLat;
+  } else {
+    const bb = getBbox(data.boundaryPins);
+    pW = bb.west; pE = bb.east; pS = bb.south; pN = bb.north;
+  }
   const rLng = pE - pW || 0.001, rLat = pN - pS || 0.001;
 
   // ASPECT FILL: independent X/Y scaling
@@ -143,16 +151,12 @@ export function renderMapToCanvas(
     }
   }
 
-  // ─── SYMBOLS — aligned to nearest road direction ───────
+  // ─── SYMBOLS — Upright viewport aligned ───────
   if (!options?.hideSymbols) {
     for (const sym of data.symbols) {
       const [x, y] = proj(sym);
       ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.beginPath(); ctx.arc(x, y, symSz * 0.5, 0, Math.PI * 2); ctx.fill();
-      // Rotate to align with nearest road
-      const bearing = findNearestRoadBearing(sym, data.roads);
-      ctx.save(); ctx.translate(x, y); ctx.rotate(-bearing);
-      drawSymbolOnCanvas(ctx, sym.symbol_type, 0, 0, symSz, sym.number, getUnitCount(sym));
-      ctx.restore();
+      drawSymbolOnCanvas(ctx, sym.symbol_type, x, y, symSz, sym.number, getUnitCount(sym));
     }
   }
 
@@ -359,29 +363,44 @@ export async function exportBlockPDF(
       // Clean map for this block
       onProgress(`Page ${++page}/${totalPages} — Block ${blk.label}`);
       await new Promise(r => setTimeout(r, 50));
+      const blkPts = blk.points || [
+        { lat: blk.south, lng: blk.west }, { lat: blk.north, lng: blk.west },
+        { lat: blk.north, lng: blk.east }, { lat: blk.south, lng: blk.east },
+      ];
+      const blkBB = getBbox(blkPts);
+
       {
         const c = document.createElement('canvas');
         const blkSym = data.symbols.filter(s => {
-          if (blk.points) return pointInPolygon({ lat: s.lat, lng: s.lng }, blk.points);
-          return s.lat >= blk.south && s.lat <= blk.north && s.lng >= blk.west && s.lng <= blk.east;
+          return pointInPolygon({ lat: s.lat, lng: s.lng }, blkPts);
         });
         const fakeData: MapData = {
           ...data, orientation: orient,
           symbols: blkSym,
           blocks: blocks.map((b, i) => i === bi ? { ...b } : { ...b }),
         };
-        renderMapToCanvas(c, fakeData, pw, ph);
+        renderMapToCanvas(c, fakeData, pw, ph, { focusBounds: blkBB });
         // Highlight current block, dim others
         const ctx = c.getContext('2d')!;
+        const [w, h] = [c.width, c.height];
+        
+        // Calculate the specific projection used for this block map
+        const pLng = (blkBB.east - blkBB.west) * 0.15;
+        const pLat = (blkBB.north - blkBB.south) * 0.15;
+        const pW = blkBB.west - pLng;
+        const pN = blkBB.north + pLat;
+        const rLng = (blkBB.east + pLng) - pW;
+        const rLat = pN - (blkBB.south - pLat);
+        const scX = w / rLng, scY = h / rLat;
+
         blocks.forEach((b, i) => {
           if (i === bi) return;
           const pts = b.points || [
             { lat: b.south, lng: b.west }, { lat: b.north, lng: b.west },
             { lat: b.north, lng: b.east }, { lat: b.south, lng: b.east },
           ];
-          const scX = c.width / (bb.east - bb.west), scY = c.height / (bb.north - bb.south);
-          const pp = pts.map(p => [(p.lng - bb.west) * scX, (bb.north - p.lat) * scY]);
-          ctx.fillStyle = 'rgba(255,255,255,0.65)';
+          const pp = pts.map(p => [(p.lng - pW) * scX, (pN - p.lat) * scY]);
+          ctx.fillStyle = 'rgba(255,255,255,0.85)';
           ctx.beginPath(); pp.forEach(([x, y], j) => j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
         });
         doc.addPage();
@@ -393,10 +412,15 @@ export async function exportBlockPDF(
       onProgress(`Page ${++page}/${totalPages} — Satellite ${blk.label}`);
       await new Promise(r => setTimeout(r, 50));
       {
+        // Capture satellite dynamically for this block
+        const padLng = (blkBB.east - blkBB.west) * 0.15;
+        const padLat = (blkBB.north - blkBB.south) * 0.15;
+        const blockSatCanvas = await captureSat(blkBB.south - padLat, blkBB.west - padLng, blkBB.north + padLat, blkBB.east + padLng);
+
         doc.addPage();
-        doc.addImage(satCanvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, a4W, a4H);
+        doc.addImage(blockSatCanvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, a4W, a4H);
         const c = document.createElement('canvas');
-        renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true });
+        renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true, focusBounds: blkBB });
         doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
         addOverlays(doc, data, a4W, a4H, `SATELLITE — Block ${blk.label}`);
       }

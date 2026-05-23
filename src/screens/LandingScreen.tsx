@@ -323,6 +323,14 @@ export default function LandingScreen() {
               </li>
             </ul>
           </div>
+          <div>
+            <h5 className="text-white font-bold mb-4">Legal & Support</h5>
+            <ul className="space-y-2 text-sm">
+              <li><a href="/terms" className="hover:text-orange-400 transition-colors">Terms & Conditions</a></li>
+              <li><a href="/refunds" className="hover:text-orange-400 transition-colors">Refund Policy</a></li>
+              <li><a href="/contact" className="hover:text-orange-400 transition-colors">Contact Us</a></li>
+            </ul>
+          </div>
         </div>
         <div className="max-w-6xl mx-auto px-6 mt-16 pt-8 border-t border-slate-800/50 text-sm text-slate-500 flex flex-col md:flex-row justify-between items-center gap-4">
           <p>© {new Date().getFullYear()} NakshaBot. All rights reserved.</p>

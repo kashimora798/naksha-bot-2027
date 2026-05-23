@@ -63,6 +63,9 @@ export interface MapData {
   areaStats: AreaStats | null;
   surveyMapUrl?: string;
   surveyMapBase64?: string;
+  projectId?: string;
+  paymentStatus?: string;
+  exportCount?: number;
 }
 
 export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; isHouse: boolean }[] = [

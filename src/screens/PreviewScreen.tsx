@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { MapData, Block } from '../types';
+import { supabase } from '../lib/supabase';
 import { renderMapToCanvas, exportBlockPDF } from '../lib/pdf-export';
 import { captureSatelliteForBoundary, captureFullSatellite, generateSurveyMapFromBoundary, fetchImageAsBase64, API_BASE } from '../lib/survey-api';
 
@@ -10,6 +11,7 @@ type ViewTab = 'sketch' | 'satellite' | 'ai';
 export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Props) {
   const [exported, setExported] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [exportProgress, setExportProgress] = useState('');
   const [zoom, setZoom] = useState(1);
   const [rotate, setRotate] = useState(0);
@@ -133,6 +135,15 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
   }
 
   async function handleExport() {
+    if (mapData.paymentStatus !== 'paid') {
+      alert('Please complete the payment to export.');
+      return;
+    }
+    if ((mapData.exportCount || 0) >= 3) {
+      alert('Export limit reached for this payment. Please purchase another export pack.');
+      return;
+    }
+
     setExporting(true);
     setExportProgress('Rendering map...');
     try {
@@ -142,6 +153,14 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
         exportData.surveyMapBase64 = aiImg;
       }
       await exportBlockPDF(exportData, orient, (msg: string) => setExportProgress(msg));
+      
+      // Increment export count
+      if (mapData.projectId) {
+        await supabase.rpc('increment_export_count', { proj_id: mapData.projectId });
+        // Update local state optimisticly
+        mapData.exportCount = (mapData.exportCount || 0) + 1;
+      }
+
       setExported(true);
     } catch (err) {
       console.error(err);
@@ -151,11 +170,32 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
     setExportProgress('');
   }
 
+  async function handlePayment() {
+    setPaying(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-instamojo-payment', {
+        body: { projectId: mapData.projectId }
+      });
+      if (error) throw error;
+      if (data && data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No payment URL returned');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Payment initiation failed.');
+    }
+    setPaying(false);
+  }
+
   const blocks = mapData.blocks || [];
   const hasBlocks = blocks.length > 1;
   const aspect = orient === 'landscape' ? 297 / 210 : 210 / 297;
   const totalPages = hasBlocks ? blocks.length * 2 + 1 : 2;
   const displayImg = getDisplayImage();
+  const isPaid = mapData.paymentStatus === 'paid';
+  const isLimitReached = isPaid && (mapData.exportCount || 0) >= 3;
 
   // ─── SUCCESS ─────────────────────────────────────────────
   if (exported) {
@@ -214,11 +254,25 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
               <button onClick={resetView} className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 font-semibold">Reset</button>
             </div>
 
-            <button onClick={handleExport} disabled={exporting}
-              className={`w-full py-4 rounded-xl font-bold text-lg font-[Baloo_2] shadow-lg transition-all ${exporting ? 'bg-gray-400 text-white' : 'bg-orange-500 text-white active:scale-[0.97]'}`}
-              style={{ height: 56 }}>
-              {exporting ? exportProgress || '⏳ Exporting...' : `Export PDF (${totalPages + (aiImg ? 1 : 0)}p) 📥`}
-            </button>
+            {isPaid ? (
+              isLimitReached ? (
+                <button disabled className="w-full py-4 rounded-xl font-bold text-lg font-[Baloo_2] shadow-sm bg-red-50 text-red-500 border border-red-200">
+                   Export Limit Reached (3/3)
+                </button>
+              ) : (
+                <button onClick={handleExport} disabled={exporting}
+                  className={`w-full py-4 rounded-xl font-bold text-lg font-[Baloo_2] shadow-lg transition-all ${exporting ? 'bg-gray-400 text-white' : 'bg-orange-500 text-white active:scale-[0.97]'}`}
+                  style={{ height: 56 }}>
+                  {exporting ? exportProgress || '⏳ Exporting...' : `Export PDF (${totalPages + (aiImg ? 1 : 0)}p) 📥`}
+                </button>
+              )
+            ) : (
+              <button onClick={handlePayment} disabled={paying}
+                className="w-full py-4 rounded-xl font-bold text-lg font-[Baloo_2] shadow-lg transition-all bg-green-500 hover:bg-green-600 text-white active:scale-[0.97]"
+                style={{ height: 56 }}>
+                {paying ? '⏳ Processing...' : 'Pay ₹20 to Export PDF 🔒'}
+              </button>
+            )}
           </div>
         )}
 
@@ -286,6 +340,17 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
               <div className="absolute top-1 left-1 bg-orange-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded z-10 pointer-events-none">{orient}</div>
               {activeTab === 'ai' && <div className="absolute top-1 right-1 bg-purple-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded z-10 pointer-events-none">AI</div>}
               {activeTab === 'satellite' && <div className="absolute top-1 right-1 bg-blue-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded z-10 pointer-events-none">SAT</div>}
+              
+              {/* UNPAID WATERMARK */}
+              {!isPaid && (
+                <div className="absolute inset-0 pointer-events-none flex flex-wrap content-center justify-center opacity-20 select-none z-20 overflow-hidden mix-blend-multiply">
+                  {Array.from({ length: 30 }).map((_, i) => (
+                    <div key={i} className="text-2xl font-black text-slate-900 rotate-[-30deg] m-6 whitespace-nowrap">
+                      UNPAID PREVIEW
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

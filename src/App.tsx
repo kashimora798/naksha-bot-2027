@@ -42,6 +42,12 @@ export default function App() {
       setSession(session);
     });
 
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      alert('Payment successful! Your export is now unlocked.');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     return () => subscription.unsubscribe();
   }, []);
 

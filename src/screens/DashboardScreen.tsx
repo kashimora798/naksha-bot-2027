@@ -9,6 +9,8 @@ export interface Project {
   data: Partial<MapData>;
   created_at: string;
   updated_at: string;
+  payment_status: string;
+  export_count: number;
 }
 
 interface Props {
@@ -106,7 +108,7 @@ export default function DashboardScreen({ user, onLoadProject, onNewProject }: P
             {projects.map((project) => (
               <div
                 key={project.id}
-                onClick={() => onLoadProject(project.id, project.data)}
+                onClick={() => onLoadProject(project.id, { ...project.data, paymentStatus: project.payment_status, exportCount: project.export_count })}
                 className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md hover:border-orange-200 transition-all group"
               >
                 <div className="flex justify-between items-start mb-3">

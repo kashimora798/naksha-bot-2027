@@ -174,6 +174,9 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
   async function handlePayment() {
     setPaying(true);
     try {
+      if (!mapData.projectId) {
+        throw new Error('Project is still saving, please wait a moment and try again.');
+      }
       const { data, error } = await supabase.functions.invoke('create-cashfree-payment', {
         body: { projectId: mapData.projectId }
       });

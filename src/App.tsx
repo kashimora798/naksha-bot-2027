@@ -95,6 +95,7 @@ export default function App() {
             .single();
           if (error) throw error;
           setProjectId(data.id);
+          setMapData(prev => ({ ...prev, projectId: data.id }));
         }
         setSaveStatus('saved');
       } catch (err) {

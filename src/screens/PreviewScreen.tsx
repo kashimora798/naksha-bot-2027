@@ -3,7 +3,7 @@ import { load } from '@cashfreepayments/cashfree-js';
 import type { MapData, Block } from '../types';
 import { supabase } from '../lib/supabase';
 import { renderMapToCanvas, exportBlockPDF } from '../lib/pdf-export';
-import { captureSatelliteForBoundary, captureFullSatellite, generateSurveyMapFromBoundary, fetchImageAsBase64, API_BASE } from '../lib/survey-api';
+import { captureSatelliteForBoundary, captureFullSatellite, generateSurveyMapFromBoundary, fetchImageAsBase64, API_BASE, generateChunkedSurveyMaps } from '../lib/survey-api';
 
 interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; onUpdateMapData?: (data: Partial<MapData>) => void; }
 
@@ -35,6 +35,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiProgress, setAiProgress] = useState('');
+  const [aiChunks, setAiChunks] = useState<{ label: string; bbox: Coordinate[]; imageBase64: string }[]>(mapData.aiMapChunks || []);
 
   const isDrag = useRef(false);
   const lastP = useRef({ x: 0, y: 0 });
@@ -91,38 +92,31 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     if (mapData.boundaryPins.length < 3) return;
     setAiLoading(true);
     setAiError('');
-    setAiProgress('Preparing satellite image...');
+    setAiProgress('Preparing satellite imagery...');
 
     try {
-      const result = await generateSurveyMapFromBoundary(
+      // Chunk the area into 250m x 250m pieces
+      const result = await generateChunkedSurveyMaps(
         mapData.boundaryPins,
-        orient,
+        250,
         (msg) => setAiProgress(msg)
       );
 
-      if (result.success && result.imageUrl) {
-        setAiProgress('Downloading generated map...');
-        try {
-          const base64 = await fetchImageAsBase64(result.imageUrl);
-          setAiImg(base64);
-          if (onUpdateMapData) {
-            onUpdateMapData({ surveyMapBase64: base64 });
-          }
-          setAiProgress('');
-        } catch {
-          setAiImg(result.imageUrl);
-          setAiProgress('');
+      if (result.success && result.chunks) {
+        setAiChunks(result.chunks);
+        if (onUpdateMapData) {
+          onUpdateMapData({ aiMapChunks: result.chunks });
         }
-      } else {
-        setAiError(result.error || 'Generation failed');
         setAiProgress('');
+      } else {
+        setAiError(result.error || 'Failed to generate AI survey maps');
       }
-    } catch (err) {
-      setAiError('Failed to connect to AI server');
-      setAiProgress('');
+    } catch (err: any) {
+      setAiError(err.message || 'Network error');
+    } finally {
+      setAiLoading(false);
     }
-    setAiLoading(false);
-  }
+  } 
 
   function handleDown(e: React.PointerEvent) { isDrag.current = true; lastP.current = { x: e.clientX, y: e.clientY }; (e.target as HTMLElement).setPointerCapture(e.pointerId); }
   function handleMove(e: React.PointerEvent) { if (!isDrag.current) return; setPanX(p => p + e.clientX - lastP.current.x); setPanY(p => p + e.clientY - lastP.current.y); lastP.current = { x: e.clientX, y: e.clientY }; }
@@ -310,7 +304,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           </div>
         )}
 
-        {activeTab === 'ai' && !aiImg && !aiLoading && (
+        {activeTab === 'ai' && aiChunks.length === 0 && !aiLoading && (
           <div className="flex flex-col items-center justify-center py-8 gap-4 px-6 bg-white/5 mx-4 rounded-2xl border border-white/10">
             <div className="w-16 h-16 bg-purple-500/20 rounded-2xl flex items-center justify-center text-3xl">🗺️</div>
             <h3 className="text-sm font-bold text-white text-center">Generate AI Survey Map</h3>
@@ -330,20 +324,34 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           <div className="flex flex-col items-center justify-center py-12 gap-3">
             <svg className="animate-spin h-8 w-8 text-purple-500" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             <p className="text-sm text-purple-400">{aiProgress || 'Generating AI survey map...'}</p>
-            <p className="text-xs text-gray-500">This may take 30-60 seconds</p>
+            <p className="text-xs text-gray-500">This may take a few minutes for large areas</p>
           </div>
         )}
 
-        {activeTab === 'ai' && aiImg && (
+        {activeTab === 'ai' && aiChunks.length > 0 && (
           <div className="px-4 mb-3 flex justify-end">
-            <button onClick={() => { setAiImg(''); setTimeout(generateAI, 100); }} className="px-4 py-2 rounded-xl text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+            <button onClick={() => { setAiChunks([]); setTimeout(generateAI, 100); }} className="px-4 py-2 rounded-xl text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">
               🔄 Regenerate AI Map
             </button>
           </div>
         )}
 
-        {/* A4 Frame */}
-        {displayImg && !(activeTab === 'satellite' && satLoading) && !(activeTab === 'ai' && (aiLoading || (!aiImg && !aiLoading))) && (
+        {/* AI Chunks Rendering */}
+        {activeTab === 'ai' && aiChunks.length > 0 && (
+          <div className="px-4 flex flex-col gap-6 items-center pb-10">
+            {aiChunks.map((chunk, i) => (
+              <div key={i} className="bg-white shadow-2xl relative overflow-hidden ring-1 ring-white/20" style={{ width: '100%', maxWidth: 500, aspectRatio: '1' }}>
+                <img src={chunk.imageBase64} alt={chunk.label} className="absolute inset-0 w-full h-full object-cover select-none" draggable={false} />
+                <div className="absolute top-0 inset-x-0 bg-white/85 text-center py-1 z-10 pointer-events-none">
+                  <span className="text-xs font-bold font-[Baloo_2]">Chunk {chunk.label}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* A4 Frame (for Sketch and Satellite) */}
+        {activeTab !== 'ai' && displayImg && !(activeTab === 'satellite' && satLoading) && (
           <div className="px-4 flex justify-center pb-10">
             <div
               ref={frameRef}

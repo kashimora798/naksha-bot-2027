@@ -336,6 +336,47 @@ export async function generateSurveyMapFromBoundary(
   // Step 2: Determine ratio from orientation
   const ratio = orientation === 'landscape' ? '16:9' : '9:16';
 
-  // Step 3: Generate survey map
+// Step 3: Generate survey map
   return generateSurveyMap(base64, ratio, onProgress);
+}
+
+export async function generateChunkedSurveyMaps(
+  boundary: Coordinate[],
+  chunkSizeMeters: number,
+  onProgress?: (msg: string) => void
+): Promise<{ success: boolean; error?: string; chunks?: { label: string; bbox: Coordinate[]; imageBase64: string }[] }> {
+  if (boundary.length < 3) return { success: false, error: 'Need at least 3 boundary points' };
+
+  // Step 1: Generate grid chunks
+  const { generateGridChunks } = await import('./geo');
+  const chunks = generateGridChunks(boundary, chunkSizeMeters);
+  if (chunks.length === 0) return { success: false, error: 'No chunks generated' };
+
+  const results: { label: string; bbox: Coordinate[]; imageBase64: string }[] = [];
+
+  // Step 2: Process each chunk
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    if (onProgress) onProgress(`Processing chunk ${i + 1} of ${chunks.length} (${chunk.label})...`);
+
+    // Capture satellite for this chunk's bounding box
+    const { base64 } = await captureSatelliteForBoundary(chunk.bbox, onProgress);
+
+    // Generate survey map (using square ratio for chunks)
+    const aiResult = await generateSurveyMap(base64, '1:1', onProgress);
+
+    if (aiResult.success && aiResult.imageUrl) {
+      if (onProgress) onProgress(`Downloading map for chunk ${chunk.label}...`);
+      try {
+        const fetchedBase64 = await fetchImageAsBase64(aiResult.imageUrl);
+        results.push({ label: chunk.label, bbox: chunk.bbox, imageBase64: fetchedBase64 });
+      } catch (e) {
+        results.push({ label: chunk.label, bbox: chunk.bbox, imageBase64: aiResult.imageUrl });
+      }
+    } else {
+      return { success: false, error: `Failed on chunk ${chunk.label}: ${aiResult.error}` };
+    }
+  }
+
+  return { success: true, chunks: results };
 }

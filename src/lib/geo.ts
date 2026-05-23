@@ -361,3 +361,47 @@ export function getSatelliteBounds(south: number, west: number, north: number, e
   function latF(y: number) { const n = Math.PI - 2 * Math.PI * y / Math.pow(2, zoom); return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); }
   return { zoom, canvasW: (tx2-tx1+1)*256, canvasH: (ty2-ty1+1)*256, tileWest: tx1, tileNorth: ty1, satWest: lngF(tx1), satEast: lngF(tx2+1), satNorth: latF(ty1), satSouth: latF(ty2+1) };
 }
+
+export function generateGridChunks(boundary: Coordinate[], sizeMeters: number): { label: string; bbox: Coordinate[] }[] {
+  const bbox = getBbox(boundary);
+  const centerLat = (bbox.south + bbox.north) / 2;
+  const latStep = sizeMeters / 111111;
+  const lngStep = sizeMeters / (111111 * Math.cos(centerLat * Math.PI / 180));
+
+  const chunks: { label: string; bbox: Coordinate[] }[] = [];
+  let row = 0;
+  for (let lat = bbox.south; lat < bbox.north; lat += latStep) {
+    let col = 0;
+    for (let lng = bbox.west; lng < bbox.east; lng += lngStep) {
+      const chunkBbox = [
+        { lat, lng },
+        { lat: lat + latStep, lng },
+        { lat: lat + latStep, lng: lng + lngStep },
+        { lat, lng: lng + lngStep }
+      ];
+
+      let intersects = false;
+      for (const pt of chunkBbox) {
+        if (pointInPolygon(pt, boundary)) { intersects = true; break; }
+      }
+      if (!intersects) {
+        for (const pt of boundary) {
+          if (pointInPolygon(pt, chunkBbox)) { intersects = true; break; }
+        }
+      }
+      if (!intersects) {
+        if (lineIntersectsPolygon([...chunkBbox, chunkBbox[0]], boundary)) {
+          intersects = true;
+        }
+      }
+
+      if (intersects) {
+        const letter = String.fromCharCode(65 + (row % 26));
+        chunks.push({ label: `${letter}${col + 1}`, bbox: chunkBbox });
+      }
+      col++;
+    }
+    row++;
+  }
+  return chunks;
+}

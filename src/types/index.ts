@@ -63,6 +63,7 @@ export interface MapData {
   areaStats: AreaStats | null;
   surveyMapUrl?: string;
   surveyMapBase64?: string;
+  aiMapChunks?: { label: string; bbox: Coordinate[]; imageBase64: string }[];
   projectId?: string;
   paymentStatus?: string;
   exportCount?: number;

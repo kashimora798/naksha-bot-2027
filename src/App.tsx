@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import type { MapData } from './types';
 import ProgressBar from './components/ProgressBar';
@@ -6,7 +7,6 @@ import SMSParseScreen from './screens/SMSParseScreen';
 import MapWorkspace from './screens/MapWorkspace';
 import PreviewScreen from './screens/PreviewScreen';
 import DashboardScreen from './screens/DashboardScreen';
-import LandingScreen from './screens/LandingScreen';
 
 const DEFAULT_MAP_DATA: MapData = {
   hlbNumber: '', center: { lat: 26.4499, lng: 80.3319 },
@@ -161,7 +161,7 @@ export default function App() {
   }
 
   if (!isSignedIn) {
-    return <LandingScreen />;
+    return <Navigate to="/sign-in" replace />;
   }
 
   if (step === 0) {

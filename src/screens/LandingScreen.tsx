@@ -1,10 +1,34 @@
 import { supabase } from '../lib/supabase';
+import { Link } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 
 export default function LandingScreen() {
   // Auth buttons will now navigate to /sign-in and /sign-up
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden selection:bg-orange-200">
+      <Helmet>
+        <title>Nazari Naksha Maker Census 2027 | HLB Map Generator Online</title>
+        <meta name="description" content="Digitize your Nazari Naksha for Census 2027 instantly. Our HLB map generator online is the ultimate tool for enumerators. Start for free, download for ₹20." />
+        <link rel="canonical" href="https://nakshabot.vercel.app/" />
+        <script type="application/ld+json">
+          {`
+            {
+              "@context": "https://schema.org",
+              "@type": "SoftwareApplication",
+              "name": "NakshaBot",
+              "description": "Census 2027 enumerator tool to generate HLB layout maps and Nazari Naksha automatically.",
+              "applicationCategory": "Utilities",
+              "operatingSystem": "Web Browser",
+              "offers": {
+                "@type": "Offer",
+                "price": "20.00",
+                "priceCurrency": "INR"
+              }
+            }
+          `}
+        </script>
+      </Helmet>
       
       {/* ─── NAVIGATION ─── */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200/50">
@@ -19,10 +43,10 @@ export default function LandingScreen() {
             <a href="#features" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">Features</a>
           </div>
           <div className="flex items-center gap-4">
-            <a href="/sign-in" className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</a>
-            <a href="/sign-up" className="text-sm font-bold bg-slate-900 text-white px-6 py-2.5 rounded-full hover:bg-slate-800 transition-all transform hover:scale-105 active:scale-95 shadow-md inline-block">
+            <Link to="/sign-in" className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</Link>
+            <Link to="/sign-up" className="text-sm font-bold bg-slate-900 text-white px-6 py-2.5 rounded-full hover:bg-slate-800 transition-all transform hover:scale-105 active:scale-95 shadow-md inline-block">
               Get Started
-            </a>
+            </Link>
           </div>
         </div>
       </nav>
@@ -49,20 +73,20 @@ export default function LandingScreen() {
           
           <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight text-slate-900 mb-8 leading-tight font-[Baloo_2]">
             Digitize your <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-rose-500">Nazari Naksha</span><br />
-            in minutes, not days.
+            for Census 2027 instantly.
           </h1>
           
           <p className="text-lg lg:text-xl text-slate-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-            NakshaBot is the ultimate digital companion for Census Enumerators. Overlay satellite imagery, auto-detect buildings, and generate official HLB layout maps instantly—eliminating manual drawing entirely.
+            NakshaBot is the ultimate HLB map generator for Census 2027. We overlay high-resolution satellite imagery with OpenStreetMap boundaries, letting you auto-detect buildings and layout blocks without manual drawing. Create your official, perfectly-scaled map in under 15 minutes.
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a href="/sign-up" className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 transition-all text-lg flex items-center justify-center gap-2">
+            <Link to="/sign-up" className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 transition-all text-lg flex items-center justify-center gap-2">
               Start Creating Free <span className="text-xl">→</span>
-            </a>
-            <a href="/sign-in" className="w-full sm:w-auto px-8 py-4 bg-white text-slate-700 font-bold rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all text-lg flex items-center justify-center">
+            </Link>
+            <Link to="/sign-in" className="w-full sm:w-auto px-8 py-4 bg-white text-slate-700 font-bold rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all text-lg flex items-center justify-center">
               Log into Dashboard
-            </a>
+            </Link>
           </div>
         </div>
       </section>

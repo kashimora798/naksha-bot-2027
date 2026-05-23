@@ -334,8 +334,33 @@ export async function exportBlockPDF(
     addOverlays(doc, data, a4W, a4H, 'OVERVIEW');
   }
 
-  // ─── AI SURVEY MAP PAGE (if generated) ─────────────────
-  if (data.surveyMapBase64) {
+  // ─── AI SURVEY MAP CHUNKS ───────────────────────────────────────────────
+  if (data.aiMapChunks && data.aiMapChunks.length > 0) {
+    for (let ci = 0; ci < data.aiMapChunks.length; ci++) {
+      const chunk = data.aiMapChunks[ci];
+      onProgress(`AI Survey Map chunk ${chunk.label}...`);
+      await new Promise(r => setTimeout(r, 50));
+      doc.addPage();
+      try {
+        const imgData = chunk.imageBase64.startsWith('data:')
+          ? chunk.imageBase64
+          : chunk.imageBase64;
+        
+        // Render chunk in center (square)
+        const size = Math.min(a4W, a4H) - 20;
+        const cx = (a4W - size) / 2;
+        const cy = (a4H - size) / 2;
+
+        doc.addImage(imgData, 'JPEG', cx, cy, size, size);
+        addOverlays(doc, data, a4W, a4H, `AI SURVEY MAP - CHUNK ${chunk.label}`);
+      } catch (e) {
+        doc.setFontSize(14);
+        doc.setTextColor(150);
+        doc.text(`AI Survey Map Chunk ${chunk.label} — failed to embed`, a4W / 2, a4H / 2, { align: 'center' });
+        addOverlays(doc, data, a4W, a4H, `AI SURVEY MAP - CHUNK ${chunk.label}`);
+      }
+    }
+  } else if (data.surveyMapBase64) {
     onProgress(`AI Survey Map page...`);
     await new Promise(r => setTimeout(r, 50));
     doc.addPage();

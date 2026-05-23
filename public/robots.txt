@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://eamsetu.dev/sitemap.xml
+Sitemap: https://nakshabot.vercel.app/sitemap.xml

@@ -5,11 +5,11 @@ import { supabase } from '../lib/supabase';
 import { renderMapToCanvas, exportBlockPDF } from '../lib/pdf-export';
 import { captureSatelliteForBoundary, captureFullSatellite, generateSurveyMapFromBoundary, fetchImageAsBase64, API_BASE } from '../lib/survey-api';
 
-interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; }
+interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; onUpdateMapData?: (data: Partial<MapData>) => void; }
 
 type ViewTab = 'sketch' | 'satellite' | 'ai';
 
-export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Props) {
+export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUpdateMapData }: Props) {
   const [exported, setExported] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -31,7 +31,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
   const [satLoading, setSatLoading] = useState(false);
 
   // AI survey map
-  const [aiImg, setAiImg] = useState(mapData.surveyMapBase64 || '');
+  const [aiImg, setAiImg] = useState<string | null>(mapData.surveyMapBase64 || null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiProgress, setAiProgress] = useState('');
@@ -105,6 +105,9 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard }: Pr
         try {
           const base64 = await fetchImageAsBase64(result.imageUrl);
           setAiImg(base64);
+          if (onUpdateMapData) {
+            onUpdateMapData({ surveyMapBase64: base64 });
+          }
           setAiProgress('');
         } catch {
           setAiImg(result.imageUrl);

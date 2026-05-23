@@ -143,7 +143,19 @@ export default function App() {
     }
   };
 
-  // ─── RENDERERS ───────────────────────────────────────────
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (projectId && isSignedIn) {
+        forceSave();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [mapData, projectId, isSignedIn]);
+
+  // ═══════════════════════════════════════════════════════════
+  // RENDERERS
+  // ═══════════════════════════════════════════════════════════───────────────────────────────────────────
   if (!isLoaded) {
     return <div className="h-screen w-screen bg-gray-50 flex items-center justify-center">Loading...</div>;
   }

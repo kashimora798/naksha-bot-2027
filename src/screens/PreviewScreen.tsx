@@ -230,7 +230,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
   // ─── EDITOR ─────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#111] flex flex-col">
+    <div className="h-full bg-[#111] flex flex-col">
       <div className="bg-white px-3 py-2 flex items-center justify-between z-30 flex-shrink-0 shadow">
         <button onClick={onBack} className="text-sm text-gray-600 font-semibold">← Back</button>
         <span className="text-sm font-bold font-[Baloo_2]">Preview</span>

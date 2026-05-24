@@ -10,7 +10,7 @@ export default function LandingScreen() {
       <Helmet>
         <title>Nazari Naksha Maker Census 2027 | HLB Map Generator Online</title>
         <meta name="description" content="Digitize your Nazari Naksha for Census 2027 instantly. Our HLB map generator online is the ultimate tool for enumerators. Completely free to use." />
-        <link rel="canonical" href="https://nakshabot.vercel.app/" />
+        <link rel="canonical" href="https://examsetu.dev/" />
         <script type="application/ld+json">
           {`
             {

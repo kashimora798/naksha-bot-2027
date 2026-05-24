@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://nakshabot.vercel.app/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
-  <url><loc>https://nakshabot.vercel.app/how-it-works</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://nakshabot.vercel.app/faq</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://nakshabot.vercel.app/schedule</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/rules</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://nakshabot.vercel.app/up-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/maharashtra-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/bihar-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/mp-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/rajasthan-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/hp-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/kerala-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/west-bengal-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/tamil-nadu-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/karnataka-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/gujarat-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://nakshabot.vercel.app/punjab-haryana-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://examsetu.dev/how-it-works</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://examsetu.dev/faq</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://examsetu.dev/schedule</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/rules</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://examsetu.dev/up-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/maharashtra-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/bihar-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/mp-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/rajasthan-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/hp-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/kerala-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/west-bengal-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/tamil-nadu-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/karnataka-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/gujarat-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://examsetu.dev/punjab-haryana-census-map</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
 </urlset>

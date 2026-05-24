@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://nakshabot.vercel.app/sitemap.xml
+Sitemap: https://examsetu.dev/sitemap.xml

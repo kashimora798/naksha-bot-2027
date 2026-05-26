@@ -12,7 +12,7 @@ export interface PlacedSymbol {
 }
 
 export interface RoadFeature {
-  id: string; coords: Coordinate[]; highway: string;
+  id: string; coords: Coordinate[]; highway: string; name?: string;
   confirmed: boolean; source: 'osm' | 'user'; osm_id?: number;
 }
 
@@ -38,8 +38,13 @@ export interface ForestArea {
   points: Coordinate[];
 }
 
+export interface LanduseArea {
+  id: string; type: string; points: Coordinate[];
+}
+
 export interface Landmark {
   id: string; name: string; type: string; lat: number; lng: number;
+  selectedForPdf?: boolean;
 }
 
 export interface AreaStats {
@@ -59,11 +64,12 @@ export interface MapData {
   farmlandBlocks: FarmlandBlock[];
   waterBodies: WaterBody[];
   forests: ForestArea[];
+  landuseAreas?: LanduseArea[];
   landmarks: Landmark[];
   areaStats: AreaStats | null;
   surveyMapUrl?: string;
   surveyMapBase64?: string;
-  aiMapChunks?: { label: string; bbox: Coordinate[]; imageBase64: string }[];
+  aiMapChunks?: { label: string; bbox: Coordinate[]; imageBase64: string; features?: any }[];
   projectId?: string;
   paymentStatus?: string;
   exportCount?: number;

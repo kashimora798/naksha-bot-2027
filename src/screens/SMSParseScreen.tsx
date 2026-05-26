@@ -89,41 +89,41 @@ export default function SMSParseScreen({ onComplete }: Props) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-transparent flex flex-col font-noto-sans">
       {/* Header */}
-      <div className="bg-orange-500 text-white px-4 pt-4 pb-3">
-        <h2 className="text-lg font-bold font-[Baloo_2]">Step 2: Find Your HLB Area</h2>
-        <p className="text-sm opacity-90 font-[Noto_Sans]">HLB क्षेत्र का SMS यहाँ paste करें</p>
+      <div className="bg-[var(--color-saffron)] text-white px-4 pt-4 pb-3 shadow-md">
+        <h2 className="text-lg font-bold font-public-sans">Step 2: Find Your HLB Area</h2>
+        <p className="text-sm opacity-90 font-noto-sans">HLB क्षेत्र का SMS यहाँ paste करें</p>
       </div>
 
       <div className="flex-1 overflow-auto px-4 py-4 space-y-4">
         {/* SMS Paste Area */}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1 font-[Noto_Sans]">
+          <label className="block text-sm font-semibold text-[var(--color-charcoal)] mb-1 font-noto-sans">
             Census SMS यहाँ paste करें
           </label>
           <textarea
             value={smsText}
             onChange={e => handleSMSTextChange(e.target.value)}
             placeholder="Paste your Census 2027 assignment message here...&#10;&#10;Example: HLB 0455 assigned to you. Location: https://maps.google.com/?q=26.4499,80.3319"
-            className="w-full border-2 border-dashed border-orange-400 rounded-xl px-4 py-3 text-sm focus:border-orange-500 focus:outline-none transition-colors font-[Noto_Sans] min-h-[120px] bg-orange-50/30"
+            className="w-full border border-gray-300 rounded-[12px] px-4 py-3 text-lg focus:border-[var(--color-saffron-container)] focus:outline-none transition-colors font-noto-sans min-h-[120px] bg-white shadow-[var(--shadow-warm-inner)]"
             rows={5}
           />
-          <p className="text-xs text-gray-400 mt-1 font-[Noto_Sans]">
+          <p className="text-xs text-gray-500 mt-1 font-noto-sans">
             Paste your Census 2027 assignment message here
           </p>
         </div>
 
         {/* Detection Result */}
         {detected && (
-          <div className="bg-green-50 border border-green-300 rounded-xl px-4 py-3 flex items-center gap-3">
-            <span className="text-green-600 text-xl">✓</span>
+          <div className="bg-[var(--color-india-green)]/10 border border-[var(--color-india-green)]/30 rounded-[12px] px-4 py-3 flex items-center gap-3">
+            <span className="text-[var(--color-india-green)] text-xl font-bold">✓</span>
             <div>
-              <p className="text-sm font-semibold text-green-800 font-[Noto_Sans]">
+              <p className="text-sm font-semibold text-[var(--color-india-green)] font-noto-sans">
                 HLB {detected.hlb} detected
               </p>
               {detected.coords.lat !== 0 && (
-                <p className="text-xs text-green-600 font-mono">
+                <p className="text-xs text-[var(--color-india-green)]/80 font-jetbrains-mono">
                   {detected.coords.lat.toFixed(4)}°N, {detected.coords.lng.toFixed(4)}°E
                 </p>
               )}
@@ -132,8 +132,8 @@ export default function SMSParseScreen({ onComplete }: Props) {
         )}
 
         {smsText.trim() && !detected && (
-          <div className="bg-yellow-50 border border-yellow-300 rounded-xl px-4 py-3">
-            <p className="text-sm text-yellow-800 font-[Noto_Sans]">
+          <div className="bg-[var(--color-saffron)]/10 border border-[var(--color-saffron)]/30 rounded-[12px] px-4 py-3">
+            <p className="text-sm text-[var(--color-saffron)] font-noto-sans">
               Could not auto-detect HLB number and coordinates. Try entering manually below.
             </p>
           </div>
@@ -144,8 +144,7 @@ export default function SMSParseScreen({ onComplete }: Props) {
           <button
             onClick={handleProceed}
             disabled={loading}
-            className="w-full py-4 rounded-xl text-white font-bold text-lg font-[Baloo_2] bg-orange-500 hover:bg-orange-600 active:scale-[0.98] shadow-lg transition-all disabled:opacity-50"
-            style={{ height: 56 }}
+            className="w-full py-4 rounded-full text-white font-bold text-lg font-public-sans bg-[var(--color-saffron-container)] hover:bg-[var(--color-saffron)] active:scale-[0.98] shadow-[var(--shadow-warm-2)] transition-all disabled:opacity-50 min-h-[52px]"
           >
             {loading ? (
               <span className="flex items-center justify-center gap-2">
@@ -163,58 +162,58 @@ export default function SMSParseScreen({ onComplete }: Props) {
 
         {/* Divider */}
         <div className="flex items-center gap-3 py-2">
-          <div className="flex-1 h-px bg-gray-300" />
-          <span className="text-xs text-gray-400 font-[Noto_Sans]">OR</span>
-          <div className="flex-1 h-px bg-gray-300" />
+          <div className="flex-1 h-px bg-gray-200" />
+          <span className="text-xs text-gray-400 font-noto-sans font-bold">OR</span>
+          <div className="flex-1 h-px bg-gray-200" />
         </div>
 
         {/* Manual Entry */}
         <div>
           <button
             onClick={() => setManualMode(!manualMode)}
-            className="w-full py-3 border-2 border-gray-300 rounded-xl text-gray-700 font-semibold text-sm font-[Noto_Sans] hover:bg-gray-50 transition-colors"
+            className="w-full py-3 border-2 border-[var(--color-saffron)]/20 rounded-full text-[var(--color-charcoal)] font-semibold text-sm font-noto-sans hover:bg-[var(--color-saffron)]/5 transition-colors min-h-[52px]"
           >
             {manualMode ? '▲ Hide Manual Entry' : '✏️ Enter HLB Number Manually'}
           </button>
 
           {manualMode && (
-            <div className="mt-3 space-y-3 bg-white rounded-xl p-4 border border-gray-200">
+            <div className="mt-4 space-y-4 bg-white rounded-[24px] p-5 border border-gray-100 shadow-[var(--shadow-warm-1)]">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">HLB Number</label>
+                <label className="block text-xs font-semibold text-[var(--color-charcoal)] mb-1 font-noto-sans">HLB Number</label>
                 <input
                   type="text"
                   value={manualHLB}
                   onChange={e => setManualHLB(e.target.value.replace(/\D/g, '').slice(0, 4))}
                   placeholder="e.g. 0455"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-orange-400 focus:outline-none"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-3 text-lg focus:border-[var(--color-saffron-container)] focus:outline-none font-jetbrains-mono bg-white"
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Latitude</label>
+                  <label className="block text-xs font-semibold text-[var(--color-charcoal)] mb-1 font-noto-sans">Latitude</label>
                   <input
                     type="text"
                     value={manualLat}
                     onChange={e => setManualLat(e.target.value)}
                     placeholder="26.4499"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-orange-400 focus:outline-none font-mono"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-3 text-sm focus:border-[var(--color-saffron-container)] focus:outline-none font-jetbrains-mono bg-white"
                   />
                 </div>
                 <div className="flex-1">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Longitude</label>
+                  <label className="block text-xs font-semibold text-[var(--color-charcoal)] mb-1 font-noto-sans">Longitude</label>
                   <input
                     type="text"
                     value={manualLng}
                     onChange={e => setManualLng(e.target.value)}
                     placeholder="80.3319"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-orange-400 focus:outline-none font-mono"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-3 text-sm focus:border-[var(--color-saffron-container)] focus:outline-none font-jetbrains-mono bg-white"
                   />
                 </div>
               </div>
               <button
                 onClick={handleManualProceed}
                 disabled={!manualHLB.trim() || isNaN(parseFloat(manualLat)) || isNaN(parseFloat(manualLng))}
-                className="w-full py-3 rounded-lg bg-blue-500 text-white font-semibold text-sm hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                className="w-full py-4 mt-2 rounded-full bg-[var(--color-saffron-container)] text-white font-bold text-lg font-public-sans hover:bg-[var(--color-saffron)] shadow-[var(--shadow-warm-1)] transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed min-h-[52px]"
               >
                 Open Map →
               </button>
@@ -223,20 +222,20 @@ export default function SMSParseScreen({ onComplete }: Props) {
         </div>
 
         {/* Demo Locations */}
-        <div>
-          <p className="text-xs font-semibold text-gray-500 mb-2 font-[Noto_Sans]">Quick Demo Locations:</p>
-          <div className="space-y-2">
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-gray-500 mb-3 font-noto-sans uppercase tracking-wider">Quick Demo Locations:</p>
+          <div className="space-y-3">
             {DEMO_LOCATIONS.map(loc => (
               <button
                 key={loc.hlb}
                 onClick={() => handleDemoLocation(loc)}
-                className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-orange-300 hover:bg-orange-50/30 transition-colors"
+                className="w-full flex items-center justify-between bg-white border border-gray-100 shadow-[var(--shadow-warm-1)] rounded-[16px] px-5 py-4 hover:border-[var(--color-saffron-container)] hover:bg-[var(--color-warm-paper)] transition-all min-h-[52px]"
               >
                 <div className="text-left">
-                  <span className="text-sm font-semibold text-gray-800">HLB {loc.hlb}</span>
-                  <span className="text-xs text-gray-500 ml-2">{loc.district}, {loc.state}</span>
+                  <span className="text-sm font-bold text-[var(--color-charcoal)] font-public-sans">HLB {loc.hlb}</span>
+                  <span className="text-xs text-gray-500 ml-2 font-noto-sans">{loc.district}, {loc.state}</span>
                 </div>
-                <span className="text-orange-500 text-sm">→</span>
+                <span className="text-[var(--color-saffron)] text-lg font-bold">→</span>
               </button>
             ))}
           </div>

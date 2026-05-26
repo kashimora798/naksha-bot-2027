@@ -3,6 +3,7 @@ import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature } from 
 import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter } from '../types';
 import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon } from './geo';
 import { drawSymbolOnCanvas } from './symbols';
+import { declutterSymbols } from './declutter';
 
 // ═══════════════════════════════════════════════════════════
 // RENDER MAP TO CANVAS
@@ -38,7 +39,10 @@ export function renderMapToCanvas(
     pS = b.south - pLat; pN = b.north + pLat;
   } else {
     const bb = getBbox(data.boundaryPins);
-    pW = bb.west; pE = bb.east; pS = bb.south; pN = bb.north;
+    const pLng = (bb.east - bb.west) * 0.05 || 0.0005;
+    const pLat = (bb.north - bb.south) * 0.05 || 0.0005;
+    pW = bb.west - pLng; pE = bb.east + pLng;
+    pS = bb.south - pLat; pN = bb.north + pLat;
   }
   const rLng = pE - pW || 0.001, rLat = pN - pS || 0.001;
 
@@ -51,19 +55,55 @@ export function renderMapToCanvas(
   const avgSc = (scX + scY) / 2;
   const symSz = Math.max(16, Math.min(30, avgSc * 0.00013));
 
-  // ─── FARMLAND ────────────────────────────────────────────
-  for (const fb of (data.farmlandBlocks || [])) {
-    if (fb.points.length < 3) continue;
-    const pts = fb.points.map(p => proj(p));
-    ctx.fillStyle = 'rgba(102,187,106,0.18)';
+  // ─── LANDUSE AREAS ────────────────────────────────────────────
+  const landusStyles: Record<string, { fill: string; stroke: string; width: number; dash: number[]; label: string }> = {
+    farmland:     { fill: 'rgba(255, 248, 220, 0.4)', stroke: '#8B7355', width: 0.8, dash: [4,2], label: '🌾 खेत' },
+    agricultural: { fill: 'rgba(255, 248, 220, 0.4)', stroke: '#8B7355', width: 0.8, dash: [4,2], label: '🌾 कृषि भूमि' },
+    orchard:      { fill: 'rgba(144, 238, 144, 0.3)', stroke: '#228B22', width: 0.8, dash: [3,3], label: '🌳 बाग' },
+    forest:       { fill: 'rgba(34, 139, 34, 0.25)',  stroke: '#006400', width: 1,   dash: [],    label: '🌲 जंगल' },
+    wood:         { fill: 'rgba(34, 139, 34, 0.25)',  stroke: '#006400', width: 1,   dash: [],    label: '🌲 वन' },
+    scrub:        { fill: 'rgba(154, 205, 50, 0.2)',  stroke: '#6B8E23', width: 0.5, dash: [2,4], label: '' },
+    grass:        { fill: 'rgba(144, 238, 144, 0.2)', stroke: '#90EE90', width: 0.5, dash: [],    label: '' },
+    water:        { fill: 'rgba(135, 206, 235, 0.5)', stroke: '#4169E1', width: 1,   dash: [],    label: '💧 तालाब' },
+    wetland:      { fill: 'rgba(135, 206, 235, 0.3)', stroke: '#4169E1', width: 0.8, dash: [2,3], label: '' },
+    cemetery:     { fill: 'rgba(200, 200, 200, 0.3)', stroke: '#808080', width: 0.8, dash: [],    label: '🪦 कब्रिस्तान' },
+    park:         { fill: 'rgba(144, 238, 144, 0.25)',stroke: '#228B22', width: 0.8, dash: [],    label: '⛲ पार्क' }
+  };
+
+  for (const la of (data.landuseAreas || [])) {
+    if (la.points.length < 3) continue;
+    const pts = la.points.map(p => proj(p));
+    const style = landusStyles[la.type] || landusStyles.grass;
+    
+    ctx.fillStyle = style.fill;
     ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2; ctx.setLineDash([8, 4]);
+    ctx.strokeStyle = style.stroke; ctx.lineWidth = style.width; ctx.setLineDash(style.dash);
     ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.stroke();
     ctx.setLineDash([]);
-    const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-    ctx.fillStyle = '#2E7D32'; ctx.font = `bold ${Math.max(10, symSz * 0.5)}px sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(`🌾 ${fb.label}`, cx, cy);
+    
+    if (style.label) {
+      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+      ctx.fillStyle = style.stroke; ctx.font = `bold ${Math.max(8, symSz * 0.4)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(style.label, cx, cy);
+    }
+  }
+
+  // ─── LEGACY FARMLAND (for backward compatibility if missing in landuseAreas) ───
+  if (!data.landuseAreas || data.landuseAreas.length === 0) {
+    for (const fb of (data.farmlandBlocks || [])) {
+      if (fb.points.length < 3) continue;
+      const pts = fb.points.map(p => proj(p));
+      ctx.fillStyle = 'rgba(102,187,106,0.18)';
+      ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2; ctx.setLineDash([8, 4]);
+      ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.stroke();
+      ctx.setLineDash([]);
+      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+      ctx.fillStyle = '#2E7D32'; ctx.font = `bold ${Math.max(10, symSz * 0.5)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`🌾 ${fb.label}`, cx, cy);
+    }
   }
 
   // ─── WATER BODIES ───────────────────────────────────────
@@ -134,10 +174,41 @@ export function renderMapToCanvas(
     if (pk) { oW = 7; iW = 3.5; } else if (rs) { oW = 5; iW = 2; } else if (kt) { oW = 4; iW = 1.5; } else { oW = 4.5; iW = 2; }
     const dash = kt ? [8, 5] : [];
     const col = road.confirmed ? '#000' : '#555';
+    
+    // Draw outer road border
     ctx.strokeStyle = col; ctx.lineWidth = oW; ctx.setLineDash(dash);
     ctx.beginPath(); road.coords.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
+    // Draw inner road fill
     ctx.strokeStyle = '#FFF'; ctx.lineWidth = iW; ctx.setLineDash(dash);
     ctx.beginPath(); road.coords.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
+
+    // ─── DRAW ROAD NAME ───
+    if (road.osm_id && (road as any).name) {
+      // Find the longest segment to place the name
+      let maxLen = 0, bA = road.coords[0], bB = road.coords[1];
+      for (let i = 0; i < road.coords.length - 1; i++) {
+        const [x1, y1] = proj(road.coords[i]), [x2, y2] = proj(road.coords[i+1]);
+        const len = Math.hypot(x2 - x1, y2 - y1);
+        if (len > maxLen) { maxLen = len; bA = road.coords[i]; bB = road.coords[i+1]; }
+      }
+      if (maxLen > 30) { // Only draw if segment is long enough
+        const [x1, y1] = proj(bA), [x2, y2] = proj(bB);
+        let cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+        let angle = Math.atan2(y2 - y1, x2 - x1);
+        if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI; // Keep text upright
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        // Add a slight white outline and larger, bolder font
+        ctx.font = 'bold 9px sans-serif'; 
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2;
+        ctx.strokeText((road as any).name, 0, 0);
+        ctx.fillStyle = '#111';
+        ctx.fillText((road as any).name, 0, 0);
+        ctx.restore();
+      }
+    }
   }
   ctx.setLineDash([]);
 
@@ -153,7 +224,11 @@ export function renderMapToCanvas(
 
   // ─── SYMBOLS — Upright viewport aligned ───────
   if (!options?.hideSymbols) {
-    for (const sym of data.symbols) {
+    // Phase 5: Fast Symbol Collision Detection
+    // Declutter has been removed as it was displacing user's exact manual placements
+    const resolvedSymbols = data.symbols;
+
+    for (const sym of resolvedSymbols) {
       const [x, y] = proj(sym);
       ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.beginPath(); ctx.arc(x, y, symSz * 0.5, 0, Math.PI * 2); ctx.fill();
       drawSymbolOnCanvas(ctx, sym.symbol_type, x, y, symSz, sym.number, getUnitCount(sym));
@@ -163,6 +238,7 @@ export function renderMapToCanvas(
   // ─── LANDMARK LABELS ────────────────────────────────────
   if (!options?.hideSymbols) {
     for (const lm of (data.landmarks || [])) {
+      if (lm.selectedForPdf === false) continue;
       const [x, y] = proj({ lat: lm.lat, lng: lm.lng });
       ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.font = 'bold 8px sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
@@ -288,7 +364,7 @@ async function captureSat(s: number, w: number, n: number, e: number): Promise<H
   const c = document.createElement('canvas');
   c.width = (x2 - x1 + 1) * T; c.height = (y2 - y1 + 1) * T;
   const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#ddd'; ctx.fillRect(0, 0, c.width, c.height);
+ctx.fillStyle = '#ddd'; ctx.fillRect(0, 0, c.width, c.height);
   if ((x2 - x1 + 1) * (y2 - y1 + 1) > 36) return c;
   for (let x = x1; x <= x2; x++) for (let y = y1; y <= y2; y++) {
     try {
@@ -318,11 +394,19 @@ export async function exportBlockPDF(
   const doc = new jsPDF({ orientation: orient, unit: 'mm', format: 'a4' });
 
   const blocks = data.blocks && data.blocks.length > 1 ? data.blocks : [];
-  const totalPages = blocks.length > 1 ? 1 + blocks.length * 2 : 2;
+  let totalPages = blocks.length > 1 ? 1 + blocks.length * 2 : 1;
+  if (data.surveyMapBase64) {
+    totalPages += 2;
+  }
   let page = 0;
 
   const bb = getBbox(data.boundaryPins);
-  const satCanvas = await captureSat(bb.south, bb.west, bb.north, bb.east);
+  const pLng = (bb.east - bb.west) * 0.05 || 0.0005;
+  const pLat = (bb.north - bb.south) * 0.05 || 0.0005;
+  const pW = bb.west - pLng; const pE = bb.east + pLng;
+  const pS = bb.south - pLat; const pN = bb.north + pLat;
+
+  const satCanvas = await captureSat(pS, pW, pN, pE);
 
   // ─── PAGE 1: OVERVIEW (all blocks visible) ──────────────
   onProgress(`Page ${++page}/${totalPages} — Overview`);
@@ -334,49 +418,42 @@ export async function exportBlockPDF(
     addOverlays(doc, data, a4W, a4H, 'OVERVIEW');
   }
 
-  // ─── AI SURVEY MAP CHUNKS ───────────────────────────────────────────────
-  if (data.aiMapChunks && data.aiMapChunks.length > 0) {
-    for (let ci = 0; ci < data.aiMapChunks.length; ci++) {
-      const chunk = data.aiMapChunks[ci];
-      onProgress(`AI Survey Map chunk ${chunk.label}...`);
-      await new Promise(r => setTimeout(r, 50));
-      doc.addPage();
-      try {
-        const imgData = chunk.imageBase64.startsWith('data:')
-          ? chunk.imageBase64
-          : chunk.imageBase64;
-        
-        // Render chunk in center (square)
-        const size = Math.min(a4W, a4H) - 20;
-        const cx = (a4W - size) / 2;
-        const cy = (a4H - size) / 2;
+  // ─── PAGE 1.5: AI COMPARISON OVERLAY ────────────────────────
+  if (data.surveyMapBase64) {
+    onProgress(`Page ${++page}/${totalPages} — AI Comparison Overlay`);
+    await new Promise(r => setTimeout(r, 50));
+    doc.addPage();
 
-        doc.addImage(imgData, 'JPEG', cx, cy, size, size);
-        addOverlays(doc, data, a4W, a4H, `AI SURVEY MAP - CHUNK ${chunk.label}`);
-      } catch (e) {
-        doc.setFontSize(14);
-        doc.setTextColor(150);
-        doc.text(`AI Survey Map Chunk ${chunk.label} — failed to embed`, a4W / 2, a4H / 2, { align: 'center' });
-        addOverlays(doc, data, a4W, a4H, `AI SURVEY MAP - CHUNK ${chunk.label}`);
-      }
-    }
-  } else if (data.surveyMapBase64) {
-    onProgress(`AI Survey Map page...`);
+    const c2 = document.createElement('canvas');
+    c2.width = pw; c2.height = ph;
+    const ctx2 = c2.getContext('2d')!;
+    ctx2.drawImage(satCanvas, 0, 0, pw, ph);
+
+    ctx2.globalAlpha = 0.5;
+    
+    let imgData = data.surveyMapBase64;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = imgData.startsWith('http') || imgData.startsWith('data:') ? imgData : `data:image/jpeg;base64,${imgData}`;
+    await new Promise<void>((resolve) => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve(); // Skip silently on error
+    });
+    ctx2.drawImage(img, 0, 0, pw, ph);
+
+    ctx2.globalAlpha = 1.0;
+    doc.addImage(c2.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, a4W, a4H);
+    addOverlays(doc, data, a4W, a4H, 'AI COMPARISON OVERLAY');
+
+    // ─── PAGE 1.6: FULL AI MAP (CLEAN) ──────────────────────────
+    onProgress(`Page ${++page}/${totalPages} — Full AI Survey Map`);
     await new Promise(r => setTimeout(r, 50));
     doc.addPage();
     try {
-      // surveyMapBase64 could be a data URL or a raw URL
-      const imgData = data.surveyMapBase64.startsWith('data:')
-        ? data.surveyMapBase64
-        : data.surveyMapBase64;
-      doc.addImage(imgData, 'JPEG', 0, 0, a4W, a4H);
+      doc.addImage(img, 'JPEG', 0, 0, a4W, a4H);
       addOverlays(doc, data, a4W, a4H, 'AI SURVEY MAP');
     } catch (e) {
-      // If image loading fails, add a placeholder page
-      doc.setFontSize(14);
-      doc.setTextColor(150);
-      doc.text('AI Survey Map — failed to embed', a4W / 2, a4H / 2, { align: 'center' });
-      addOverlays(doc, data, a4W, a4H, 'AI SURVEY MAP');
+      console.error('Failed to add AI image to PDF', e);
     }
   }
 

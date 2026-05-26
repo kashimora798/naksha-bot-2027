@@ -1,27 +1,47 @@
 @import "tailwindcss";
 
+@theme {
+  --color-warm-paper: #fcf9f4;
+  --color-saffron: #a04100;
+  --color-saffron-container: #ff6b00;
+  --color-india-green: #006d37;
+  --color-charcoal: #1c1c19;
+  
+  --font-public-sans: 'Public Sans', sans-serif;
+  --font-noto-sans: 'Noto Sans', sans-serif;
+  --font-jetbrains-mono: 'JetBrains Mono', monospace;
+  
+  --shadow-warm-1: 0 4px 6px -1px rgba(255, 107, 0, 0.08), 0 2px 4px -2px rgba(255, 107, 0, 0.08);
+  --shadow-warm-2: 0 10px 15px -3px rgba(255, 107, 0, 0.08), 0 4px 6px -4px rgba(255, 107, 0, 0.08);
+  --shadow-warm-inner: inset 0 2px 4px 0 rgba(255, 107, 0, 0.08);
+}
+
 /* Custom fonts */
 @layer base {
   html, body {
     font-family: 'Noto Sans', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background-color: var(--color-warm-paper);
+    color: var(--color-charcoal);
   }
 }
 
 /* Font family utilities */
-.font-\[Baloo_2\] {
-  font-family: 'Baloo 2', cursive;
+.font-public-sans {
+  font-family: 'Public Sans', sans-serif;
 }
-
-.font-\[Noto_Sans\] {
+.font-noto-sans {
   font-family: 'Noto Sans', sans-serif;
+}
+.font-jetbrains-mono {
+  font-family: 'JetBrains Mono', monospace;
 }
 
 /* Leaflet overrides */
 .leaflet-container {
   font-family: 'Noto Sans', sans-serif;
-  background: #e5e5e5;
+  background: #f6f3ee;
 }
 
 .leaflet-control-zoom {
@@ -65,8 +85,8 @@
 }
 
 @keyframes guidePulse {
-  0%, 100% { transform: scale(1); opacity: 0.8; box-shadow: 0 0 0 0 rgba(0, 102, 255, 0.4); }
-  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 8px rgba(0, 102, 255, 0); }
+  0%, 100% { transform: scale(1); opacity: 0.8; box-shadow: 0 0 0 0 rgba(255, 107, 0, 0.4); }
+  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 8px rgba(255, 107, 0, 0); }
 }
 
 /* Canvas crisp rendering */
@@ -76,5 +96,5 @@ canvas {
 
 /* Ensure minimum touch targets */
 button {
-  min-height: 36px;
+  min-height: 52px;
 }

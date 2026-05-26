@@ -1,21 +1,23 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
-import type { Coordinate, PlacedSymbol, RoadFeature, SymbolType, Block, FarmlandBlock, WaterBody, ForestArea, Landmark, AreaStats } from '../types';
+import type { Coordinate, PlacedSymbol, RoadFeature, SymbolType, Block, FarmlandBlock, WaterBody, ForestArea, Landmark, AreaStats, MapData } from '../types';
 import { SYMBOL_DEFS, isHouseType, isPakkaRoad, getUnitCount, polyCenter } from '../types';
 import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, buildComprehensiveQuery, processOverpassData } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { declutterSymbols, buildRotationMap } from '../lib/declutter';
 import SymbolDrawer from '../components/SymbolDrawer';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   step: number; center: Coordinate; boundaryPins: Coordinate[]; boundaryClosed: boolean;
   roads: RoadFeature[]; symbols: PlacedSymbol[]; hlbNumber: string; blocks: Block[]; farmlandBlocks: FarmlandBlock[];
-  waterBodies: WaterBody[]; forests: ForestArea[]; landmarks: Landmark[]; areaStats: AreaStats | null;
+  waterBodies: WaterBody[]; forests: ForestArea[]; landuseAreas?: any[]; landmarks: Landmark[]; areaStats: AreaStats | null;
   onUpdateBoundary: (p: Coordinate[], c: boolean) => void;
   onUpdateRoads: (r: RoadFeature[]) => void;
   onUpdateSymbols: (s: PlacedSymbol[]) => void;
   onUpdateBlocks: (b: Block[]) => void;
   onUpdateFarmland: (f: FarmlandBlock[]) => void;
+  onUpdateMapData?: (updates: Partial<MapData>) => void; // New prop for updating the whole mapdata in App
   onUpdateWater: (w: WaterBody[]) => void;
   onUpdateForests: (f: ForestArea[]) => void;
   onUpdateLandmarks: (l: Landmark[]) => void;
@@ -28,10 +30,10 @@ const BC = ['#E74C3C','#3498DB','#27AE60','#F39C12','#9B59B6','#1ABC9C','#E67E22
 
 export default function MapWorkspace({
   step, center, boundaryPins, boundaryClosed, roads, symbols, hlbNumber, blocks, farmlandBlocks,
-  waterBodies, forests, landmarks, areaStats,
+  waterBodies, forests, landuseAreas, landmarks, areaStats,
   onUpdateBoundary, onUpdateRoads, onUpdateSymbols, onUpdateBlocks, onUpdateFarmland,
   onUpdateWater, onUpdateForests, onUpdateLandmarks, onUpdateStats, onUpdateOrientation,
-  onStepComplete, onJumpToPreview,
+  onStepComplete, onJumpToPreview, onUpdateMapData
 }: Props) {
   const existingMax = symbols.reduce((m, s) => Math.max(m, s.number ?? 0), 0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -40,7 +42,7 @@ export default function MapWorkspace({
   const drwGrp = useRef(L.layerGroup()); const blkGrp = useRef(L.layerGroup());
   const srpGrp = useRef(L.layerGroup()); const frmGrp = useRef(L.layerGroup());
   const watGrp = useRef(L.layerGroup()); const forGrp = useRef(L.layerGroup());
-  const lmkGrp = useRef(L.layerGroup());
+  const lmkGrp = useRef(L.layerGroup()); const hlGrp = useRef(L.layerGroup());
   const mks = useRef<Map<string, L.Marker>>(new Map());
   const tileRef = useRef<L.TileLayer | null>(null);
   const rotMap = useRef<Map<string, number>>(new Map());
@@ -57,7 +59,9 @@ export default function MapWorkspace({
   const [drwRd, setDrwRd] = useState(false); const [drwPts, setDrwPts] = useState<Coordinate[]>([]); const [drwType, setDrwType] = useState('residential');
   const [showHelp, setShowHelp] = useState(true); const [showSat, setShowSat] = useState(true);
   const [autoBanner, setAutoBanner] = useState(false); const [hasAuto, setHasAuto] = useState(false);
-  const [autoData, setAutoData] = useState<{ buildings: number; farmlands: number; water: number; forests: number; landmarks: number; total: number } | null>(null);
+
+
+  const [autoData, setAutoData] = useState<{ buildings: number; farmlands: number; water: number; forests: number; landmarks: number; total: number; isVision?: boolean } | null>(null);
   const [showBlk, setShowBlk] = useState(false);
   const [showGuide, setShowGuide] = useState(true);
   const [serpPath, setSerpPath] = useState<Coordinate[]>([]); const [serpOrd, setSerpOrd] = useState<string[]>([]);
@@ -78,10 +82,10 @@ export default function MapWorkspace({
   const areaT = area > 10000 ? `${(area/10000).toFixed(2)} ha` : `${Math.round(area)} sq m`;
 
   // ─── STALE CLOSURE FIXES ────────────────────────────────
-  const mkClickRef = useRef<(id: string) => void>(() => {});
-  mkClickRef.current = (id: string) => {
-    if (step === 5) { const s = symbols.find(x => x.id === id); if (s && confirm(`Delete ${s.symbol_type.replace(/_/g,' ')}?`)) { const m = mks.current.get(id); if (m) { m.remove(); mks.current.delete(id); } onUpdateSymbols(symbols.filter(x => x.id !== id)); } return; }
-    if (step !== 6) return;
+  const mkClickRef = useRef<(id: string, evType: 'click'|'dblclick') => void>(() => {});
+  mkClickRef.current = (id: string, evType: 'click'|'dblclick') => {
+    if (step === 5 && evType === 'dblclick') { const s = symbols.find(x => x.id === id); if (s && confirm(`Delete ${s.symbol_type.replace(/_/g,' ')}?`)) { const m = mks.current.get(id); if (m) { m.remove(); mks.current.delete(id); } onUpdateSymbols(symbols.filter(x => x.id !== id)); } return; }
+    if (step !== 6 || evType !== 'click') return;
     const sym = symbols.find(x => x.id === id); if (!sym || !isHouseType(sym.symbol_type)) return;
     if (editMode && sym.number !== null) { const u = symbols.map(s => s.id===id?{...s,number:null}:s); refreshMk(u.find(s=>s.id===id)!); onUpdateSymbols(u); setSugId(null); setTimeout(()=>u.forEach(s=>refreshMk(s)),10); return; }
     if (sym.number !== null) return;
@@ -129,9 +133,23 @@ export default function MapWorkspace({
   // ─── MAP INIT ───────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    
+    // Fix Leaflet "Map container is already initialized" error in React StrictMode
+    const container = containerRef.current as HTMLDivElement & { _leaflet_id?: any };
+    if (container._leaflet_id) {
+      container._leaflet_id = null;
+    }
+
     const map = L.map(containerRef.current, { center: [center.lat, center.lng], zoom: 17, zoomControl: false, attributionControl: false });
     tileRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
-    [bndGrp, rdGrp, drwGrp, blkGrp, srpGrp, frmGrp, watGrp, forGrp, lmkGrp].forEach(g => g.current.addTo(map));
+    // Add Hybrid labels overlay for Places and Roads
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
+    [bndGrp, blkGrp, rdGrp, drwGrp, srpGrp, watGrp, forGrp, lmkGrp, frmGrp, hlGrp].forEach(g => {
+      if (!map.hasLayer(g.current)) {
+        g.current.addTo(map);
+      }
+    });
     map.on('move', () => { const c = map.getCenter(); setCross(c); });
     map.on('click', (e: L.LeafletMouseEvent) => { mapClickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng }); });
     mapRef.current = map; setReady(true);
@@ -206,9 +224,11 @@ export default function MapWorkspace({
       ];
       const col = BC[i % 12];
       g.addLayer(L.polygon(pts.map(p => [p.lat, p.lng]), { color: col, weight: 2.5, dashArray: '8,4', fillColor: col, fillOpacity: 0.12 }));
-      g.addLayer(L.marker([c.lat, c.lng], {
-        icon: L.divIcon({ html: `<div style="font:bold 14px 'Baloo 2',sans-serif;color:${col};text-shadow:1px 1px 3px white,-1px -1px 3px white;text-align:center;pointer-events:none">Block ${b.label}</div>`, className: '', iconSize: [80, 22], iconAnchor: [40, 11] }), interactive: false,
-      }));
+      if (b.label) {
+        g.addLayer(L.marker([c.lat, c.lng], {
+          icon: L.divIcon({ html: `<div style="font:bold 14px 'Baloo 2',sans-serif;color:${col};text-shadow:1px 1px 3px white,-1px -1px 3px white;text-align:center;pointer-events:none">Block ${b.label}</div>`, className: '', iconSize: [80, 22], iconAnchor: [40, 11] }), interactive: false,
+        }));
+      }
     });
   }, [blocks, showBlk]);
 
@@ -227,66 +247,222 @@ export default function MapWorkspace({
 
   const renderDrawPoly = (pts: Coordinate[]) => { const g = drwGrp.current; g.clearLayers(); if(!pts.length)return; pts.forEach((p,i)=>{const col=drawMode==='farmland'?'#2E7D32':BC[blocks.length%12];g.addLayer(L.circleMarker([p.lat,p.lng],{radius:7,color:col,fillColor:col,fillOpacity:1,weight:2}));g.addLayer(L.marker([p.lat,p.lng],{icon:L.divIcon({html:`<div style="color:white;font:bold 9px sans-serif;text-align:center;line-height:14px;width:14px;height:14px">${i+1}</div>`,className:'',iconSize:[14,14],iconAnchor:[7,7]}),interactive:false}));}); if(pts.length>=2){const col=drawMode==='farmland'?'#2E7D32':BC[blocks.length%12];g.addLayer(L.polyline(pts.map(p=>[p.lat,p.lng]),{color:col,weight:2.5,dashArray:'8,5',opacity:0.8}));} };
 
+  const renderLanduse = useCallback(() => {
+    if (!landuseAreas) return;
+    const landusStyles: Record<string, { fill: string; stroke: string; width: number; dash: string; label: string }> = {
+      farmland:     { fill: '#FFF8DC', stroke: '#8B7355', width: 1, dash: '4,2', label: '🌾' },
+      agricultural: { fill: '#FFF8DC', stroke: '#8B7355', width: 1, dash: '4,2', label: '🌾' },
+      orchard:      { fill: '#90EE90', stroke: '#228B22', width: 1, dash: '3,3', label: '🌳' },
+      forest:       { fill: '#228B22', stroke: '#006400', width: 1, dash: '',    label: '🌲' },
+      wood:         { fill: '#228B22', stroke: '#006400', width: 1, dash: '',    label: '🌲' },
+      scrub:        { fill: '#9ACD32', stroke: '#6B8E23', width: 0.5, dash: '2,4', label: '' },
+      grass:        { fill: '#90EE90', stroke: '#90EE90', width: 0.5, dash: '',    label: '' },
+      water:        { fill: '#87CEEB', stroke: '#4169E1', width: 1.5, dash: '',    label: '💧' },
+      wetland:      { fill: '#87CEEB', stroke: '#4169E1', width: 1, dash: '2,3', label: '' },
+      cemetery:     { fill: '#C8C8C8', stroke: '#808080', width: 1, dash: '',    label: '🪦' },
+      park:         { fill: '#90EE90', stroke: '#228B22', width: 1, dash: '',    label: '⛲' }
+    };
+
+    const g = frmGrp.current; 
+    // We reuse frmGrp for landuse to avoid making too many layer groups
+    g.clearLayers();
+    landuseAreas.forEach(la => {
+      if (la.points.length < 3) return;
+      const st = landusStyles[la.type] || landusStyles.grass;
+      g.addLayer(L.polygon(la.points.map((p: Coordinate) => [p.lat, p.lng]), { 
+        color: st.stroke, weight: st.width, dashArray: st.dash, 
+        fillColor: st.fill, fillOpacity: 0.3 
+      }));
+      if (st.label) {
+        const c = polyCenter(la.points);
+        g.addLayer(L.marker([c.lat, c.lng], {
+          icon: L.divIcon({ html: `<div style="font-size:12px;text-align:center;pointer-events:none;text-shadow:1px 1px 2px white,-1px -1px 2px white">${st.label}</div>`, className: '', iconSize: [24, 24], iconAnchor: [12, 12] }), interactive: false,
+        }));
+      }
+    });
+  }, [landuseAreas]);
+
   useEffect(() => { if(ready)renderBnd(); }, [ready,renderBnd]);
   useEffect(() => { if(ready)renderRds(); }, [ready,renderRds]);
   useEffect(() => { if(ready)renderWat(); }, [ready,renderWat]);
   useEffect(() => { if(ready)renderFor(); }, [ready,renderFor]);
   useEffect(() => { if(ready)renderLmk(); }, [ready,renderLmk]);
   useEffect(() => { if(ready)renderBlks(); }, [ready,renderBlks]);
-  useEffect(() => { if(ready)renderFrms(); }, [ready,renderFrms]);
+  useEffect(() => { if(ready)renderLanduse(); else renderFrms(); }, [ready, renderLanduse, renderFrms]);
   useEffect(() => { if(ready)renderSrp(); }, [ready,renderSrp]);
   useEffect(() => { if(ready) symbols.forEach(s => addMk(s)); }, [ready]);
   useEffect(() => { if(tileRef.current) tileRef.current.setOpacity(showSat?1:0); }, [showSat]);
-  useEffect(() => { if(step===4&&boundaryClosed&&roads.length===0) loadRd(); }, [step]);
-  useEffect(() => { if(step===5&&boundaryClosed&&!hasAuto){detectAll();setHasAuto(true);} }, [step]);
+  useEffect(() => { 
+    if(step===4&&boundaryClosed&&roads.length===0) {
+      loadRd(); 
+      fetchBuildingsForBlock();
+    }
+  }, [step]);
   useEffect(() => { if(boundaryClosed&&boundaryPins.length>=4) onUpdateOrientation(getBestOrientation(boundaryPins)); }, [boundaryClosed]);
   useEffect(() => { if(step===6&&symbols.length>0){const p=generateSerpentinePath(symbols,blocks.length>0?blocks:undefined);const o=getSerpentineOrder(symbols,blocks.length>0?blocks:undefined);setSerpPath(p);setSerpOrd(o);setShowGuide(true);const f=o.find(id=>{const s=symbols.find(x=>x.id===id);return s&&isHouseType(s.symbol_type)&&s.number===null;});if(f)setSugId(f);} }, [step]);
 
+
+
   // ═══════════ FUNCTIONS ══════════════════════════════════
   async function loadRd() {
-    if(boundaryPins.length<3)return;setRdLoad(true);setRdErr('');
-    try{const bb=getBbox(boundaryPins);const pad=0.003;const q=`[out:json][bbox:${bb.south-pad},${bb.west-pad},${bb.north+pad},${bb.east+pad}];way["highway"];out geom;`;const r=await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);if(!r.ok)throw new Error();const d=await r.json();const cl=clipRoadsToPolygon(d.elements||[],boundaryPins);onUpdateRoads(cl.map(c=>({id:crypto.randomUUID(),coords:c.coords,highway:c.highway,confirmed:false,source:'osm' as const,osm_id:c.osm_id})));}catch{setRdErr('Could not load roads.');}finally{setRdLoad(false);}
+    if (boundaryPins.length < 3) return;
+    setRdLoad(true);
+    setRdErr('');
+    try {
+      const bb = getBbox(boundaryPins);
+      const pad = 0.003;
+      const q = `[out:json][timeout:30][bbox:${bb.south - pad},${bb.west - pad},${bb.north + pad},${bb.east + pad}];
+        (
+          way["highway"];
+          way["highway"~"footway|path|track|steps|cycleway|pedestrian|living_street"];
+          way["footway"="crossing"];
+          way["path"];
+          way["track"];
+        );
+        out geom;`;
+      const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      const cl = clipRoadsToPolygon(d.elements || [], boundaryPins);
+      console.log(`🗺️ [OSM] Loaded ${cl.length} roads for bounding box.`);
+      onUpdateRoads(cl.map(c => ({
+        id: crypto.randomUUID(),
+        coords: c.coords,
+        highway: c.highway,
+        name: c.name,
+        confirmed: false,
+        source: 'osm' as const,
+        osm_id: c.osm_id
+      })));
+    } catch {
+      setRdErr('Could not load roads.');
+    } finally {
+      setRdLoad(false);
+    }
   }
 
-  async function detectAll() {
-    if(!boundaryClosed||boundaryPins.length<3)return; setPanelOpen(false);
+  async function fetchBuildingsForBlock() {
+    if (boundaryPins.length < 3) return;
     try {
-      const bb = getBbox(boundaryPins); const q = buildComprehensiveQuery(bb); const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
-      if (!r.ok) throw new Error(); const d = await r.json();
-      const totalArea = polygonArea(boundaryPins);
-      const result = processOverpassData(d.elements || [], boundaryPins, totalArea);
+      const bb = getBbox(boundaryPins);
+      const res = await supabase.functions.invoke('fetch-buildings', {
+        body: { north: bb.north, south: bb.south, east: bb.east, west: bb.west }
+      });
+      
+      if (res.data?.buildings) {
+        // Filter out non-residential buildings
+        const residential = res.data.buildings.filter((b: any) => 
+          b.area_sqm > 15 &&    // too small = shed or outbuilding
+          b.area_sqm < 800 &&   // too large = factory or institution
+          pointInPolygon({ lat: b.lat, lng: b.lng }, boundaryPins)
+        );
+        
+        const newSymbols = residential.map((b: any) => ({
+          id: `building-${crypto.randomUUID()}`,
+          symbol_type: 'pucca_house' as SymbolType,
+          lat: b.lat,
+          lng: b.lng,
+          number: null,
+          auto_detected: true,
+          confidence: 'ai_detected'
+        }));
+        
+        console.log(`🏢 [Microsoft Buildings] Fetched ${res.data.buildings.length} total, filtered down to ${newSymbols.length} residential/valid buildings within boundary.`);
+        
+        if (newSymbols.length > 0) {
+           onUpdateSymbols([...symbols, ...newSymbols]);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch Microsoft buildings:', err);
+    }
+  }
 
-      // Declutter symbols — grid snap + collision resolution
-      const decluttered = declutterSymbols(result.symbols, boundaryPins, roads);
-      // Build rotation map for road-aligned icons
-      rotMap.current = buildRotationMap(decluttered, roads);
+  async function autoDetectArea() {
+    if (boundaryPins.length < 3) return;
+    try {
+      const bb = getBbox(boundaryPins);
+      const q = buildComprehensiveQuery(bb, 0.002);
+      const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      const area = polygonArea(boundaryPins);
+      const res = processOverpassData(d.elements || [], boundaryPins, area);
+      console.log(`🗺️ [OSM] Auto-Detect found: ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farms, ${res.waterBodies.length} water bodies, ${res.forests.length} forests, ${res.landmarks.length} landmarks. Total landuse coverage: ${(res.stats.farmlandArea / area * 100).toFixed(1)}%`);
+      
+      setAutoData({
+        buildings: res.symbols.length,
+        farmlands: res.farmlands.length,
+        water: res.waterBodies.length,
+        forests: res.forests.length,
+        landmarks: res.landmarks.length,
+        total: res.symbols.length + res.farmlands.length + res.waterBodies.length + res.forests.length + res.landmarks.length,
+        isVision: false
+      });
+      
+      let finalLanduseAreas = [...(landuseAreas || []), ...res.landuseAreas];
+      
+      // Phase 4: Fallback to Google Dynamic World via Supabase Edge Function if OSM landuse coverage is low (< 40%)
+      if (res.stats.farmlandArea < area * 0.4) {
+        try {
+          const resLandcover = await supabase.functions.invoke('fetch-landcover', {
+            body: { north: bb.north, south: bb.south, east: bb.east, west: bb.west }
+          });
+          if (resLandcover.data?.landuseAreas) {
+             const newAreas = resLandcover.data.landuseAreas.filter((l: any) => pointInPolygon({ lat: l.points[0][1], lng: l.points[0][0] }, boundaryPins));
+             console.log(`🌍 [Google Dynamic World] Fetched landcover data. Extracted ${newAreas.length} valid landuse polygons inside boundary.`);
+             finalLanduseAreas = [...finalLanduseAreas, ...newAreas.map((l: any) => ({
+               ...l,
+               points: l.points.map((p: any) => ({ lat: p[1], lng: p[0] }))
+             }))];
+          }
+        } catch (err) {
+          console.error("Failed to fetch Google Dynamic World landcover:", err);
+        }
+      }
 
-      // Auto-accept all detected data
-      decluttered.forEach(s => addMk(s));
-      onUpdateSymbols(decluttered);
-      onUpdateFarmland([...farmlandBlocks, ...result.farmlands]);
-      onUpdateWater(result.waterBodies);
-      onUpdateForests(result.forests);
-      onUpdateLandmarks(result.landmarks);
-      onUpdateStats(result.stats);
-      if (decluttered.length > 20) { const blks = generateBlocks(boundaryPins, decluttered.length); if (blks.length > 0) { onUpdateBlocks(blks); setShowBlk(true); } }
-      setAutoData({ buildings: decluttered.length, farmlands: result.farmlands.length, water: result.waterBodies.length, forests: result.forests.length, landmarks: result.landmarks.length, total: decluttered.length + result.farmlands.length + result.waterBodies.length + result.forests.length + result.landmarks.length });
+      if (onUpdateMapData) {
+        onUpdateMapData({
+          symbols: [...symbols, ...res.symbols],
+          farmlandBlocks: [...farmlandBlocks, ...res.farmlands],
+          waterBodies: [...waterBodies, ...res.waterBodies],
+          forests: [...forests, ...res.forests],
+          landuseAreas: finalLanduseAreas,
+          landmarks: [...landmarks, ...res.landmarks]
+        });
+      } else {
+        onUpdateSymbols([...symbols, ...res.symbols]);
+        onUpdateFarmland([...farmlandBlocks, ...res.farmlands]);
+        onUpdateLandmarks([...landmarks, ...res.landmarks]);
+      }
       setAutoBanner(true);
-    } catch { /* silent */ }
-    setPanelOpen(true);
+      setHasAuto(true);
+    } catch (e) {
+      alert("Failed to auto-detect area. Please check your internet connection.");
+    }
   }
 
   function acceptAuto() { setAutoBanner(false); setShowStats(true); }
   function rejectAuto() { setAutoBanner(false); }
 
-  function addMk(sym:PlacedSymbol){const map=mapRef.current;if(!map||mks.current.has(sym.id))return;const m=L.marker([sym.lat,sym.lng],{icon:mkIcon(sym),interactive:true}).addTo(map);m.on('click',()=>mkClickRef.current(sym.id));mks.current.set(sym.id,m);}
+  function addMk(sym:PlacedSymbol){
+    const map=mapRef.current;
+    if(!map||mks.current.has(sym.id))return;
+    const lat = sym.lat ?? (sym as any).position?.lat;
+    const lng = sym.lng ?? (sym as any).position?.lng;
+    if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return;
+    const m=L.marker([lat,lng],{icon:mkIcon(sym),interactive:true}).addTo(map);
+    m.on('dblclick',()=>mkClickRef.current(sym.id, 'dblclick'));
+    m.on('click',()=>mkClickRef.current(sym.id, 'click'));
+    mks.current.set(sym.id,m);
+  }
   function mkIcon(sym:PlacedSymbol):L.DivIcon{
     const isS=sym.id===sugId;const u=getUnitCount(sym);const nl=sym.number!==null?(u>1?`${sym.number}-${sym.number+u-1}`:String(sym.number)):'';
     const rh=isS?`<div style="position:absolute;top:-8px;left:-8px;width:44px;height:44px;border:3px solid #0066FF;border-radius:50%;pointer-events:none;animation:guidePulse 1.5s infinite"></div>`:'';
     // Road-aligned rotation for house types
     const rot = rotMap.current.get(sym.id) || 0;
     const rotStyle = rot !== 0 ? `transform:rotate(${rot}deg);` : '';
-    return L.divIcon({html:`<div style="position:relative;cursor:pointer;${rotStyle}">${getSmallSymbolSVG(sym.symbol_type, false, nl)}${rh}</div>`,className:'',iconSize:[28,28],iconAnchor:[14,14]});
+    return L.divIcon({html:`<div style="position:relative;cursor:pointer;${rotStyle}">${getSmallSymbolSVG(sym.symbol_type, false, nl)}${rh}</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]});
   }
   function refreshMk(sym:PlacedSymbol){const m=mks.current.get(sym.id);if(m)m.setIcon(mkIcon(sym));}
 
@@ -312,8 +488,8 @@ export default function MapWorkspace({
   function undoNum(){if(!numHist.current.length)return;const id=numHist.current.pop()!;const u=symbols.map(s=>s.id===id?{...s,number:null}:s);refreshMk(u.find(s=>s.id===id)!);setNextNum(n=>n-getUnitCount(u.find(s=>s.id===id)!));onUpdateSymbols(u);setTimeout(()=>u.forEach(s=>refreshMk(s)),10);}
 
   // ═══════════ PANELS ═════════════════════════════════════
-  function P({children}:{children:React.ReactNode}){return <div className="bg-white rounded-t-[20px] shadow-[0_-2px_16px_rgba(0,0,0,0.15)] max-h-[50vh] overflow-auto"><div className="flex justify-center pt-2 pb-1"><div className="w-10 h-1 rounded-full bg-gray-300"/></div><div className="px-4 pb-4">{children}</div></div>;}
-  function Btn({children,onClick,disabled,green}:{children:React.ReactNode;onClick:()=>void;disabled?:boolean;green?:boolean}){return <button onClick={onClick} disabled={disabled} className={`w-full font-[Baloo_2] font-bold text-white rounded-xl transition-all active:scale-[0.97] ${disabled?'bg-gray-300 cursor-not-allowed':green?'bg-green-500 hover:bg-green-600 shadow':'bg-orange-500 hover:bg-orange-600 shadow'}`} style={{height:56}}>{children}</button>;}
+  function P({children}:{children:React.ReactNode}){return <div className="bg-[var(--color-warm-paper)] rounded-t-[24px] shadow-[var(--shadow-warm-2)] max-h-[50vh] overflow-auto font-noto-sans z-[1002] pointer-events-auto"><div onClick={() => setPanelOpen(!panelOpen)} className="flex justify-center pt-3 pb-2 cursor-pointer"><div className="w-12 h-1.5 rounded-full bg-gray-300"/></div>{panelOpen && <div className="px-4 pb-4">{children}</div>}</div>;}
+  function Btn({children,onClick,disabled,green}:{children:React.ReactNode;onClick:()=>void;disabled?:boolean;green?:boolean}){return <button onClick={onClick} disabled={disabled} className={`w-full font-public-sans font-bold text-white rounded-full transition-all active:scale-[0.97] min-h-[52px] ${disabled?'bg-gray-300 cursor-not-allowed':green?'bg-[var(--color-india-green)] shadow-[var(--shadow-warm-1)]':'bg-[var(--color-saffron-container)] hover:bg-[var(--color-saffron)] shadow-[var(--shadow-warm-1)]'}`}>{children}</button>;}
 
   // ─── DETECTION RESULTS BANNER ───────────────────────────
   function detectionBanner(){
@@ -322,7 +498,7 @@ export default function MapWorkspace({
       <div className="bg-white rounded-t-[20px] shadow-[0_-4px_20px_rgba(0,0,0,0.2)] px-4 py-4 max-h-[60vh] overflow-auto">
         <div className="flex justify-center mb-2"><div className="w-10 h-1 rounded-full bg-gray-300"/></div>
         <div className="bg-green-50 rounded-xl p-3 mb-3">
-          <p className="text-sm font-bold text-green-800 mb-1">🗺️ Area Analysis Complete!</p>
+          <p className="text-sm font-bold text-green-800 mb-1">{autoData.isVision ? '✨ AI Vision Analysis Complete!' : '🗺️ Area Analysis Complete!'}</p>
           <p className="text-xs text-green-600">क्षेत्र का पूरा डेटा मिल गया</p>
         </div>
         <div className="grid grid-cols-3 gap-2 mb-3">
@@ -362,25 +538,60 @@ export default function MapWorkspace({
 
   function pBnd(){if(boundaryClosed)return <P><div className="text-center py-2"><div className="text-green-600 text-2xl mb-1">✓</div><p className="text-sm font-semibold">Boundary set! ~{areaT}</p></div><Btn green onClick={onStepComplete}>Continue →</Btn></P>;return <P><p className="text-xs text-gray-500 font-mono text-center mb-2">{cross.lat.toFixed(4)}°N {cross.lng.toFixed(4)}°E</p><Btn onClick={dropPin}>📍 Drop Corner Pin</Btn><p className="text-center text-xs text-gray-500 mt-2">Pins: <strong>{boundaryPins.length}</strong>/4</p>{boundaryPins.length>0&&<button onClick={undoPin} className="w-full text-center text-sm text-gray-400 mt-1">↩</button>}{boundaryPins.length>=4&&<div className="mt-3"><Btn green onClick={closePoly}>Close →</Btn></div>}</P>;}
 
-  function pRd(){if(rdLoad)return <P><div className="flex flex-col items-center py-4 gap-3"><svg className="animate-spin h-8 w-8 text-orange-500" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><p className="text-sm text-gray-600">Loading roads...</p></div></P>;if(rdErr)return <P><p className="text-sm text-red-600 text-center">{rdErr}</p><div className="flex gap-2 mt-2"><button onClick={loadRd} className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-semibold text-sm">Retry</button><button onClick={onStepComplete} className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm">Skip</button></div></P>;if(revMode&&roads.length>0){const r=roads[revIdx];return <P><p className="text-sm font-semibold mb-2">Road {revIdx+1}/{roads.length}: <span className="text-orange-600">{r.highway}</span></p><div className="flex gap-2"><button onClick={confirmOne} className="flex-1 py-3 bg-green-500 text-white rounded-xl font-semibold text-sm">✓</button><button onClick={deleteOne} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-semibold text-sm">✗</button></div><button onClick={()=>setRevMode(false)} className="w-full text-center text-sm text-gray-400 mt-2">Cancel</button></P>;}if(drwRd)return <P><p className="text-sm font-semibold mb-1">📍 Tap map to draw road ({drwPts.length} pts)</p><select value={drwType} onChange={e=>setDrwType(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2">{['residential','primary','secondary','tertiary','footway','track'].map(t=><option key={t} value={t}>{t}</option>)}</select><p className="text-xs text-gray-400 mb-2 text-center">Tap on the map to place points along the road</p><div className="flex gap-2">{drwPts.length>0&&<button onClick={undoDrwPt} className="px-3 py-2 bg-gray-200 rounded-lg text-xs font-semibold">↩ Undo</button>}{drwPts.length>=2&&<button onClick={finDrwRd} className="flex-1 py-2 bg-green-500 text-white rounded-lg text-xs font-bold">✓ Finish Road</button>}</div><button onClick={()=>{setDrwRd(false);setDrwPts([]);drwGrp.current.clearLayers();}} className="w-full text-center text-sm text-gray-400 mt-2">Cancel</button></P>;return <P><p className="text-sm font-semibold mb-3">{roads.length} roads found</p><div className="flex gap-2">{roads.length>0&&<><button onClick={confirmAll} className="flex-1 py-3 bg-green-500 text-white rounded-xl font-semibold text-sm">✓ All</button><button onClick={()=>{setRevMode(true);setRevIdx(0);}} className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-semibold text-sm">Review</button></>}</div><div className="mt-3"><button onClick={()=>{setDrwRd(true);setDrwPts([]);drwGrp.current.clearLayers();}} className="w-full py-2 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-600">✏️ Draw Road</button></div><div className="mt-3"><Btn green onClick={onStepComplete}>Roads Done →</Btn></div></P>;}
+  function pRd(){if(rdLoad)return <P><div className="flex flex-col items-center py-4 gap-3"><svg className="animate-spin h-8 w-8 text-[var(--color-saffron)]" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><p className="text-sm text-gray-600">Loading roads...</p></div></P>;if(rdErr)return <P><p className="text-sm text-red-600 text-center">{rdErr}</p><div className="flex gap-2 mt-2"><button onClick={loadRd} className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-semibold text-sm min-h-[52px]">Retry</button><button onClick={onStepComplete} className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm min-h-[52px]">Skip</button></div></P>;if(revMode&&roads.length>0){const r=roads[revIdx];return <P><p className="text-sm font-semibold mb-2">Road {revIdx+1}/{roads.length}: <span className="text-[var(--color-saffron)]">{r.highway}</span></p><div className="flex gap-2"><button onClick={confirmOne} className="flex-1 py-3 bg-[var(--color-india-green)] text-white rounded-full font-semibold text-sm min-h-[52px]">✓</button><button onClick={deleteOne} className="flex-1 py-3 bg-red-500 text-white rounded-full font-semibold text-sm min-h-[52px]">✗</button></div><button onClick={()=>setRevMode(false)} className="w-full text-center text-sm text-gray-400 mt-2 min-h-[52px]">Cancel</button></P>;}if(drwRd)return <P><p className="text-sm font-semibold mb-1">📍 Tap map to draw road ({drwPts.length} pts)</p><select value={drwType} onChange={e=>setDrwType(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2">{['residential','primary','secondary','tertiary','footway','track'].map(t=><option key={t} value={t}>{t}</option>)}</select><p className="text-xs text-gray-400 mb-2 text-center">Tap on the map to place points along the road</p><div className="flex gap-2">{drwPts.length>0&&<button onClick={undoDrwPt} className="px-3 py-2 bg-gray-200 rounded-lg text-xs font-semibold min-h-[52px]">↩ Undo</button>}{drwPts.length>=2&&<button onClick={finDrwRd} className="flex-1 py-2 bg-[var(--color-india-green)] text-white rounded-full text-sm font-bold min-h-[52px]">✓ Finish Road</button>}</div><button onClick={()=>{setDrwRd(false);setDrwPts([]);drwGrp.current.clearLayers();}} className="w-full text-center text-sm text-gray-400 mt-2 min-h-[52px]">Cancel</button></P>;return <P><p className="text-sm font-semibold mb-3">{roads.length} roads found</p><div className="flex gap-2">{roads.length>0&&<><button onClick={confirmAll} className="flex-1 py-3 bg-[var(--color-india-green)] text-white rounded-full font-semibold text-sm min-h-[52px]">✓ All</button><button onClick={()=>{setRevMode(true);setRevIdx(0);}} className="flex-1 py-3 bg-blue-500 text-white rounded-full font-semibold text-sm min-h-[52px]">Review</button></>}</div><div className="mt-3"><button onClick={()=>{setDrwRd(true);setDrwPts([]);drwGrp.current.clearLayers();}} className="w-full py-3 border-2 border-[var(--color-saffron)]/20 rounded-full text-sm text-gray-600 hover:bg-[var(--color-saffron)]/5 min-h-[52px]">✏️ Draw Road</button></div><div className="mt-3"><Btn green onClick={onStepComplete}>Roads Done →</Btn></div></P>;}
 
   function pSymFull(){
-    return <div>
-      <SymbolDrawer selectedType={selSym} onSelect={selSymbol} placedCount={symbols.length} />
+    return <div className="z-[1002] pointer-events-auto bg-white rounded-t-2xl shadow-[0_-2px_12px_rgba(0,0,0,0.12)]">
+      <SymbolDrawer selectedType={selSym} onSelect={selSymbol} placedCount={symbols.length} onToggle={() => setPanelOpen(!panelOpen)} />
+      
+      {!panelOpen && selSym === 'apartment' && (
+        <div className="px-4 pb-3 flex justify-center">
+          <div className="flex items-center gap-2 bg-orange-50 rounded-lg px-3 py-1.5 border border-orange-200">
+            <span className="text-xs font-bold text-gray-700">Units:</span>
+            <button onClick={()=>setAptUnits(u=>Math.max(1,u-1))} className="text-lg font-bold w-8 h-8 bg-white rounded shadow-sm text-gray-700">−</button>
+            <span className="text-lg font-bold text-orange-600 w-8 text-center">{aptUnits}</span>
+            <button onClick={()=>setAptUnits(u=>Math.min(30,u+1))} className="text-lg font-bold w-8 h-8 bg-white rounded shadow-sm text-gray-700">+</button>
+          </div>
+        </div>
+      )}
+
+      {panelOpen && (
       <div className="px-4 pb-3 bg-white">
         <div className="flex gap-2 mb-2">
           <button onClick={startFarmDraw} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-green-50 text-green-700 border border-green-200">🌾 Farm</button>
           <button onClick={startBlkDraw} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">🔲 Block</button>
-          <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">🏷️ Label</button>
-          <button onClick={detectAll} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">🔄 Re-scan</button>
+          <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">🏷️ Drop Place</button>
         </div>
-        <div className="flex gap-2">
-          {areaStats&&<button onClick={()=>setShowStats(s=>!s)} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-gray-50 text-gray-700 border border-gray-200">📊 Stats</button>}
-          {symbols.length>15&&<button onClick={()=>{if(!showBlk&&!blocks.length)onUpdateBlocks(generateBlocks(boundaryPins,symbols.length));setShowBlk(!showBlk);}} className={`flex-1 py-2 rounded-lg text-xs font-semibold ${showBlk?'bg-blue-100 text-blue-700 border border-blue-300':'bg-gray-100 text-gray-600 border border-gray-200'}`}>{showBlk?'Hide Blk':'Show Blk'}</button>}
+        
+        {/* Landmarks Checklist */}
+        {landmarks.length > 0 && (
+          <div className="mb-3 bg-[var(--color-warm-paper)] rounded-[16px] p-3 border border-[var(--color-saffron)]/20 shadow-[var(--shadow-warm-1)] max-h-32 overflow-y-auto">
+            <h4 className="text-xs font-bold text-[var(--color-charcoal)] mb-2 font-public-sans">📍 Selected Places for PDF:</h4>
+            {landmarks.map(lm => (
+              <label key={lm.id} className="flex items-center gap-2 mb-1">
+                <input 
+                  type="checkbox" 
+                  checked={lm.selectedForPdf !== false} 
+                  onChange={(e) => {
+                    const u = landmarks.map(l => l.id === lm.id ? { ...l, selectedForPdf: e.target.checked } : l);
+                    onUpdateLandmarks(u);
+                  }}
+                  className="rounded text-[var(--color-saffron)] w-4 h-4"
+                />
+                <span className="text-xs text-[var(--color-charcoal)] truncate font-noto-sans">{lm.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2 mb-2">
+          {!hasAuto && <button onClick={autoDetectArea} className="flex-1 py-3 rounded-full text-sm font-bold bg-purple-500 text-white shadow-[var(--shadow-warm-1)] hover:bg-purple-600 min-h-[52px]">✨ Auto-Detect Area</button>}
+          {areaStats&&<button onClick={()=>setShowStats(s=>!s)} className="flex-1 py-3 rounded-full text-sm font-semibold bg-[var(--color-warm-paper)] text-gray-700 border border-[var(--color-saffron)]/20 min-h-[52px]">📊 Stats</button>}
+          {symbols.length>15&&<button onClick={()=>{if(!showBlk&&!blocks.length)onUpdateBlocks(generateBlocks(boundaryPins,symbols.length));setShowBlk(!showBlk);}} className={`flex-1 py-3 rounded-full text-sm font-semibold min-h-[52px] ${showBlk?'bg-blue-100 text-blue-700 border border-blue-300':'bg-gray-100 text-gray-600 border border-gray-200'}`}>{showBlk?'Hide Blk':'Show Blk'}</button>}
         </div>
-        {totH>0&&<button onClick={onStepComplete} className="w-full py-3 mt-2 bg-blue-500 text-white rounded-xl font-semibold text-sm font-[Baloo_2]">Number ({totH}) →</button>}
-        <button onClick={onJumpToPreview} className="w-full py-2 mt-2 text-sm text-gray-500 hover:text-orange-600">Preview →</button>
+        {totH>0&&<button onClick={onStepComplete} className="w-full py-3 mt-2 bg-blue-500 text-white rounded-full font-bold text-lg font-public-sans shadow-[var(--shadow-warm-1)] min-h-[52px]">Number ({totH}) →</button>}
+        <button onClick={onJumpToPreview} className="w-full py-3 mt-2 text-sm text-gray-500 hover:text-[var(--color-saffron)] font-bold min-h-[52px]">Preview →</button>
       </div>
+      )}
     </div>;
   }
 
@@ -397,12 +608,11 @@ export default function MapWorkspace({
   function collapsedBar(){
     if(drawMode!=='none'){
       if (drawMode === 'label') {
-        return <div className="absolute bottom-3 left-3 right-3 z-[1002]"><div className="bg-white/95 backdrop-blur rounded-2xl shadow-lg px-4 py-3"><div className="flex items-center justify-between mb-2"><span className="text-sm font-bold text-orange-700">🏷️ Drop Place Name</span></div><input type="text" value={customLabel} onChange={e=>setCustomLabel(e.target.value)} placeholder="e.g. Main Market" className="w-full border rounded p-2 mb-2 text-sm"/><div className="flex gap-2"><button onClick={cancelDraw} className="flex-1 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-semibold">Cancel</button></div></div></div>;
+        return <div className="absolute bottom-3 left-3 right-3 z-[1002] pointer-events-auto"><div className="bg-white/95 backdrop-blur rounded-2xl shadow-lg px-4 py-3"><div className="flex items-center justify-between mb-2"><span className="text-sm font-bold text-orange-700">🏷️ Drop Place Name</span></div><input type="text" value={customLabel} onChange={e=>setCustomLabel(e.target.value)} placeholder="e.g. Main Market" className="w-full border rounded p-2 mb-2 text-sm"/><div className="flex gap-2"><button onClick={cancelDraw} className="flex-1 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-semibold">Cancel</button></div></div></div>;
       }
-      const isF=drawMode==='farmland';const lbl=isF?farmLbl:blkLbl;const col=isF?'green':'blue';return <div className="absolute bottom-3 left-3 right-3 z-[1002]"><div className="bg-white/95 backdrop-blur rounded-2xl shadow-lg px-4 py-3"><div className="flex items-center justify-between mb-2"><span className={`text-sm font-bold text-${col}-700`}>{isF?'🌾':'🔲'} {isF?'Farm':'Block'} {lbl}</span><span className="text-xs text-gray-500">{polyPts.length} pts</span></div><div className="flex gap-2">{polyPts.length>0&&<button onClick={undoPolyPt} className="px-3 py-2 bg-gray-200 rounded-lg text-xs font-semibold">↩</button>}{polyPts.length>=3&&<button onClick={closePolyDraw} className="flex-1 py-2 bg-green-500 text-white rounded-lg text-xs font-bold">✓ Close</button>}<button onClick={cancelDraw} className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-semibold">✕</button></div></div></div>;
+      const isF=drawMode==='farmland';const lbl=isF?farmLbl:blkLbl;const col=isF?'green':'blue';return <div className="absolute bottom-3 left-3 right-3 z-[1002] pointer-events-auto"><div className="bg-white/95 backdrop-blur rounded-2xl shadow-lg px-4 py-3"><div className="flex items-center justify-between mb-2"><span className={`text-sm font-bold text-${col}-700`}>{isF?'🌾':'🔲'} {isF?'Farm':'Block'} {lbl}</span><span className="text-xs text-gray-500">{polyPts.length} pts</span></div><div className="flex gap-2">{polyPts.length>0&&<button onClick={undoPolyPt} className="px-3 py-2 bg-gray-200 rounded-lg text-xs font-semibold">↩</button>}{polyPts.length>=3&&<button onClick={closePolyDraw} className="flex-1 py-2 bg-green-500 text-white rounded-lg text-xs font-bold">✓ Close</button>}<button onClick={cancelDraw} className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-semibold">✕</button></div></div></div>;
     }
-    if(placing&&selSym){const def=SYMBOL_DEFS.find(d=>d.type===selSym);return <div className="absolute bottom-3 left-3 right-3 z-[1002]"><div className="bg-white/95 backdrop-blur rounded-2xl shadow-lg px-4 py-3 flex items-center gap-3"><div className="w-6 h-6 flex-shrink-0" dangerouslySetInnerHTML={{__html:getSmallSymbolSVG(selSym)}}/><div className="flex-1 min-w-0"><p className="text-sm font-bold text-gray-800 truncate">{def?.labelHi} — Tap map</p><p className="text-xs text-gray-400">{symbols.length} symbols</p></div>{selSym==='apartment'&&<div className="flex items-center gap-1 bg-orange-50 rounded-lg px-2 py-1"><button onClick={()=>setAptUnits(u=>Math.max(1,u-1))} className="text-sm font-bold">−</button><span className="text-sm font-bold text-orange-600">{aptUnits}</span><button onClick={()=>setAptUnits(u=>Math.min(30,u+1))} className="text-sm font-bold">+</button></div>}<button onClick={cancelPlacing} className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-semibold">✕</button><button onClick={()=>setPanelOpen(true)} className="px-3 py-2 bg-gray-100 rounded-lg text-xs font-semibold">📂</button></div></div>;}
-    return <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1002]"><button onClick={()=>setPanelOpen(true)} className="bg-white/95 backdrop-blur rounded-full shadow-lg px-5 py-3 flex items-center gap-2 text-sm font-semibold text-gray-700"><span>{symbols.length} symbols</span><span className="text-gray-400">|</span><span>📂</span></button></div>;
+    return null;
   }
 
   // ═══════════ RENDER ══════════════════════════════════════
@@ -422,7 +632,7 @@ export default function MapWorkspace({
         <button onClick={()=>setShowSat(s=>!s)} className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs shadow ${showSat?'bg-white/90':'bg-blue-500 text-white'}`}>{showSat?'🗺️':'🛰️'}</button>
         {step>=5&&<button onClick={()=>setPanelOpen(p=>!p)} className="w-9 h-9 rounded-lg flex items-center justify-center text-xs shadow bg-white/90">📂</button>}
       </div>
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold z-[1001] pointer-events-none shadow font-[Baloo_2]">HLB {hlbNumber}</div>
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[var(--color-saffron-container)] text-white px-4 py-2 rounded-full text-xs font-bold z-[1001] pointer-events-none shadow-[var(--shadow-warm-1)] font-public-sans tracking-wide">HLB {hlbNumber}</div>
 
       {statsPanel()}
 
@@ -432,14 +642,16 @@ export default function MapWorkspace({
       {step===5&&placing&&selSym&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-orange-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">Tap map to place {SYMBOL_DEFS.find(d=>d.type===selSym)?.labelHi}</div>}
       {step===6&&showGuide&&serpPath.length>1&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-red-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">🐍 Follow red path</div>}
       {step===6&&editMode&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-yellow-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg">✏️ EDIT</div>}
+      
+
 
       {/* Bottom Panel */}
-      <div className="absolute bottom-0 left-0 right-0 z-[1002]">
-        {step===3&&pBnd()}{step===4&&pRd()}{step===5&&panelOpen&&!autoBanner&&pSymFull()}{step===6&&panelOpen&&pNumFull()}
+      <div className="absolute bottom-0 left-0 right-0 z-[1002] pointer-events-none">
+        {step===3&&pBnd()}{step===4&&pRd()}{step===5&&drawMode==='none'&&!autoBanner&&pSymFull()}{step===6&&pNumFull()}
       </div>
 
-      {step===5&&!panelOpen&&!autoBanner&&collapsedBar()}
-      {step===6&&!panelOpen&&<div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1002]"><button onClick={()=>setPanelOpen(true)} className="bg-white/95 backdrop-blur rounded-full shadow-lg px-5 py-3 flex items-center gap-3 text-sm font-semibold text-gray-700"><span>{numDone}/{totH}</span><span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full" onClick={e=>{e.stopPropagation();autoNum();}}>⚡</span><span className="text-xs bg-gray-200 px-2 py-1 rounded-full">📂</span></button></div>}
+      {step===5&&drawMode!=='none'&&!autoBanner&&collapsedBar()}
+      {step===6&&!panelOpen&&<div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1002] pointer-events-auto"><button onClick={()=>setPanelOpen(true)} className="bg-white/95 backdrop-blur rounded-full shadow-lg px-5 py-3 flex items-center gap-3 text-sm font-semibold text-gray-700"><span>{numDone}/{totH}</span><span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full" onClick={e=>{e.stopPropagation();autoNum();}}>⚡</span><span className="text-xs bg-gray-200 px-2 py-1 rounded-full">📂</span></button></div>}
 
       {detectionBanner()}
     </div>

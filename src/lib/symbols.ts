@@ -36,7 +36,7 @@ export function getSymbolSVG(type: SymbolType): string {
 
 export function getSmallSymbolSVG(type: SymbolType, highlight?: boolean, num?: string): string {
   const color = highlight ? '#0066FF' : 'black';
-  const s = 24;
+  const s = 16;
   
   const drawNum = (yOffset: number = 13) => {
     if (!num) return '';

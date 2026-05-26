@@ -6,12 +6,13 @@ interface Props {
   selectedType: SymbolType | null;
   onSelect: (type: SymbolType) => void;
   placedCount: number;
+  onToggle?: () => void;
 }
 
-export default function SymbolDrawer({ selectedType, onSelect, placedCount }: Props) {
+export default function SymbolDrawer({ selectedType, onSelect, placedCount, onToggle }: Props) {
   return (
     <div className="bg-white rounded-t-2xl shadow-[0_-2px_12px_rgba(0,0,0,0.12)]">
-      <div className="flex items-center justify-center pt-2 pb-1">
+      <div className="flex items-center justify-center pt-2 pb-1 cursor-pointer" onClick={onToggle}>
         <div className="w-10 h-1 rounded-full bg-gray-300" />
       </div>
       <div className="flex items-center justify-between px-4 pb-2">

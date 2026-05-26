@@ -1,5 +1,6 @@
-import type { Coordinate, SymbolType, Block, PlacedSymbol, FarmlandBlock, WaterBody, ForestArea, Landmark, AreaStats } from '../types';
+import type { Coordinate, SymbolType, Block, PlacedSymbol, FarmlandBlock, WaterBody, ForestArea, LanduseArea, Landmark, AreaStats } from '../types';
 import { isHouseType } from '../types';
+import * as turf from '@turf/turf';
 
 export function getBbox(coords: Coordinate[]): { south: number; west: number; north: number; east: number } {
   let south = Infinity, west = Infinity, north = -Infinity, east = -Infinity;
@@ -58,8 +59,9 @@ export function clipRoadsToPolygon(elements: any[], boundary: Coordinate[]): any
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
     const coords: Coordinate[] = el.geometry.map((n: any) => ({ lat: n.lat, lng: n.lon }));
     const highway = el.tags?.highway || 'unclassified';
+    const name = el.tags?.name;
     if (lineIntersectsPolygon(coords, boundary)) {
-      results.push({ coords: coords, highway, osm_id: el.id });
+      results.push({ coords: coords, highway, name, osm_id: el.id });
     }
   }
   return results;
@@ -81,6 +83,23 @@ export function classifyBuilding(tags: Record<string, string>): SymbolType {
   if (b === 'commercial' || b === 'industrial' || b === 'retail' || b === 'office' || b === 'warehouse' || b === 'shop') return 'non_residential';
   if (tags.shop || tags.office) return 'non_residential';
   return 'pucca_house';
+}
+
+export function classifyRoad(tags: any) {
+  const hw = tags.highway || 'unknown';
+  if (['motorway','trunk','primary'].includes(hw)) 
+    return { width: 3, style: 'solid', color: '#000000', label: 'Main Road' };
+  if (['secondary','tertiary','unclassified'].includes(hw))
+    return { width: 2, style: 'solid', color: '#333333', label: 'Road' };
+  if (['residential','service','road'].includes(hw))
+    return { width: 1.5, style: 'solid', color: '#555555', label: 'Lane' };
+  if (['footway','path','pedestrian'].includes(hw))
+    return { width: 1, style: 'dashed', color: '#777777', label: 'Footpath' };
+  if (['track'].includes(hw))
+    return { width: 1, style: 'dotted', color: '#888888', label: 'Kachcha Raasta' };
+  if (['steps'].includes(hw))
+    return { width: 0.8, style: 'dotted', color: '#999999', label: 'Steps' };
+  return { width: 1, style: 'dashed', color: '#aaaaaa', label: 'Path' };
 }
 
 export function getPolygonCentroid(geom: Array<{ lat: number; lon: number }>): Coordinate {
@@ -186,6 +205,7 @@ export interface DetectedData {
   farmlands: FarmlandBlock[];
   waterBodies: WaterBody[];
   forests: ForestArea[];
+  landuseAreas: LanduseArea[];
   landmarks: Landmark[];
   stats: AreaStats;
 }
@@ -199,6 +219,7 @@ export function processOverpassData(
   const farmlands: FarmlandBlock[] = [];
   const waterBodies: WaterBody[] = [];
   const forests: ForestArea[] = [];
+  const landuseAreas: LanduseArea[] = [];
   const landmarks: Landmark[] = [];
   let houseCount = 0, aptCount = 0, nonRes = 0;
   let farmArea = 0;
@@ -237,7 +258,7 @@ export function processOverpassData(
     }
 
     // ─── ANY OTHER NAMED PLACE / POI ──────────────────
-    if (tags.name && !tags.building && !tags.waterway && tags.natural !== 'water') {
+    if (tags.name && !tags.building && !tags.waterway && !tags.highway && tags.natural !== 'water') {
       if (tags.amenity) {
         const st = classifyBuilding(tags);
         symbols.push({
@@ -314,6 +335,27 @@ export function processOverpassData(
       continue;
     }
 
+    // ─── LANDUSE AREAS (for styling) ──────────────────────────
+    let lType = '';
+    if (['farmland', 'agricultural'].includes(tags.landuse)) lType = 'farmland';
+    else if (tags.landuse === 'orchard') lType = 'orchard';
+    else if (tags.landuse === 'forest' || tags.natural === 'wood') lType = 'forest';
+    else if (tags.natural === 'scrub') lType = 'scrub';
+    else if (['meadow', 'grass'].includes(tags.landuse) || tags.natural === 'grassland') lType = 'grass';
+    else if (tags.natural === 'water') lType = 'water';
+    else if (tags.natural === 'wetland') lType = 'wetland';
+    else if (tags.landuse === 'cemetery') lType = 'cemetery';
+    else if (['park', 'garden', 'recreation_ground'].includes(tags.leisure)) lType = 'park';
+
+    if (lType && coords.length >= 3) {
+      const pts = coords.filter((_, i) => i === 0 || i === coords.length - 1 || i % Math.max(1, Math.floor(coords.length / 20)) === 0);
+      landuseAreas.push({
+        id: crypto.randomUUID(),
+        type: lType,
+        points: pts,
+      });
+    }
+
     // ─── REMAINING LANDMARKS (if any without name) ──────────────────────────
     if (!tags.name && (tags.tourism || tags.historic || tags.shop === 'supermarket' || tags.office === 'government')) {
       landmarks.push({ id: crypto.randomUUID(), name: tags.tourism || tags.historic || 'Landmark', type: tags.tourism || tags.historic || tags.shop || tags.office, lat: center.lat, lng: center.lng });
@@ -321,7 +363,7 @@ export function processOverpassData(
   }
 
   return {
-    symbols, farmlands, waterBodies, forests, landmarks,
+    symbols, farmlands, waterBodies, forests, landuseAreas, landmarks,
     stats: {
       buildings: symbols.length, houses: houseCount, apartments: aptCount, nonResidential: nonRes,
       roads: 0, farmlandCount: farmlands.length, farmlandArea: Math.round(farmArea),
@@ -380,28 +422,149 @@ export function generateGridChunks(boundary: Coordinate[], sizeMeters: number): 
         { lat, lng: lng + lngStep }
       ];
 
-      let intersects = false;
-      for (const pt of chunkBbox) {
-        if (pointInPolygon(pt, boundary)) { intersects = true; break; }
-      }
-      if (!intersects) {
-        for (const pt of boundary) {
-          if (pointInPolygon(pt, chunkBbox)) { intersects = true; break; }
-        }
-      }
-      if (!intersects) {
-        if (lineIntersectsPolygon([...chunkBbox, chunkBbox[0]], boundary)) {
-          intersects = true;
-        }
-      }
-
-      if (intersects) {
-        const letter = String.fromCharCode(65 + (row % 26));
-        chunks.push({ label: `${letter}${col + 1}`, bbox: chunkBbox });
-      }
+      const letter = String.fromCharCode(65 + (row % 26));
+      chunks.push({ label: `${letter}${col + 1}`, bbox: chunkBbox });
       col++;
     }
     row++;
   }
   return chunks;
+}
+
+export function serpentineNumbering(symbols: any[]) {
+  const houses = symbols.filter(s =>
+    ['pucca_house', 'kutcha_house', 'non_residential', 'apartment'].includes(s.symbol_type)
+  );
+
+  if (houses.length === 0) return symbols;
+
+  const lats = houses.map(h => h.lat);
+  const northLat = Math.max(...lats);
+  
+  // Row height — 10 meters in degrees latitude
+  const ROW_HEIGHT_DEG = 0.00009;
+  
+  // Assign row number to each house based on latitude
+  houses.forEach(house => {
+    house._row = Math.floor((northLat - house.lat) / ROW_HEIGHT_DEG);
+  });
+
+  // Group by row
+  const rows: Record<number, any[]> = {};
+  houses.forEach(h => {
+    if (!rows[h._row]) rows[h._row] = [];
+    rows[h._row].push(h);
+  });
+
+  // Sort row keys north to south
+  const sortedRows = Object.keys(rows)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  let number = 1;
+  const numberMap: Record<string, number> = {};
+
+  sortedRows.forEach((rowKey, rowIndex) => {
+    const rowHouses = [...rows[rowKey]];
+    
+    // Serpentine: even rows west-to-east, odd rows east-to-west
+    if (rowIndex % 2 === 0) {
+      rowHouses.sort((a, b) => a.lng - b.lng);
+    } else {
+      rowHouses.sort((a, b) => b.lng - a.lng);
+    }
+    
+    rowHouses.forEach(house => {
+      // Respect manual overrides
+      if (!house.number_locked) {
+        numberMap[house.id] = number;
+      }
+      number++;
+    });
+  });
+
+  // Apply numbers back to original symbols array
+  return symbols.map(s => {
+    const sCopy = { ...s };
+    if (!s.number_locked && numberMap[s.id] !== undefined) {
+      sCopy.number = numberMap[s.id];
+    }
+    delete sCopy._row;
+    return sCopy;
+  });
+}
+
+export async function snapRoadsToOSM(surveySegments: any[], boundaryPolygon: any) {
+  if (!boundaryPolygon) return surveySegments;
+  
+  const bbox = turf.bbox(boundaryPolygon);
+  const [west, south, east, north] = bbox;
+
+  // Fetch existing OSM roads
+  const query = `[out:json][bbox:${south},${west},${north},${east}];
+    way["highway"]; out geom;`;
+    
+  try {
+    const response = await fetch(
+      'https://overpass-api.de/api/interpreter',
+      { method: 'POST', body: query }
+    );
+    if (!response.ok) return surveySegments;
+    const data = await response.json();
+    
+    const osmRoads = data.elements
+      .filter((e: any) => e.type === 'way' && e.geometry)
+      .map((e: any) => turf.lineString(
+        e.geometry.map((n: any) => [n.lon, n.lat]),
+        { highway: e.tags.highway, osm_id: e.id }
+      ));
+
+    if (osmRoads.length === 0) {
+      return surveySegments.map(s => ({...s, is_new_road: true}));
+    }
+
+    const snapped = surveySegments.map(segment => {
+      if (segment.points.length < 2) return segment;
+      
+      const segLine = turf.lineString(
+        segment.points.map((p: any) => [p.lng, p.lat])
+      );
+      
+      // Find nearest OSM road
+      let nearestRoad: any = null;
+      let minDistance = Infinity;
+      
+      osmRoads.forEach((osmRoad: any) => {
+        const dist = turf.pointToLineDistance(
+          turf.center(segLine),
+          osmRoad,
+          { units: 'meters' }
+        );
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearestRoad = osmRoad;
+        }
+      });
+      
+      // Snap if within 8 meters of an OSM road
+      if (nearestRoad && minDistance < 8) {
+        return {
+          ...segment,
+          snapped_to_osm: nearestRoad.properties.osm_id,
+          points: segment.points // keep original GPS points
+        };
+      }
+      
+      // New road not in OSM — mark as newly discovered
+      return {
+        ...segment,
+        is_new_road: true
+      };
+    });
+    
+    return snapped;
+  } catch (err) {
+    console.error("OSM Snapping error:", err);
+    return surveySegments;
+  }
 }

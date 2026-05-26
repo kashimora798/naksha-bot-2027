@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { load } from '@cashfreepayments/cashfree-js';
-import type { MapData, Block } from '../types';
+import type { MapData, Block, Coordinate } from '../types';
 import { supabase } from '../lib/supabase';
 import { renderMapToCanvas, exportBlockPDF } from '../lib/pdf-export';
 import { captureSatelliteForBoundary, captureFullSatellite, generateSurveyMapFromBoundary, fetchImageAsBase64, API_BASE, generateChunkedSurveyMaps } from '../lib/survey-api';
+import { getBbox } from '../lib/geo';
 
 interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; onUpdateMapData?: (data: Partial<MapData>) => void; }
 
@@ -14,6 +15,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [exporting, setExporting] = useState(false);
   const [paying, setPaying] = useState(false);
   const [exportProgress, setExportProgress] = useState('');
+  const [aiOpacity, setAiOpacity] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [rotate, setRotate] = useState(0);
   const [panX, setPanX] = useState(0);
@@ -53,7 +55,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
   // Auto-capture satellite when switching to satellite tab
   useEffect(() => {
-    if (activeTab === 'satellite' && !satImg && !satLoading && mapData.boundaryPins.length >= 3) {
+    if ((activeTab === 'satellite' || activeTab === 'ai') && !satImg && !satLoading && mapData.boundaryPins.length >= 3) {
       captureSatelliteOverlay();
     }
   }, [activeTab]);
@@ -61,7 +63,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   async function captureSatelliteOverlay() {
     setSatLoading(true);
     try {
-      const satCanvas = await captureFullSatellite(mapData.boundaryPins, (msg) => setExportProgress(msg));
+      const { canvas: satCanvas, tileBounds } = await captureFullSatellite(mapData.boundaryPins, (msg) => setExportProgress(msg));
       setSatImg(satCanvas.toDataURL('image/jpeg', 0.9));
 
       const isL = orient === 'landscape';
@@ -75,7 +77,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
       // Draw the sketch map on top with transparent background
       const sketchCanvas = document.createElement('canvas');
-      renderMapToCanvas(sketchCanvas, { ...mapData, orientation: orient }, satCanvas.width, satCanvas.height, { transparentBg: true, hideSymbols: true });
+      renderMapToCanvas(sketchCanvas, { ...mapData, orientation: orient }, satCanvas.width, satCanvas.height, { transparentBg: true, hideSymbols: true, focusBounds: tileBounds });
 
       // Draw transparent sketch directly over satellite
       ctx.drawImage(sketchCanvas, 0, 0);
@@ -95,17 +97,17 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     setAiProgress('Preparing satellite imagery...');
 
     try {
-      // Chunk the area into 250m x 250m pieces
-      const result = await generateChunkedSurveyMaps(
-        mapData.boundaryPins,
-        250,
+      const result = await generateSurveyMapFromBoundary(
+        mapData,
+        orient,
         (msg) => setAiProgress(msg)
       );
 
-      if (result.success && result.chunks) {
-        setAiChunks(result.chunks);
+      if (result.success && result.imageUrl) {
+        setAiImg(result.imageUrl);
+        setAiChunks([]); // Clear old chunks if any
         if (onUpdateMapData) {
-          onUpdateMapData({ aiMapChunks: result.chunks });
+          onUpdateMapData({ surveyMapBase64: result.imageUrl, aiMapChunks: [] });
         }
         setAiProgress('');
       } else {
@@ -150,7 +152,9 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     try {
       await new Promise(r => setTimeout(r, 100)); // yield for UI update
       const exportData = { ...mapData };
-      if (aiImg) {
+      if (aiChunks && aiChunks.length > 0) {
+        exportData.aiMapChunks = aiChunks;
+      } else if (aiImg) {
         exportData.surveyMapBase64 = aiImg;
       }
       await exportBlockPDF(exportData, orient, (msg: string) => setExportProgress(msg));
@@ -231,10 +235,9 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   // ─── EDITOR ─────────────────────────────────────────────
   return (
     <div className="h-full bg-[#111] flex flex-col">
-      <div className="bg-white px-3 py-2 flex items-center justify-between z-30 flex-shrink-0 shadow">
+      <div className="bg-white px-3 py-3 flex items-center justify-between z-30 flex-shrink-0 shadow relative">
         <button onClick={onBack} className="text-sm text-gray-600 font-semibold">← Back</button>
-        <span className="text-sm font-bold font-[Baloo_2]">Preview</span>
-        <button onClick={() => setShowControls(c => !c)} className="text-sm text-orange-600 font-semibold">{showControls ? 'Hide ▼' : 'Show ▲'}</button>
+        <span className="text-base font-bold font-[Baloo_2] absolute left-1/2 -translate-x-1/2">Preview</span>
       </div>
 
       <div className="bg-white border-b border-gray-200 flex flex-shrink-0">
@@ -243,42 +246,45 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
         <button onClick={() => setActiveTab('ai')} className={`flex-1 py-2.5 text-xs font-bold transition-colors ${activeTab === 'ai' ? 'text-purple-600 border-b-2 border-purple-500 bg-purple-50/50' : 'text-gray-500'}`}>🗺️ AI Map{aiLoading ? '...' : ''}</button>
       </div>
 
-      <div className="flex-1 overflow-auto pb-8">
-        {/* Controls panel now ABOVE the map so it never gets lost off-screen */}
-        {showControls && (
-          <div className="bg-white px-4 py-4 space-y-4 shadow-sm border-b border-gray-200 mb-4 rounded-b-2xl">
-            <div className="flex gap-2">
-              <button onClick={() => { setOrient('landscape'); resetView(); }} className={`flex-1 py-2.5 rounded-xl text-sm font-bold ${orient === 'landscape' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>📄 Landscape</button>
-              <button onClick={() => { setOrient('portrait'); resetView(); }} className={`flex-1 py-2.5 rounded-xl text-sm font-bold ${orient === 'portrait' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>📄 Portrait</button>
+      <div className="flex-1 overflow-hidden relative">
+        {/* Floating Icons for Zoom and Print */}
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[40]">
+           <button onClick={() => setZoom(z => Math.min(5, z + 0.2))} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors">+</button>
+           <button onClick={() => setZoom(z => Math.max(0.3, z - 0.2))} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors">−</button>
+           <button onClick={resetView} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors mt-1 text-xs">Reset</button>
+           {activeTab !== 'ai' && (
+             <button onClick={handleExport} disabled={exporting || isLimitReached} className={`w-10 h-10 rounded-full shadow-lg font-bold flex items-center justify-center mt-3 transition-colors ${exporting ? 'bg-gray-400 text-white' : isLimitReached ? 'bg-red-400 text-white' : 'bg-orange-500 text-white'}`}>
+                {exporting ? '⏳' : '🖨️'}
+             </button>
+           )}
+        </div>
+
+        {/* Bottom Sheet Settings */}
+        <div className="absolute bottom-0 left-0 right-0 z-[50] pointer-events-none">
+          <div className={`bg-white rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.15)] pointer-events-auto transition-transform duration-300 ${showControls ? 'translate-y-0' : 'translate-y-full'}`}>
+            {/* Handle for the bottom sheet - visually pulled up slightly when collapsed */}
+            <div 
+               className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white px-6 py-2 rounded-t-2xl shadow-[0_-4px_10px_rgba(0,0,0,0.1)] cursor-pointer flex flex-col items-center gap-1"
+               onClick={() => setShowControls(c => !c)}
+            >
+               <div className="w-8 h-1.5 bg-gray-300 rounded-full" />
+               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{showControls ? 'Hide' : 'Settings'}</span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button onClick={() => setZoom(z => Math.max(0.3, z - 0.2))} className="w-9 h-9 bg-gray-100 rounded-lg text-lg font-bold flex-shrink-0">−</button>
-              <input type="range" min="0.3" max="5" step="0.05" value={zoom} onChange={e => setZoom(Number(e.target.value))} className="flex-1 h-1.5 accent-orange-500" />
-              <button onClick={() => setZoom(z => Math.min(5, z + 0.2))} className="w-9 h-9 bg-gray-100 rounded-lg text-lg font-bold flex-shrink-0">+</button>
-              <span className="text-xs text-gray-500 w-10 text-right">{Math.round(zoom * 100)}%</span>
-            </div>
+            <div className="px-5 pt-4 pb-5 space-y-4">
+              <div className="flex gap-2">
+                <button onClick={() => { setOrient('landscape'); resetView(); }} className={`flex-1 py-3 rounded-xl text-sm font-bold ${orient === 'landscape' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>📄 Landscape</button>
+                <button onClick={() => { setOrient('portrait'); resetView(); }} className={`flex-1 py-3 rounded-xl text-sm font-bold ${orient === 'portrait' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>📄 Portrait</button>
+              </div>
 
-            <div className="flex gap-1 justify-between">
-              {[0, 90, 180, 270].map(d => (
-                <button key={d} onClick={() => setRotate(d)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${rotate === d ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>{d}°</button>
-              ))}
-              <button onClick={resetView} className="px-3 py-1.5 rounded-lg text-xs bg-gray-100 font-semibold">Reset</button>
+              <div className="flex gap-1 justify-between">
+                {[0, 90, 180, 270].map(d => (
+                  <button key={d} onClick={() => setRotate(d)} className={`px-4 py-2 rounded-lg text-xs font-semibold ${rotate === d ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>{d}°</button>
+                ))}
+              </div>
             </div>
-
-            {isLimitReached ? (
-                <button disabled className="w-full py-4 rounded-xl font-bold text-lg font-[Baloo_2] shadow-sm bg-red-50 text-red-500 border border-red-200">
-                   Export Limit Reached (3/3)
-                </button>
-              ) : (
-                <button onClick={handleExport} disabled={exporting}
-                  className={`w-full py-4 rounded-xl font-bold text-lg font-[Baloo_2] shadow-lg transition-all ${exporting ? 'bg-gray-400 text-white' : 'bg-orange-500 text-white active:scale-[0.97]'}`}
-                  style={{ height: 56 }}>
-                  {exporting ? exportProgress || '⏳ Exporting...' : `Export PDF (${totalPages + (aiImg ? 1 : 0)}p) 📥`}
-                </button>
-              )}
           </div>
-        )}
+        </div>
 
         {/* Loading and empty states */}
         {activeTab === 'satellite' && satLoading && (
@@ -288,7 +294,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           </div>
         )}
 
-        {activeTab === 'ai' && aiChunks.length === 0 && !aiLoading && (
+        {activeTab === 'ai' && !aiImg && !aiLoading && (
           <div className="flex flex-col items-center justify-center py-8 gap-4 px-6 bg-white/5 mx-4 rounded-2xl border border-white/10">
             <div className="w-16 h-16 bg-purple-500/20 rounded-2xl flex items-center justify-center text-3xl">🗺️</div>
             <h3 className="text-sm font-bold text-white text-center">Generate AI Survey Map</h3>
@@ -312,31 +318,51 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           </div>
         )}
 
-        {activeTab === 'ai' && aiChunks.length > 0 && (
+        {activeTab === 'ai' && aiImg && (
           <div className="px-4 mb-3 flex justify-end">
-            <button onClick={() => { setAiChunks([]); setTimeout(generateAI, 100); }} className="px-4 py-2 rounded-xl text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+            <button onClick={() => { setAiImg(''); setTimeout(generateAI, 100); }} className="px-4 py-2 rounded-xl text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">
               🔄 Regenerate AI Map
             </button>
           </div>
         )}
 
-        {/* AI Chunks Rendering */}
-        {activeTab === 'ai' && aiChunks.length > 0 && (
-          <div className="px-4 flex flex-col gap-6 items-center pb-10">
-            {aiChunks.map((chunk, i) => (
-              <div key={i} className="bg-white shadow-2xl relative overflow-hidden ring-1 ring-white/20" style={{ width: '100%', maxWidth: 500, aspectRatio: '1' }}>
-                <img src={chunk.imageBase64} alt={chunk.label} className="absolute inset-0 w-full h-full object-cover select-none" draggable={false} />
-                <div className="absolute top-0 inset-x-0 bg-white/85 text-center py-1 z-10 pointer-events-none">
-                  <span className="text-xs font-bold font-[Baloo_2]">Chunk {chunk.label}</span>
+        {/* AI Rendering - Stitched over Satellite */}
+        {activeTab === 'ai' && aiImg && (
+          <div className="px-4 pb-10">
+            <h3 className="text-white text-center font-bold mb-2 font-[Baloo_2]">Vision AI Detection Overlay</h3>
+            <p className="text-gray-400 text-xs text-center mb-4">Compare the AI generated map directly with the satellite image.</p>
+            
+            <div className="mb-4 bg-gray-800 p-3 rounded-xl border border-gray-700">
+              <div className="flex justify-between text-xs text-gray-400 mb-1 font-semibold">
+                <span>Satellite</span>
+                <span>AI Map</span>
+              </div>
+              <input 
+                type="range" min="0" max="1" step="0.05" 
+                value={aiOpacity} onChange={e => setAiOpacity(Number(e.target.value))}
+                className="w-full accent-purple-500"
+              />
+            </div>
+
+            <div className="flex justify-center">
+              <div 
+                className="bg-white shadow-2xl relative overflow-hidden ring-1 ring-white/20"
+                style={{ width: '100%', maxWidth: 500, aspectRatio: String(aspect) }}
+              >
+                {/* Background Base: Full Satellite Map */}
+                <img src={satImg || mapImg} className="absolute inset-0 w-full h-full object-cover" />
+                
+                {/* Foreground Overlay: Single AI Map */}
+                <div className="absolute inset-0" style={{ opacity: aiOpacity }}>
+                  <img src={aiImg.startsWith('data:') || aiImg.startsWith('http') ? aiImg : `data:image/jpeg;base64,${aiImg}`} className="w-full h-full object-fill pointer-events-none" />
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         )}
 
-        {/* A4 Frame (for Sketch and Satellite) */}
         {activeTab !== 'ai' && displayImg && !(activeTab === 'satellite' && satLoading) && (
-          <div className="px-4 flex justify-center pb-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-900/10">
             <div
               ref={frameRef}
               className="bg-white shadow-2xl relative overflow-hidden ring-1 ring-white/20"
@@ -356,7 +382,6 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                 <span className="text-[9px] text-gray-500">{mapData.enumeratorName} | {mapData.district}, {mapData.state}</span>
               </div>
               <div className="absolute top-1 left-1 bg-orange-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded z-10 pointer-events-none">{orient}</div>
-              {activeTab === 'ai' && <div className="absolute top-1 right-1 bg-purple-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded z-10 pointer-events-none">AI</div>}
               {activeTab === 'satellite' && <div className="absolute top-1 right-1 bg-blue-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded z-10 pointer-events-none">SAT</div>}
               
               {/* UNPAID WATERMARK */}

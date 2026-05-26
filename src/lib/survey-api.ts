@@ -28,7 +28,7 @@ function lat2tile(lat: number, z: number): number {
 async function captureSatelliteTiles(
   boundary: Coordinate[],
   onProgress?: (msg: string) => void
-): Promise<HTMLCanvasElement> {
+): Promise<{ canvas: HTMLCanvasElement; tileBounds: { north: number; south: number; east: number; west: number } }> {
   const bb = getBbox(boundary);
   // Add 10% padding for context
   const padLat = (bb.north - bb.south) * 0.1;
@@ -81,13 +81,13 @@ async function captureSatelliteTiles(
     }
   }
 
-  return canvas;
+  return { canvas, tileBounds: getTileBounds(zoom, tx1, tx2, ty1, ty2) };
 }
 
 async function captureSatelliteTilesAtZoom(
   south: number, west: number, north: number, east: number,
   zoom: number, onProgress?: (msg: string) => void
-): Promise<HTMLCanvasElement> {
+): Promise<{ canvas: HTMLCanvasElement; tileBounds: { north: number; south: number; east: number; west: number } }> {
   const TILE = 256;
   const tx1 = lng2tile(west, zoom);
   const tx2 = lng2tile(east, zoom);
@@ -116,7 +116,7 @@ async function captureSatelliteTilesAtZoom(
       } catch { /* continue */ }
     }
   }
-  return canvas;
+  return { canvas, tileBounds: getTileBounds(zoom, tx1, tx2, ty1, ty2) };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -145,9 +145,9 @@ function getTileBounds(zoom: number, tx1: number, tx2: number, ty1: number, ty2:
 export async function captureSatelliteForBoundary(
   boundary: Coordinate[],
   onProgress?: (msg: string) => void
-): Promise<{ canvas: HTMLCanvasElement; base64: string }> {
+): Promise<{ canvas: HTMLCanvasElement; base64: string; tileBounds: {north:number, south:number, east:number, west:number} }> {
   onProgress?.('Capturing satellite tiles...');
-  const satCanvas = await captureSatelliteTiles(boundary, onProgress);
+  const { canvas: satCanvas } = await captureSatelliteTiles(boundary, onProgress);
 
   // Now clip to polygon
   const bb = getBbox(boundary);
@@ -236,7 +236,7 @@ export async function captureSatelliteForBoundary(
     sizeBytes = rawB64.length * 0.75;
   }
 
-  return { canvas: clipped, base64: rawB64 };
+  return { canvas: clipped, base64: rawB64, tileBounds };
 }
 
 /**
@@ -245,7 +245,7 @@ export async function captureSatelliteForBoundary(
 export async function captureFullSatellite(
   boundary: Coordinate[],
   onProgress?: (msg: string) => void
-): Promise<HTMLCanvasElement> {
+): Promise<{ canvas: HTMLCanvasElement; tileBounds: { north: number; south: number; east: number; west: number } }> {
   return captureSatelliteTiles(boundary, onProgress);
 }
 
@@ -324,20 +324,77 @@ export async function fetchImageAsBase64(url: string): Promise<string> {
  * Full pipeline: capture satellite → send to AI → return generated map URL
  */
 export async function generateSurveyMapFromBoundary(
-  boundary: Coordinate[],
+  mapData: any, // using any to avoid circular type dependency if MapData isn't imported, but we can import MapData
   orientation: 'landscape' | 'portrait',
   onProgress?: (msg: string) => void
 ): Promise<SurveyMapResult> {
-  if (boundary.length < 3) return { success: false, error: 'Need at least 3 boundary points' };
+  const boundary = mapData.boundaryPins;
+  if (!boundary || boundary.length < 3) return { success: false, error: 'Need at least 3 boundary points' };
 
-  // Step 1: Capture satellite with polygon clip
-  const { base64 } = await captureSatelliteForBoundary(boundary, onProgress);
+  onProgress?.('Capturing full satellite view...');
+  
+  // Calculate bounding box with 5% padding
+  const { getBbox } = await import('./geo');
+  const bb = getBbox(boundary);
+  const pLng = (bb.east - bb.west) * 0.05 || 0.0005;
+  const pLat = (bb.north - bb.south) * 0.05 || 0.0005;
+  
+  // Create a padded bounding box representing the full canvas view
+  const paddedBoundary = [
+    { lat: bb.south - pLat, lng: bb.west - pLng },
+    { lat: bb.north + pLat, lng: bb.west - pLng },
+    { lat: bb.north + pLat, lng: bb.east + pLng },
+    { lat: bb.south - pLat, lng: bb.east + pLng }
+  ];
 
-  // Step 2: Determine ratio from orientation
-  const ratio = orientation === 'landscape' ? '16:9' : '9:16';
+  const { canvas: satCanvas, tileBounds } = await captureFullSatellite(paddedBoundary, onProgress);
+  const cw = satCanvas.width;
+  const ch = satCanvas.height;
 
-// Step 3: Generate survey map
-  return generateSurveyMap(base64, ratio, onProgress);
+  // Composite sketch map over satellite so AI can trace roads
+  const { renderMapToCanvas } = await import('./pdf-export');
+  const overlayCanvas = document.createElement('canvas');
+  overlayCanvas.width = cw;
+  overlayCanvas.height = ch;
+  const ctx = overlayCanvas.getContext('2d')!;
+  ctx.drawImage(satCanvas, 0, 0);
+
+  const sketchCanvas = document.createElement('canvas');
+  renderMapToCanvas(sketchCanvas, { ...mapData, orientation }, cw, ch, { transparentBg: true, hideSymbols: true, focusBounds: tileBounds });
+  ctx.drawImage(sketchCanvas, 0, 0);
+
+  onProgress?.('Processing image for AI...');
+  
+  // Convert to base64, ensure under 3.4MB
+  let quality = 0.92;
+  let base64 = overlayCanvas.toDataURL('image/jpeg', quality);
+  let rawB64 = base64.split(',')[1];
+  let sizeBytes = rawB64.length * 0.75;
+
+  while (sizeBytes > 3.4 * 1024 * 1024 && quality > 0.3) {
+    quality -= 0.1;
+    if (quality < 0.5) {
+      const smaller = document.createElement('canvas');
+      smaller.width = Math.round(cw * 0.7);
+      smaller.height = Math.round(ch * 0.7);
+      const sctx = smaller.getContext('2d')!;
+      sctx.drawImage(overlayCanvas, 0, 0, smaller.width, smaller.height);
+      base64 = smaller.toDataURL('image/jpeg', quality);
+    } else {
+      base64 = overlayCanvas.toDataURL('image/jpeg', quality);
+    }
+    rawB64 = base64.split(',')[1];
+    sizeBytes = rawB64.length * 0.75;
+  }
+
+  const ar = cw / ch;
+  let ratio = '1:1';
+  if (ar > 1.4) ratio = '16:9';
+  else if (ar > 1.15) ratio = '4:3';
+  else if (ar < 0.7) ratio = '9:16';
+  else if (ar < 0.85) ratio = '3:4';
+  
+  return generateSurveyMap(rawB64, ratio, onProgress);
 }
 
 export async function generateChunkedSurveyMaps(
@@ -366,13 +423,8 @@ export async function generateChunkedSurveyMaps(
     const aiResult = await generateSurveyMap(base64, '1:1', onProgress);
 
     if (aiResult.success && aiResult.imageUrl) {
-      if (onProgress) onProgress(`Downloading map for chunk ${chunk.label}...`);
-      try {
-        const fetchedBase64 = await fetchImageAsBase64(aiResult.imageUrl);
-        results.push({ label: chunk.label, bbox: chunk.bbox, imageBase64: fetchedBase64 });
-      } catch (e) {
-        results.push({ label: chunk.label, bbox: chunk.bbox, imageBase64: aiResult.imageUrl });
-      }
+      // Store the raw URL instead of base64 to avoid huge JSON payloads that fail to save to the database.
+      results.push({ label: chunk.label, bbox: chunk.bbox, imageBase64: aiResult.imageUrl });
     } else {
       return { success: false, error: `Failed on chunk ${chunk.label}: ${aiResult.error}` };
     }

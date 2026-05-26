@@ -6,6 +6,7 @@ import { idbStore, SurveySymbol, RoadSegment, SurveyPoint } from '../lib/idb';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { supabase } from '../lib/supabase';
 import { buildComprehensiveQuery, processOverpassData, getBbox } from '../lib/geo';
+import { beautifyPath } from '../lib/PathBeautifier';
 import type { Coordinate, SymbolType } from '../types';
 
 // ─── Extended state types ──────────────────────────────────────
@@ -71,6 +72,10 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   const bldGrp = useRef(L.layerGroup());       // buildings / POIs
   const lmkGrp = useRef(L.layerGroup());       // landmark labels
 
+  // GPS marker refs (smooth updates — no clear/re-add flicker)
+  const gpsMarkerRef = useRef<L.Marker | null>(null);
+  const gpsCircleRef = useRef<L.Circle | null>(null);
+
   // Layer groups for setup map
   const setupPinsGrp = useRef(L.layerGroup());
 
@@ -119,6 +124,9 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   const [bgFetching, setBgFetching] = useState(false);
   const [locating, setLocating] = useState(false);  // locate-me in progress
   const [pureCanvasMode, setPureCanvasMode] = useState(false);
+  const [osmToast, setOsmToast] = useState<string | null>(null);
+  const [returnDialog, setReturnDialog] = useState(false);
+  const [returnModeState, setReturnModeState] = useState<'none' | 'two_lane' | 'follow_back'>('none');
 
   // ── Initialize engine when polygon is ready ──────────────────
   useEffect(() => {
@@ -126,27 +134,26 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
     engineRef.current = new LiveSurveyEngine(activePolygon, supabase, idbStore);
     engineRef.current.on('stateChanged', () => {});
     engineRef.current.on('positionUpdate', (data: any) => {
+      // Always update marker + basic info (fires on EVERY GPS fix)
       setGpsAccuracy(data.accuracy);
       setOutOfBounds(!data.insideBoundary);
       const b = (data.bearing === null || data.bearing === undefined || isNaN(data.bearing)) ? 0 : data.bearing;
       setGpsBearing(b);
       updateGPSMarker(data.position, data.accuracy, b);
-      drawLivePath();
-      setStats(prev => ({ ...prev, distance: engineRef.current!.calculateTotalDistance() }));
       lastGpsPos.current = { lat: data.position.lat, lng: data.position.lng };
 
       if (activePolygon) {
         try {
           const center = turf.centerOfMass(activePolygon);
           const distKm = turf.distance(turf.point([data.position.lng, data.position.lat]), center);
-          if (distKm > 0.2) {
-            setDistanceToSite(distKm);
-          } else {
-            setDistanceToSite(null);
-          }
-        } catch (e) {
-          // ignore
-        }
+          setDistanceToSite(distKm > 0.2 ? distKm : null);
+        } catch (e) { /* ignore */ }
+      }
+
+      // Only redraw path and update stats when a real path point was recorded
+      if (data.isPathPoint) {
+        drawLivePath();
+        setStats(prev => ({ ...prev, distance: engineRef.current!.calculateTotalDistance() }));
       }
     });
     engineRef.current.on('vehicleDetected', () => setVehicleWarning(true));
@@ -157,6 +164,19 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
         ...prev,
         houses: syms.filter(s => ['pucca_house', 'kutcha_house'].includes(s.symbol_type)).length
       }));
+    });
+    // OSM road snap notifications
+    engineRef.current.on('osmRoadEntered', (data: any) => {
+      const name = data.road?.name || 'OSM Road';
+      setOsmToast(`🛣️ Following ${name}`);
+      setTimeout(() => setOsmToast(null), 3000);
+    });
+    engineRef.current.on('osmRoadLeft', () => {
+      setOsmToast('↗️ Custom path');
+      setTimeout(() => setOsmToast(null), 2000);
+    });
+    engineRef.current.on('returnDetected', () => {
+      setReturnDialog(true);
     });
     return () => {
       if (engineRef.current?.watchId) navigator.geolocation.clearWatch(engineRef.current.watchId);
@@ -381,12 +401,25 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   }, [mapInstance, osmRoads, osmLandmarks, osmWater, osmForests, osmFarmland, osmBuildings]);
 
   // ── GPS Marker (direction arrow) ─────────────────────────────
-  const updateGPSMarker = (pos: SurveyPoint, acc: number, bearing: number) => {
+  const updateGPSMarker = (pos: SurveyPoint | { lat: number; lng: number }, acc: number, bearing: number) => {
     if (!mapRef.current) return;
-    gpsGrp.current.clearLayers();
-    L.circle([pos.lat, pos.lng], { radius: Math.min(acc, 30), color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.1 }).addTo(gpsGrp.current);
     const icon = L.divIcon({ html: getArrowSVG(bearing, acc), className: '', iconSize: [40, 40], iconAnchor: [20, 20] });
-    L.marker([pos.lat, pos.lng], { icon }).addTo(gpsGrp.current);
+
+    if (gpsMarkerRef.current && gpsCircleRef.current) {
+      // Smooth update — just move existing marker, no flicker
+      gpsMarkerRef.current.setLatLng([pos.lat, pos.lng]);
+      gpsMarkerRef.current.setIcon(icon);
+      gpsCircleRef.current.setLatLng([pos.lat, pos.lng]);
+      gpsCircleRef.current.setRadius(Math.min(acc, 30));
+    } else {
+      // First time — create elements
+      gpsGrp.current.clearLayers();
+      gpsCircleRef.current = L.circle([pos.lat, pos.lng], {
+        radius: Math.min(acc, 30), color: '#3b82f6', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.1
+      }).addTo(gpsGrp.current);
+      gpsMarkerRef.current = L.marker([pos.lat, pos.lng], { icon }).addTo(gpsGrp.current);
+    }
+
     mapRef.current.setView([pos.lat, pos.lng]);
   };
 
@@ -394,10 +427,11 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
     if (!engineRef.current || !mapRef.current) return;
     pathGrp.current.clearLayers();
     
-    // Draw committed road segments
+    // Draw committed road segments (beautified → straight straights, smooth curves)
     engineRef.current.roadSegments.forEach(seg => {
       if (seg.points.length < 2) return;
-      const ll = seg.points.map(p => [p.lat, p.lng] as L.LatLngExpression);
+      const beautified = beautifyPath(seg.points);
+      const ll = beautified.map(p => [p.lat, p.lng] as L.LatLngExpression);
       const isPk = seg.type === 'residential';
       const isRs = seg.type === 'tertiary';
       const isKt = ['track', 'footway'].includes(seg.type);
@@ -420,10 +454,11 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
       }
     });
 
-    // Draw active segment (being walked right now)
+    // Draw active segment (beautified in real-time)
     const curSeg = engineRef.current.currentSegment;
     if (curSeg.points.length >= 2) {
-      const ll = curSeg.points.map(p => [p.lat, p.lng] as L.LatLngExpression);
+      const beautified = beautifyPath(curSeg.points);
+      const ll = beautified.map(p => [p.lat, p.lng] as L.LatLngExpression);
       const lc = '#CC2200';
       const gc = '#FF6B00';
       L.polyline(ll, { color: lc, weight: 7, opacity: 0.9 }).addTo(pathGrp.current);
@@ -508,6 +543,8 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
         setOsmForests(detectedData.forests || []);
         setOsmFarmland(detectedData.farmlands || []);
         setOsmBuildings(detectedData.symbols.filter(s => s.symbol_type === 'pucca_house' || s.symbol_type === 'kutcha_house' || s.symbol_type === 'apartment' || s.symbol_type === 'non_residential'));
+        // Feed OSM roads to engine for auto-snap
+        if (engineRef.current) engineRef.current.setOsmRoads(roads);
       }
     } catch (err) {
       console.warn('Background OSM fetch failed, continuing without overlay:', err);
@@ -597,6 +634,8 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
           setOsmForests(detectedData.forests || []);
           setOsmFarmland(detectedData.farmlands || []);
           setOsmBuildings(detectedData.symbols.filter(s => s.symbol_type === 'pucca_house' || s.symbol_type === 'kutcha_house' || s.symbol_type === 'apartment' || s.symbol_type === 'non_residential'));
+          // Feed OSM roads to engine for auto-snap
+          if (engineRef.current) engineRef.current.setOsmRoads(roads);
           clearInterval(tileTimer);
           setDlProgress({ tiles: 100, roads: 100, features: 100, gps: 100 });
           setTimeout(() => { if (!cancelled) setPhase('READY'); }, 500);
@@ -1023,7 +1062,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
       </div>
 
       {/* ROAD TYPE BAR */}
-      {phase !== 'REVIEWING' && (
+      {phase === 'RECORDING' && (
         <div className="h-[48px] w-full bg-[rgba(26,18,8,0.9)] flex items-center px-2 gap-1 overflow-x-auto hide-scrollbar z-[1001] flex-shrink-0">
           {[{ id: 'residential', l: 'मुख्य सड़क' }, { id: 'tertiary', l: 'गली' }, { id: 'track', l: 'कच्चा रास्ता' }, { id: 'footway', l: 'पगडंडी' }].map(rt => (
             <button key={rt.id} onClick={() => handleRoadTypeChange(rt.id)}
@@ -1070,6 +1109,13 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
         </div>
       )}
 
+      {/* OSM SNAP TOAST */}
+      {osmToast && (
+        <div className="absolute top-[105px] left-1/2 -translate-x-1/2 bg-[rgba(0,0,0,0.8)] text-white text-xs font-bold py-2 px-4 rounded-full z-[2000] shadow-lg whitespace-nowrap" style={{ animation: 'fadeIn 0.3s ease' }}>
+          {osmToast}
+        </div>
+      )}
+
       {/* MAP */}
       <div className="flex-1 relative">
         <div ref={containerRef} className="absolute inset-0" style={{ background: '#FAF6F0' }} />
@@ -1091,8 +1137,8 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
         {phase === 'PAUSED' && <div className="absolute inset-0 bg-[rgba(26,18,8,0.5)] z-[900] pointer-events-none" />}
       </div>
 
-      {/* PLACEMENT BAR (recording) */}
-      {phase !== 'REVIEWING' && (
+      {/* PLACEMENT BAR (recording only) */}
+      {phase === 'RECORDING' && (
         <div className="bg-white flex flex-col shadow-[var(--shadow-warm-2)] z-[1001] flex-shrink-0">
           <div className="h-[76px] w-full flex items-stretch divide-x divide-gray-100">
             <button onClick={() => handlePlace('left')} className="flex-1 flex flex-col items-center justify-center bg-orange-50/50 active:bg-orange-100 transition-colors min-w-[44px]">
@@ -1121,41 +1167,49 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
 
       {/* BOTTOM STRIP (recording) */}
       {phase === 'RECORDING' && (
-        <div className="h-[44px] w-full bg-[var(--color-warm-ink)] flex items-center justify-between px-3 z-[1001] flex-shrink-0">
+        <div className="h-[52px] w-full bg-[var(--color-warm-ink)] flex items-center justify-between px-3 z-[1001] flex-shrink-0">
           <button onClick={handleUndo} className="text-gray-300 text-xs font-semibold min-w-[44px] min-h-[44px] flex items-center">↩ Undo</button>
+          <button onClick={handleSaveAsDraft} className="text-green-400 text-xs font-bold min-w-[44px] min-h-[44px] flex items-center">💾 Save</button>
           <span className="text-[10px] font-jetbrains text-gray-500">ID: {engineRef.current?.sessionId?.substr(0, 8)}</span>
           <button onClick={() => setShowEndConfirm(true)} className="text-[var(--color-saffron)] text-xs font-bold min-w-[44px] min-h-[44px] flex items-center justify-end">End ↑</button>
         </div>
       )}
 
-      {/* PAUSED PANEL */}
+      {/* PAUSED PANEL — fixed to viewport bottom for mobile visibility */}
       {phase === 'PAUSED' && (
-        <div className="bg-[var(--color-warm-paper)] p-4 flex flex-col gap-3 z-[1001] flex-shrink-0 shadow-[var(--shadow-warm-2)]">
-          <p className="text-center font-bold text-amber-600 text-sm">⏸ Survey रुकी हुई है</p>
-          <button onClick={handleResume} className="w-full min-h-[52px] bg-[var(--color-saffron)] text-white rounded-full font-bold text-base font-baloo active:scale-95">▶ जारी रखें</button>
-          <button onClick={handleSaveAsDraft} className="w-full min-h-[52px] bg-white text-[var(--color-india-green)] border border-[var(--color-india-green)] rounded-full font-bold text-sm active:bg-green-50">💾 Save as Draft & Exit</button>
-          <button onClick={() => setShowEndConfirm(true)} className="w-full min-h-[44px] bg-white text-red-500 border border-red-200 rounded-full font-bold text-sm active:bg-red-50">End Survey</button>
-        </div>
-      )}
-
-      {/* REVIEWING PANEL */}
-      {phase === 'REVIEWING' && (
-        <div className="bg-white rounded-t-[24px] shadow-[var(--shadow-warm-2)] p-4 flex flex-col gap-3 z-[1001] flex-shrink-0 max-h-[50vh] overflow-y-auto">
-          <div className="flex justify-center mb-1"><div className="w-12 h-1.5 bg-gray-200 rounded-full" /></div>
-          <h2 className="font-baloo text-xl font-bold text-[var(--color-india-green)] text-center">✓ Survey Complete!</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xl font-bold">{stats.houses}</p><p className="text-xs text-gray-500">Houses marked</p></div>
-            <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xl font-bold">{(stats.distance / 1000).toFixed(2)}km</p><p className="text-xs text-gray-500">Distance walked</p></div>
+        <>
+          <div className="fixed inset-0 bg-black/40 z-[2999]" onClick={handleResume} />
+          <div className="fixed bottom-0 left-0 right-0 bg-[var(--color-warm-paper)] p-5 rounded-t-[24px] flex flex-col gap-3 z-[3000] shadow-[0_-4px_20px_rgba(0,0,0,0.25)]" style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
+            <div className="flex justify-center mb-1"><div className="w-12 h-1.5 bg-gray-300 rounded-full" /></div>
+            <p className="text-center font-bold text-amber-600 text-sm">⏸ Survey रुकी हुई है</p>
+            <button onClick={handleResume} className="w-full min-h-[52px] bg-[var(--color-saffron)] text-white rounded-full font-bold text-base font-baloo active:scale-95">▶ जारी रखें</button>
+            <button onClick={handleSaveAsDraft} className="w-full min-h-[52px] bg-white text-[var(--color-india-green)] border border-[var(--color-india-green)] rounded-full font-bold text-sm active:bg-green-50">💾 Save as Draft & Exit</button>
+            <button onClick={() => setShowEndConfirm(true)} className="w-full min-h-[44px] bg-white text-red-500 border border-red-200 rounded-full font-bold text-sm active:bg-red-50">End Survey</button>
           </div>
-          <p className="text-xs text-gray-500 text-center">Tap any house on the map to edit its number</p>
-          <button onClick={onExit} className="w-full min-h-[52px] bg-[var(--color-india-green)] text-white rounded-full font-bold text-lg font-baloo active:scale-95">✓ Generate Map</button>
-        </div>
+        </>
       )}
 
-      {/* END CONFIRM SHEET */}
+      {/* REVIEWING PANEL — fixed to viewport bottom for mobile visibility */}
+      {phase === 'REVIEWING' && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-[2999]" />
+          <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-[24px] shadow-[0_-4px_20px_rgba(0,0,0,0.25)] p-5 flex flex-col gap-3 z-[3000] max-h-[55vh] overflow-y-auto" style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
+            <div className="flex justify-center mb-1"><div className="w-12 h-1.5 bg-gray-200 rounded-full" /></div>
+            <h2 className="font-baloo text-xl font-bold text-[var(--color-india-green)] text-center">✓ Survey Complete!</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xl font-bold">{stats.houses}</p><p className="text-xs text-gray-500">Houses marked</p></div>
+              <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xl font-bold">{(stats.distance / 1000).toFixed(2)}km</p><p className="text-xs text-gray-500">Distance walked</p></div>
+            </div>
+            <p className="text-xs text-gray-500 text-center">Tap any house on the map to edit its number</p>
+            <button onClick={onExit} className="w-full min-h-[52px] bg-[var(--color-india-green)] text-white rounded-full font-bold text-lg font-baloo active:scale-95">✓ Generate Map</button>
+          </div>
+        </>
+      )}
+
+      {/* END CONFIRM SHEET — fixed to viewport bottom */}
       {showEndConfirm && (
-        <div className="absolute inset-0 bg-black/60 z-[3000] flex items-end">
-          <div className="bg-white w-full rounded-t-[24px] p-5 shadow-[var(--shadow-warm-2)]">
+        <div className="fixed inset-0 bg-black/60 z-[4000] flex items-end">
+          <div className="bg-white w-full rounded-t-[24px] p-5 shadow-[0_-4px_20px_rgba(0,0,0,0.25)]" style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
             <h3 className="font-baloo text-xl font-bold text-[var(--color-charcoal)] mb-4">Survey समाप्त करें?</h3>
             <div className="grid grid-cols-2 gap-2 mb-5">
               <div className="bg-gray-50 p-2 rounded-lg text-center"><p className="font-bold text-lg">{stats.houses}</p><p className="text-xs text-gray-500">Houses</p></div>
@@ -1165,6 +1219,36 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
               <button onClick={finishSurvey} className="w-full min-h-[52px] bg-[var(--color-india-green)] text-white rounded-full font-bold">हाँ, Survey समाप्त करें</button>
               <button onClick={handleSaveAsDraft} className="w-full min-h-[44px] bg-white text-[var(--color-india-green)] border border-[var(--color-india-green)] rounded-full font-bold text-sm">💾 Save as Draft</button>
               <button onClick={() => setShowEndConfirm(false)} className="w-full min-h-[44px] bg-white border border-gray-200 rounded-full font-bold text-gray-600 text-sm">वापस जाएं</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RETURN PATH DETECTION DIALOG */}
+      {returnDialog && (
+        <div className="fixed inset-0 bg-black/60 z-[5000] flex items-end">
+          <div className="bg-white w-full rounded-t-[24px] p-5 shadow-[0_-4px_20px_rgba(0,0,0,0.25)]" style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
+            <h3 className="font-baloo text-xl font-bold text-[var(--color-charcoal)] mb-2">↩ क्या आप वापस आ रहे हैं?</h3>
+            <p className="text-sm text-gray-600 mb-4">It looks like you're walking back on a road you've already mapped</p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => { setReturnDialog(false); setReturnModeState('two_lane'); engineRef.current?.setReturnMode('two_lane'); }}
+                className="w-full min-h-[52px] bg-[var(--color-saffron)] text-white rounded-full font-bold active:scale-95"
+              >
+                🛣️ Two-Lane Road (mark other side)
+              </button>
+              <button
+                onClick={() => { setReturnDialog(false); setReturnModeState('follow_back'); engineRef.current?.setReturnMode('follow_back'); }}
+                className="w-full min-h-[52px] bg-white text-[var(--color-india-green)] border border-[var(--color-india-green)] rounded-full font-bold active:scale-95"
+              >
+                ↩ Same Road (only mark houses)
+              </button>
+              <button
+                onClick={() => { setReturnDialog(false); if (engineRef.current) engineRef.current.returnDetectedFlag = false; }}
+                className="w-full min-h-[44px] bg-white border border-gray-200 rounded-full font-bold text-gray-600 text-sm"
+              >
+                Continue mapping normally
+              </button>
             </div>
           </div>
         </div>

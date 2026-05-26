@@ -39,6 +39,15 @@ export class LiveSurveyEngine {
   wakeLock: any = null;
   listeners: { [event: string]: Function[] } = {};
 
+  // OSM road snap integration
+  osmRoadLines: { coords: {lat: number, lng: number}[], highway: string, name?: string }[] = [];
+  onOsmRoad = false;
+  currentOsmRoad: { highway: string, name?: string } | null = null;
+
+  // Return path detection
+  returnDetectedFlag = false;
+  returnMode: 'none' | 'two_lane' | 'follow_back' = 'none';
+
   constructor(blockPolygon: any, supabaseClient: any, idbService: typeof idbStore) {
     this.blockPolygon = blockPolygon;
     this.supabase = supabaseClient;
@@ -74,7 +83,7 @@ export class LiveSurveyEngine {
       err => this.handleGPSError(err),
       {
         enableHighAccuracy: true,
-        maximumAge: 0,
+        maximumAge: 2000,
         timeout: 10000
       }
     );
@@ -161,8 +170,6 @@ export class LiveSurveyEngine {
   }
 
   handlePosition(pos: GeolocationPosition) {
-    if (this.state !== 'RECORDING') return;
-    
     const raw: SurveyPoint = {
       point_id: crypto.randomUUID(),
       session_id: this.sessionId,
@@ -173,63 +180,97 @@ export class LiveSurveyEngine {
       heading: pos.coords.heading,
       timestamp: pos.timestamp
     };
-    
-    if (raw.accuracy > 30) return; // Ignore very inaccurate GPS fixes
 
-    if (raw.speed > 4.2) { 
+    const smoothed = this.kalmanFilter(raw);
+
+    // Always update bearing buffer for compass
+    this.bearingBuffer.push(smoothed);
+    if (this.bearingBuffer.length > 5) this.bearingBuffer.shift();
+
+    // Always check boundary
+    const pt = turf.point([smoothed.lng, smoothed.lat]);
+    let inside = true;
+    if (this.blockPolygon?.geometry) {
+      try {
+        const poly = turf.polygon(this.blockPolygon.geometry.coordinates);
+        inside = turf.booleanPointInPolygon(pt, poly);
+      } catch (e) { /* ignore */ }
+    }
+
+    let isPathPoint = false;
+    let emitPosition: SurveyPoint = smoothed;
+
+    // Vehicle detection (OS-reported speed)
+    if (raw.speed > 4.2 && this.state === 'RECORDING') {
       this.handleVehicleDetected();
       return;
     }
-    
-    const smoothed = this.kalmanFilter(raw);
-    
-    if (this.smoothedPath.length > 0) {
-      const last = this.smoothedPath[this.smoothedPath.length - 1];
-      const dist = haversineDistance(last.lat, last.lng, smoothed.lat, smoothed.lng);
-      
-      const timeDiffSec = (raw.timestamp - last.timestamp) / 1000;
-      const realSpeed = timeDiffSec > 0 ? (dist / timeDiffSec) : 0;
-      
-      // If sudden jump implies impossible running speed but OS didn't flag speed, it's a glitch bounce
-      if (realSpeed > 4.2) return;
-      
-      // Ignore tiny movements (< 2m) to prevent wandering while sitting
-      if (dist < 2) return; 
+
+    const canRecord = this.state === 'RECORDING' && this.returnMode !== 'follow_back';
+    const passesQuality = raw.accuracy <= 50;
+
+    if (canRecord && passesQuality) {
+      let addToPath = true;
+
+      if (this.smoothedPath.length > 0) {
+        const last = this.smoothedPath[this.smoothedPath.length - 1];
+        const dist = haversineDistance(last.lat, last.lng, smoothed.lat, smoothed.lng);
+        // Reduced from 2m → 0.8m so path keeps up with walking pace
+        if (dist < 0.8) addToPath = false;
+      }
+
+      if (addToPath) {
+        let finalPoint: SurveyPoint = { ...smoothed };
+
+        // OSM road proximity check & snap
+        if (this.osmRoadLines.length > 0) {
+          const osmCheck = this.checkOsmRoadProximity(smoothed);
+          if (osmCheck.onRoad) {
+            if (!this.onOsmRoad) {
+              this.onOsmRoad = true;
+              this.currentOsmRoad = osmCheck.road;
+              this.emit('osmRoadEntered', { road: osmCheck.road });
+            }
+            if (osmCheck.snappedPoint) {
+              finalPoint = { ...finalPoint, lat: osmCheck.snappedPoint.lat, lng: osmCheck.snappedPoint.lng };
+            }
+          } else if (this.onOsmRoad) {
+            this.onOsmRoad = false;
+            this.currentOsmRoad = null;
+            this.emit('osmRoadLeft');
+          }
+        }
+
+        this.rawPoints.push(raw);
+        this.smoothedPath.push(finalPoint);
+        this.currentSegment.points.push(finalPoint);
+        isPathPoint = true;
+        emitPosition = finalPoint;
+
+        // Return path detection (after walking enough)
+        if (!this.returnDetectedFlag && this.roadSegments.length > 0 && this.smoothedPath.length > 30) {
+          const b = this.getSmoothedBearing();
+          if (this.checkReturnPath(finalPoint, b)) {
+            this.returnDetectedFlag = true;
+            this.emit('returnDetected');
+          }
+        }
+
+        if (this.smoothedPath.length % 20 === 0) {
+          this.saveToIDB();
+        }
+      }
     }
-    
-    this.rawPoints.push(raw);
-    this.smoothedPath.push(smoothed);
-    this.currentSegment.points.push(smoothed);
-    
-    this.bearingBuffer.push(smoothed);
-    if (this.bearingBuffer.length > 5) {
-      this.bearingBuffer.shift();
-    }
-    
-    // Ensure boundary exists before checking
-    const pt = turf.point([smoothed.lng, smoothed.lat]);
-    let inside = true;
-    if (this.blockPolygon && this.blockPolygon.geometry) {
-       // Convert to valid turf polygon if needed
-       try {
-         const poly = turf.polygon(this.blockPolygon.geometry.coordinates);
-         inside = turf.booleanPointInPolygon(pt, poly);
-       } catch (e) {
-         // ignore
-       }
-    }
-    
-    this.emit('positionUpdate', { 
-      position: smoothed, 
+
+    // Single emit per GPS fix — always updates marker, conditionally updates path
+    this.emit('positionUpdate', {
+      position: emitPosition,
       accuracy: raw.accuracy,
       insideBoundary: inside,
+      bearing: this.getSmoothedBearing(),
       pathLength: this.smoothedPath.length,
-      bearing: this.getSmoothedBearing()
+      isPathPoint
     });
-    
-    if (this.smoothedPath.length % 20 === 0) {
-      this.saveToIDB();
-    }
   }
 
   getSmoothedBearing() {
@@ -240,6 +281,68 @@ export class LiveSurveyEngine {
       turf.point([first.lng, first.lat]),
       turf.point([last.lng, last.lat])
     );
+  }
+
+  // ── OSM Road Snap Integration ─────────────────────────────
+  setOsmRoads(roads: { coords: {lat: number, lng: number}[], highway: string, name?: string }[]) {
+    this.osmRoadLines = roads;
+  }
+
+  checkOsmRoadProximity(point: {lat: number, lng: number}): { onRoad: boolean, road?: any, snappedPoint?: {lat: number, lng: number} } {
+    const SNAP_ENTER = 8;   // meters to enter road
+    const SNAP_LEAVE = 15;  // meters to leave (hysteresis)
+    const threshold = this.onOsmRoad ? SNAP_LEAVE : SNAP_ENTER;
+    const margin = 0.0002;  // ~22m bbox pre-filter
+
+    let closestDist = Infinity;
+    let closestRoad: any = null;
+    let closestSnapped: {lat: number, lng: number} | null = null;
+
+    for (const road of this.osmRoadLines) {
+      if (!road.coords || road.coords.length < 2) continue;
+      // Quick bounding-box pre-filter to avoid expensive turf calls
+      const hasNearby = road.coords.some(c =>
+        Math.abs(c.lat - point.lat) < margin && Math.abs(c.lng - point.lng) < margin
+      );
+      if (!hasNearby) continue;
+      try {
+        const line = turf.lineString(road.coords.map(c => [c.lng, c.lat]));
+        const pt = turf.point([point.lng, point.lat]);
+        const nearest = turf.nearestPointOnLine(line, pt);
+        const distM = (nearest.properties.dist || 0) * 1000;
+        if (distM < closestDist) {
+          closestDist = distM;
+          closestRoad = road;
+          closestSnapped = { lat: nearest.geometry.coordinates[1], lng: nearest.geometry.coordinates[0] };
+        }
+      } catch (e) { /* ignore bad geometries */ }
+    }
+
+    return closestDist < threshold
+      ? { onRoad: true, road: closestRoad, snappedPoint: closestSnapped! }
+      : { onRoad: false };
+  }
+
+  // ── Return Path Detection ─────────────────────────────────
+  checkReturnPath(point: {lat: number, lng: number}, currentBearing: number): boolean {
+    for (const seg of this.roadSegments) {
+      for (let i = 0; i < seg.points.length - 1; i++) {
+        const p = seg.points[i];
+        const dist = haversineDistance(point.lat, point.lng, p.lat, p.lng);
+        if (dist < 5) {
+          const next = seg.points[i + 1];
+          const segBearing = turf.bearing(turf.point([p.lng, p.lat]), turf.point([next.lng, next.lat]));
+          const diff = Math.abs(currentBearing - segBearing);
+          const normalized = diff > 180 ? 360 - diff : diff;
+          if (normalized > 150) return true; // opposite direction ≈ returning
+        }
+      }
+    }
+    return false;
+  }
+
+  setReturnMode(mode: 'none' | 'two_lane' | 'follow_back') {
+    this.returnMode = mode;
   }
 
   placeSymbol(symbolType: string, direction: 'left'|'center'|'right' = 'center', fallbackPos?: { lat: number, lng: number }) {

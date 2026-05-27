@@ -25,6 +25,29 @@ export default function FaqPage() {
       <Helmet>
         <title>Census 2027 FAQ | What is HLB & Nazari Naksha Rules</title>
         <meta name="description" content="Answers to common questions about Nazari Naksha, HLB numbers, assignment SMS, and map drawing rules for Census 2027 enumerators." />
+        <link rel="canonical" href="https://examsetu.dev/faq" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://examsetu.dev/faq" />
+        <meta property="og:title" content="Census 2027 FAQ | What is HLB & Nazari Naksha Rules" />
+        <meta property="og:description" content="Answers to common questions about Nazari Naksha, HLB numbers, HLO phase, census map symbols, and how to use NakshaBot for Census 2027." />
+        <meta property="og:image" content="https://examsetu.dev/logo.png" />
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:title" content="Census 2027 FAQ | What is HLB & Nazari Naksha Rules" />
+        <meta property="twitter:description" content="Answers to common questions about Nazari Naksha, HLB, and Census 2027 map making." />
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": faqs.map((faq) => ({
+              "@type": "Question",
+              "name": faq.q,
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": faq.a
+              }
+            }))
+          })}
+        </script>
       </Helmet>
 
       {/* Navigation */}

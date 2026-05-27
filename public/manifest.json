@@ -1,0 +1,22 @@
+{
+  "short_name": "NakshaBot",
+  "name": "NakshaBot — Census 2027 HLO Map Maker",
+  "description": "Digitize your Nazari Naksha and HLB layout maps for Census 2027 using AI and Satellite data.",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "theme_color": "#f97316",
+  "orientation": "any"
+}

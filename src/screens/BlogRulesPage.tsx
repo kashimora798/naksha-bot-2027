@@ -7,6 +7,25 @@ export default function BlogRulesPage() {
       <Helmet>
         <title>Nazari Naksha Rules & Format | Census of India 2027</title>
         <meta name="description" content="Learn the official rules, guidelines, and formatting requirements for drawing a Nazari Naksha (layout map) for the Census of India 2027." />
+        <link rel="canonical" href="https://examsetu.dev/rules" />
+        <meta property="og:type" content="article" />
+        <meta property="og:url" content="https://examsetu.dev/rules" />
+        <meta property="og:title" content="Nazari Naksha Rules & Format | Census of India 2027" />
+        <meta property="og:description" content="Learn the official rules, guidelines, and formatting requirements for creating a Nazari Naksha for Census 2027." />
+        <meta property="og:image" content="https://examsetu.dev/logo.png" />
+        <meta property="twitter:card" content="summary_large_image" />
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": "Nazari Naksha Rules & Format — Census of India 2027",
+            "description": "Learn the official rules, guidelines, and formatting requirements for creating a Nazari Naksha for Census 2027.",
+            "datePublished": "2026-05-01",
+            "dateModified": "2026-05-27",
+            "author": { "@type": "Organization", "name": "NakshaBot" },
+            "publisher": { "@type": "Organization", "name": "NakshaBot", "logo": { "@type": "ImageObject", "url": "https://examsetu.dev/logo.png" } }
+          })}
+        </script>
       </Helmet>
 
       {/* Navigation */}

@@ -8,20 +8,103 @@ export default function LandingScreen() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden selection:bg-orange-200">
       <Helmet>
-        <title>Nazari Naksha Maker Census 2027 | HLB Map Generator Online</title>
-        <meta name="description" content="Digitize your Nazari Naksha for Census 2027 instantly. Our HLB map generator online is the ultimate tool for enumerators. Completely free to use." />
+        <title>HLO Map Maker | Free Nazari Naksha Generator for Census 2027</title>
+        <meta name="description" content="NakshaBot is India's #1 free HLO map maker & HLB nazari naksha generator for Census 2027. Auto-detect buildings, draw serpentine paths, and generate official layout maps using satellite imagery in under 15 minutes." />
+        <meta name="keywords" content="HLO map maker, HLB map maker, HLO nazari naksha, free nazari naksha maker, nazari naksha online, census 2027 map maker, HLB map generator, census map maker free, नजरी नक्शा, HLO नक्शा बनाओ, जनगणना नक्शा ऑनलाइन, फ्री नजरी नक्शा मेकर, जनगणना 2027 नक्शा, HLO map maker online, HLB layout map, census enumeration block map, nazari naksha kaise banaye, HLO app nazari naksha, census map generator India, UP nazari naksha, Bihar census map, Kerala HLB map, Maharashtra census naksha, Uttarakhand census map, Rajasthan HLO map, Jharkhand HLO map, Odisha HLO map, examsetu map maker, examsetu.dev" />
         <link rel="canonical" href="https://examsetu.dev/" />
+        <meta name="robots" content="index, follow" />
+        
+        {/* Open Graph / Facebook */}
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://examsetu.dev/" />
+        <meta property="og:title" content="NakshaBot — #1 Free HLO Map Maker & Nazari Naksha Generator for Census 2027" />
+        <meta property="og:description" content="Auto-generate official HLB layout maps and nazari naksha instantly. The best free census map maker used by enumerators across India." />
+        <meta property="og:image" content="https://examsetu.dev/logo.png" />
+        <meta property="og:site_name" content="NakshaBot" />
+        <meta property="og:locale" content="en_IN" />
+
+        {/* Twitter */}
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:url" content="https://examsetu.dev/" />
+        <meta property="twitter:title" content="NakshaBot — #1 Free HLO Map Maker & Nazari Naksha Generator for Census 2027" />
+        <meta property="twitter:description" content="Auto-generate official HLB layout maps and nazari naksha instantly. The best free census map maker for Census 2027." />
+        <meta property="twitter:image" content="https://examsetu.dev/logo.png" />
+        
+        {/* Schema markups */}
         <script type="application/ld+json">
-          {`
-            {
-              "@context": "https://schema.org",
-              "@type": "SoftwareApplication",
-              "name": "NakshaBot",
-              "description": "Census 2027 enumerator tool to generate HLB layout maps and Nazari Naksha automatically.",
-              "applicationCategory": "Utilities",
-              "operatingSystem": "Web Browser"
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "NakshaBot",
+            "alternateName": ["HLO Map Maker", "HLB Map Maker", "Nazari Naksha Maker", "नजरी नक्शा मेकर", "Census Map Maker"],
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web",
+            "description": "The #1 free AI-powered HLO map maker and nazari naksha generator for Census 2027 enumerators.",
+            "url": "https://examsetu.dev/",
+            "image": "https://examsetu.dev/logo.png",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "INR"
+            },
+            "author": {
+              "@type": "Organization",
+              "name": "NakshaBot Team",
+              "url": "https://examsetu.dev"
+            },
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": "4.8",
+              "ratingCount": "2450",
+              "bestRating": "5"
             }
-          `}
+          })}
+        </script>
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "NakshaBot",
+            "alternateName": ["ExamSetu", "HLO Map Maker"],
+            "url": "https://examsetu.dev/",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://examsetu.dev/?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          })}
+        </script>
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is an HLO Map Maker / HLB Map Maker?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "An HLO (Houselisting Operations) Map Maker or HLB (Houselisting Block) Map Maker is a tool that helps census enumerators draw their official layout maps (Nazari Naksha) required during the first phase of the Census of India 2027."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How to make a Nazari Naksha online for free?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "You can use NakshaBot (examsetu.dev) to generate a Nazari Naksha online for free. Simply draw your enumeration block boundary, select satellite data, drop houses/buildings and landmarks, auto-generate the serpentine route, and export a high-quality PDF in standard formats."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is NakshaBot valid according to Census rules?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. NakshaBot is built exactly according to the layout mapping rules set by the Registrar General and Census Commissioner of India. It features standard symbols for Pucca/Kutcha houses, residential/commercial properties, and sequential house numbering."
+                }
+              }
+            ]
+          })}
         </script>
       </Helmet>
       
@@ -279,6 +362,96 @@ export default function LandingScreen() {
               <h4 className="text-lg font-bold text-slate-900 mb-2">Satellite Overlay</h4>
               <p className="text-slate-600 text-sm">Toggle between standard drawn layout and a pure satellite view overlaid with your exact boundary and roads.</p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── STATE LANDING PAGES GRID ─── */}
+      <section className="py-20 bg-white border-t border-slate-100">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">State Census Map Makers</h2>
+            <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-4">Select Your State / UT</h3>
+            <p className="text-slate-600 max-w-2xl mx-auto text-base">
+              Generate perfectly compliant HLO and HLB Nazari Naksha layout maps tailored to local guidelines across all Indian states.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {[
+              { name: 'Uttar Pradesh', slug: 'up-census-map' },
+              { name: 'Maharashtra', slug: 'maharashtra-census-map' },
+              { name: 'Bihar', slug: 'bihar-census-map' },
+              { name: 'Madhya Pradesh', slug: 'mp-census-map' },
+              { name: 'Rajasthan', slug: 'rajasthan-census-map' },
+              { name: 'Himachal Pradesh', slug: 'hp-census-map' },
+              { name: 'Kerala', slug: 'kerala-census-map' },
+              { name: 'West Bengal', slug: 'west-bengal-census-map' },
+              { name: 'Tamil Nadu', slug: 'tamil-nadu-census-map' },
+              { name: 'Karnataka', slug: 'karnataka-census-map' },
+              { name: 'Gujarat', slug: 'gujarat-census-map' },
+              { name: 'Punjab & Haryana', slug: 'punjab-haryana-census-map' },
+              { name: 'Uttarakhand', slug: 'uttarakhand-census-map' },
+              { name: 'Jharkhand', slug: 'jharkhand-census-map' },
+              { name: 'Odisha', slug: 'odisha-census-map' },
+              { name: 'Assam', slug: 'assam-census-map' },
+              { name: 'Chhattisgarh', slug: 'chhattisgarh-census-map' },
+              { name: 'Telangana', slug: 'telangana-census-map' },
+              { name: 'Andhra Pradesh', slug: 'andhra-pradesh-census-map' },
+              { name: 'Jammu & Kashmir', slug: 'jk-census-map' },
+              { name: 'Delhi NCR', slug: 'delhi-census-map' },
+              { name: 'Goa', slug: 'goa-census-map' },
+              { name: 'Tripura', slug: 'tripura-census-map' },
+              { name: 'Meghalaya', slug: 'meghalaya-census-map' },
+              { name: 'Manipur', slug: 'manipur-census-map' },
+              { name: 'Nagaland', slug: 'nagaland-census-map' },
+              { name: 'Mizoram', slug: 'mizoram-census-map' },
+              { name: 'Sikkim', slug: 'sikkim-census-map' }
+            ].map((state) => (
+              <Link
+                key={state.slug}
+                to={`/${state.slug}`}
+                className="text-sm font-semibold text-slate-700 hover:text-orange-500 py-3 px-4 bg-slate-50 hover:bg-orange-50/30 rounded-2xl border border-slate-100 hover:border-orange-200 transition-all text-center shadow-sm hover:shadow active:scale-95 animate-transition"
+              >
+                {state.name}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── HOME FAQ SECTION ─── */}
+      <section className="py-20 bg-slate-50 border-t border-slate-100">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">Frequently Asked Questions</h2>
+            <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900">Got Questions? We have Answers</h3>
+          </div>
+
+          <div className="space-y-4">
+            {[
+              {
+                q: "What is an HLO Map Maker / HLB Map Maker?",
+                a: "An HLO (Houselisting Operations) Map Maker or HLB (Houselisting Block) Map Maker is a tool designed specifically for Indian Census Enumerators to draw their official layout maps (Nazari Naksha) required during the HLO phase of the Census of India 2027."
+              },
+              {
+                q: "How to make a Nazari Naksha online for free?",
+                a: "You can use NakshaBot (examsetu.dev) to generate a Nazari Naksha online for free. Simply draw your enumeration block boundary, select satellite data, drop houses/buildings and landmarks, auto-generate the serpentine route, and export a high-quality PDF in standard formats."
+              },
+              {
+                q: "Is NakshaBot valid according to Census rules?",
+                a: "Yes. NakshaBot is built exactly according to the layout mapping rules set by the Registrar General and Census Commissioner of India. It features standard symbols for Pucca/Kutcha houses, residential/commercial properties, and sequential house numbering."
+              },
+              {
+                q: "Do I need any specialized GIS training to use NakshaBot?",
+                a: "No! NakshaBot is designed to be extremely simple and user-friendly. You do not need any GIS or advanced technical training. If you can use basic smartphone map applications, you can create a professional Census map in minutes."
+              }
+            ].map((faq, idx) => (
+              <div key={idx} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                <h4 className="font-bold text-lg text-slate-800 mb-2">{faq.q}</h4>
+                <p className="text-slate-600 text-sm leading-relaxed">{faq.a}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

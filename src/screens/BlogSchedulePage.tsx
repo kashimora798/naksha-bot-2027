@@ -7,6 +7,25 @@ export default function BlogSchedulePage() {
       <Helmet>
         <title>Census 2027 HLO Phase Schedule | State Wise Dates</title>
         <meta name="description" content="View the complete schedule and dates for the Census 2027 Houselisting and Housing Census (HLO) phase across all Indian states." />
+        <link rel="canonical" href="https://examsetu.dev/schedule" />
+        <meta property="og:type" content="article" />
+        <meta property="og:url" content="https://examsetu.dev/schedule" />
+        <meta property="og:title" content="Census 2027 HLO Phase Schedule | State Wise Dates" />
+        <meta property="og:description" content="View the complete schedule and dates for the Census 2027 HLO phase across all Indian states." />
+        <meta property="og:image" content="https://examsetu.dev/logo.png" />
+        <meta property="twitter:card" content="summary_large_image" />
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": "Census 2027 HLO Phase Schedule — State Wise Dates",
+            "description": "View the complete schedule and dates for the Census 2027 HLO phase across all Indian states.",
+            "datePublished": "2026-05-01",
+            "dateModified": "2026-05-27",
+            "author": { "@type": "Organization", "name": "NakshaBot" },
+            "publisher": { "@type": "Organization", "name": "NakshaBot", "logo": { "@type": "ImageObject", "url": "https://examsetu.dev/logo.png" } }
+          })}
+        </script>
       </Helmet>
 
       {/* Navigation */}

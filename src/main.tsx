@@ -45,6 +45,22 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/karnataka-census-map" element={<StateLandingPage stateKey="KA" />} />
           <Route path="/gujarat-census-map" element={<StateLandingPage stateKey="GJ" />} />
           <Route path="/punjab-haryana-census-map" element={<StateLandingPage stateKey="PBHR" />} />
+          <Route path="/uttarakhand-census-map" element={<StateLandingPage stateKey="UK" />} />
+          <Route path="/jharkhand-census-map" element={<StateLandingPage stateKey="JH" />} />
+          <Route path="/odisha-census-map" element={<StateLandingPage stateKey="OD" />} />
+          <Route path="/assam-census-map" element={<StateLandingPage stateKey="AS" />} />
+          <Route path="/chhattisgarh-census-map" element={<StateLandingPage stateKey="CG" />} />
+          <Route path="/telangana-census-map" element={<StateLandingPage stateKey="TS" />} />
+          <Route path="/andhra-pradesh-census-map" element={<StateLandingPage stateKey="AP" />} />
+          <Route path="/jk-census-map" element={<StateLandingPage stateKey="JK" />} />
+          <Route path="/delhi-census-map" element={<StateLandingPage stateKey="DL" />} />
+          <Route path="/goa-census-map" element={<StateLandingPage stateKey="GA" />} />
+          <Route path="/tripura-census-map" element={<StateLandingPage stateKey="TR" />} />
+          <Route path="/meghalaya-census-map" element={<StateLandingPage stateKey="ML" />} />
+          <Route path="/manipur-census-map" element={<StateLandingPage stateKey="MN" />} />
+          <Route path="/nagaland-census-map" element={<StateLandingPage stateKey="NL" />} />
+          <Route path="/mizoram-census-map" element={<StateLandingPage stateKey="MZ" />} />
+          <Route path="/sikkim-census-map" element={<StateLandingPage stateKey="SK" />} />
           
           {/* Legacy Routes */}
           <Route path="/terms" element={<TermsScreen />} />

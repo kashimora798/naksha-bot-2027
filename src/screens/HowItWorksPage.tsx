@@ -6,7 +6,48 @@ export default function HowItWorksPage() {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <Helmet>
         <title>How to Make Nazari Naksha | Census 2027 Map Steps</title>
-        <meta name="description" content="Learn how to draw your houselisting block map and generate a Nazari Naksha online for Census 2027 in 3 easy steps." />
+        <meta name="description" content="Learn how to draw your houselisting block map and generate a Nazari Naksha online for Census 2027 in 4 easy steps." />
+        <link rel="canonical" href="https://examsetu.dev/how-it-works" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://examsetu.dev/how-it-works" />
+        <meta property="og:title" content="How to Make Nazari Naksha | Census 2027 Map Steps" />
+        <meta property="og:description" content="Learn how to draw your houselisting block map and generate a Nazari Naksha online for Census 2027 in 4 easy steps." />
+        <meta property="og:image" content="https://examsetu.dev/logo.png" />
+        <meta property="twitter:card" content="summary_large_image" />
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "HowTo",
+            "name": "How to Make a Nazari Naksha for Census 2027",
+            "description": "Learn how to draw your houselisting block map and generate a Nazari Naksha online in 4 easy steps.",
+            "step": [
+              {
+                "@type": "HowToStep",
+                "position": 1,
+                "name": "Paste Your Assignment SMS",
+                "text": "When you are assigned an enumeration block, you receive an official SMS containing the HLB code and GPS coordinates. Simply copy that SMS and paste it into NakshaBot. We automatically extract your location."
+              },
+              {
+                "@type": "HowToStep",
+                "position": 2,
+                "name": "Verify Boundaries & Roads",
+                "text": "We load high-resolution satellite imagery for your block. Click the corners of your block to draw the boundary. NakshaBot will automatically snap to roads and paths, ensuring your map is geographically accurate."
+              },
+              {
+                "@type": "HowToStep",
+                "position": 3,
+                "name": "Auto-Detect Buildings",
+                "text": "Instead of drawing every house manually, use our AI auto-detect feature. It identifies structures within your boundary and drops census numbering pins on them instantly."
+              },
+              {
+                "@type": "HowToStep",
+                "position": 4,
+                "name": "Download & Print",
+                "text": "Once your layout is correct, you can generate the final PDF for free. It comes pre-formatted with the official legend, orientation, and metadata required for Census 2027."
+              }
+            ]
+          })}
+        </script>
       </Helmet>
 
       {/* Navigation */}

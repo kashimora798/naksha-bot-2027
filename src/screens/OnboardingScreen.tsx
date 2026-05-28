@@ -11,12 +11,19 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // Profile data
-  const [fullName, setFullName] = useState(user?.user_metadata?.full_name || '');
-  const [profession, setProfession] = useState('');
-  const [mobile, setMobile] = useState('');
+  // Profile data (initialize from localStorage if available)
+  const [fullName, setFullName] = useState(() => localStorage.getItem('onb_name') || user?.user_metadata?.full_name || '');
+  const [profession, setProfession] = useState(() => localStorage.getItem('onb_prof') || '');
+  const [mobile, setMobile] = useState(() => localStorage.getItem('onb_mobile') || '');
   const [mobileVerified, setMobileVerified] = useState(false);
   const [mobileError, setMobileError] = useState('');
+
+  // Persist to localStorage
+  useEffect(() => {
+    localStorage.setItem('onb_name', fullName);
+    localStorage.setItem('onb_prof', profession);
+    localStorage.setItem('onb_mobile', mobile);
+  }, [fullName, profession, mobile]);
   
   // Truecaller integration
   const APP_KEY = import.meta.env.VITE_TRUECALLER_APP_KEY || ''; // To be filled later
@@ -110,9 +117,15 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
     try {
       const { data, error } = await supabase.from('user_profiles').upsert(profileData).select().single();
       if (error) throw error;
+      localStorage.removeItem('onb_name');
+      localStorage.removeItem('onb_prof');
+      localStorage.removeItem('onb_mobile');
       onComplete(data || profileData);
     } catch (err: any) {
       console.error(err);
+      localStorage.removeItem('onb_name');
+      localStorage.removeItem('onb_prof');
+      localStorage.removeItem('onb_mobile');
       // If table doesn't exist, we just spoof completion to let them in
       onComplete(profileData);
     }

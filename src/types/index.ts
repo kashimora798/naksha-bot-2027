@@ -7,8 +7,45 @@ export type SymbolType =
 
 export interface PlacedSymbol {
   id: string; symbol_type: SymbolType; lat: number; lng: number;
-  number: number | null; placed_at: string; auto_detected?: boolean;
+  number: number | string | null; placed_at: string; auto_detected?: boolean;
   unit_count?: number; label?: string;
+  // ===== SCHEDULE 1 =====
+  col_4_use_type?: number;
+  col_5_occupation?: string;
+  col_6_wall_material?: number;
+  col_7_roof_material?: number;
+  col_8_condition?: number;
+  col_9_family_count?: number;
+  col_10_head_name?: string;
+  col_11_total_rooms?: number;
+  col_12_ownership?: number;
+  
+  // ===== SCHEDULE A =====
+  col_18_water_source?: number;
+  col_18a_water_location?: number;
+  col_19_electricity?: boolean;
+  col_20_latrine?: number;
+  col_21_waste_water?: number;
+  col_22_bathroom?: number;
+  col_23_cooking_fuel?: number;
+  col_24_kitchen?: number;
+  
+  // Assets
+  asset_radio?: boolean;
+  asset_tv?: boolean;
+  asset_computer_internet?: boolean;
+  asset_laptop?: boolean;
+  asset_telephone?: boolean;
+  asset_mobile?: boolean;
+  asset_bicycle?: boolean;
+  asset_scooter_motorcycle?: boolean;
+  asset_car_jeep_van?: boolean;
+  
+  col_34_mobile_number?: string;
+  
+  schedule1_complete?: boolean;
+  schedule_a_complete?: boolean;
+  form_fill_percentage?: number;
 }
 
 export interface RoadFeature {

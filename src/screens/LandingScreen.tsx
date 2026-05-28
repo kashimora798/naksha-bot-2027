@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
+import AiComparison from '../components/AiComparison/AiComparison';
 
 export default function LandingScreen() {
   // Auth buttons will now navigate to /sign-in and /sign-up
@@ -8,27 +9,27 @@ export default function LandingScreen() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden selection:bg-orange-200">
       <Helmet>
-        <title>HLO Map Maker | Free Nazari Naksha Generator for Census 2027</title>
-        <meta name="description" content="NakshaBot is India's #1 free HLO map maker & HLB nazari naksha generator for Census 2027. Auto-detect buildings, draw serpentine paths, and generate official layout maps using satellite imagery in under 15 minutes." />
+        <title>HLB Map Maker Online | Nazri Naksha Generator - NakshaBot</title>
+        <meta name="description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹20 में A4 PDF download करें। HLO ready format।" />
         <meta name="keywords" content="HLO map maker, HLB map maker, HLO nazari naksha, free nazari naksha maker, nazari naksha online, census 2027 map maker, HLB map generator, census map maker free, नजरी नक्शा, HLO नक्शा बनाओ, जनगणना नक्शा ऑनलाइन, फ्री नजरी नक्शा मेकर, जनगणना 2027 नक्शा, HLO map maker online, HLB layout map, census enumeration block map, nazari naksha kaise banaye, HLO app nazari naksha, census map generator India, UP nazari naksha, Bihar census map, Kerala HLB map, Maharashtra census naksha, Uttarakhand census map, Rajasthan HLO map, Jharkhand HLO map, Odisha HLO map, examsetu map maker, examsetu.dev" />
-        <link rel="canonical" href="https://examsetu.dev/" />
+        <link rel="canonical" href="https://nakshabot.in/" />
         <meta name="robots" content="index, follow" />
         
         {/* Open Graph / Facebook */}
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://examsetu.dev/" />
-        <meta property="og:title" content="NakshaBot — #1 Free HLO Map Maker & Nazari Naksha Generator for Census 2027" />
-        <meta property="og:description" content="Auto-generate official HLB layout maps and nazari naksha instantly. The best free census map maker used by enumerators across India." />
-        <meta property="og:image" content="https://examsetu.dev/logo.png" />
+        <meta property="og:url" content="https://nakshabot.in/" />
+        <meta property="og:title" content="HLB Map Maker Online | Nazri Naksha Generator - NakshaBot" />
+        <meta property="og:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹20 में A4 PDF download करें। HLO ready format।" />
+        <meta property="og:image" content="https://nakshabot.in/logo.png" />
         <meta property="og:site_name" content="NakshaBot" />
         <meta property="og:locale" content="en_IN" />
 
         {/* Twitter */}
         <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:url" content="https://examsetu.dev/" />
-        <meta property="twitter:title" content="NakshaBot — #1 Free HLO Map Maker & Nazari Naksha Generator for Census 2027" />
-        <meta property="twitter:description" content="Auto-generate official HLB layout maps and nazari naksha instantly. The best free census map maker for Census 2027." />
-        <meta property="twitter:image" content="https://examsetu.dev/logo.png" />
+        <meta property="twitter:url" content="https://nakshabot.in/" />
+        <meta property="twitter:title" content="HLB Map Maker Online | Nazri Naksha Generator - NakshaBot" />
+        <meta property="twitter:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹20 में A4 PDF download करें। HLO ready format।" />
+        <meta property="twitter:image" content="https://nakshabot.in/logo.png" />
         
         {/* Schema markups */}
         <script type="application/ld+json">
@@ -36,28 +37,16 @@ export default function LandingScreen() {
             "@context": "https://schema.org",
             "@type": "SoftwareApplication",
             "name": "NakshaBot",
-            "alternateName": ["HLO Map Maker", "HLB Map Maker", "Nazari Naksha Maker", "नजरी नक्शा मेकर", "Census Map Maker"],
-            "applicationCategory": "BusinessApplication",
-            "operatingSystem": "Web",
-            "description": "The #1 free AI-powered HLO map maker and nazari naksha generator for Census 2027 enumerators.",
-            "url": "https://examsetu.dev/",
-            "image": "https://examsetu.dev/logo.png",
+            "applicationCategory": "UtilityApplication",
+            "operatingSystem": "Web Browser, Android",
+            "description": "Census 2027 HLB Map Maker and Nazri Naksha Generator for Indian enumerators",
             "offers": {
               "@type": "Offer",
-              "price": "0",
+              "price": "20",
               "priceCurrency": "INR"
             },
-            "author": {
-              "@type": "Organization",
-              "name": "NakshaBot Team",
-              "url": "https://examsetu.dev"
-            },
-            "aggregateRating": {
-              "@type": "AggregateRating",
-              "ratingValue": "4.8",
-              "ratingCount": "2450",
-              "bestRating": "5"
-            }
+            "inLanguage": ["hi", "en"],
+            "keywords": "hlb map maker, nazri naksha, hlo map, census 2027"
           })}
         </script>
         <script type="application/ld+json">
@@ -149,13 +138,12 @@ export default function LandingScreen() {
             </div>
           </div>
           
-          <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight text-slate-900 mb-8 leading-tight font-[Baloo_2]">
-            Digitize your <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-rose-500">Nazari Naksha</span><br />
-            for Census 2027 instantly.
+          <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900 mb-8 leading-tight font-[Baloo_2]">
+            HLB Map Maker — <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-rose-500">Nazri Naksha</span> Online बनाएं Census 2027 के लिए
           </h1>
           
           <p className="text-lg lg:text-xl text-slate-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-            NakshaBot is the ultimate HLB map generator for Census 2027. We overlay high-resolution satellite imagery with OpenStreetMap boundaries, letting you auto-detect buildings and layout blocks without manual drawing. Create your official, perfectly-scaled map in under 15 minutes.
+            NakshaBot भारत का पहला HLB Map Maker tool है जो Census 2027 के प्रगणकों को nazri naksha बनाने में मदद करता है। अपना HLO assignment SMS paste करें, satellite map पर boundary देखें, और printable A4 HLB map PDF download करें — सिर्फ ₹20 में।
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -169,15 +157,18 @@ export default function LandingScreen() {
         </div>
       </section>
 
+      {/* ─── AI COMPARISON SECTION ─── */}
+      <AiComparison />
+
       {/* ─── THE IDEA (THE PROBLEM & SOLUTION) ─── */}
       <section id="idea" className="py-20 bg-white border-y border-slate-100">
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid lg:grid-cols-2 gap-16 items-center mb-24">
             <div>
               <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">The Idea</h2>
-              <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-6">
-                Redefining the Enumeration Process
-              </h3>
+              <h2 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-6">
+                Nazri Naksha क्या होता है?
+              </h2>
               <p className="text-slate-600 text-lg mb-6 leading-relaxed">
                 Traditionally, enumerators spend countless hours walking block by block, hand-drawing Nazari Nakshas (layout maps) on paper. These maps often suffer from scale inaccuracies, messy corrections, and lack proper geographic context.
               </p>
@@ -270,7 +261,7 @@ export default function LandingScreen() {
         <div className="max-w-6xl mx-auto px-6 relative z-10">
           <div className="text-center mb-16">
             <h2 className="text-teal-400 font-bold tracking-wide uppercase text-sm mb-3">The Process</h2>
-            <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] mb-4">4 Steps to a Perfect Map</h3>
+            <h2 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] mb-4">HLB Map Kaise Banaye? — 4 आसान Steps</h2>
             <p className="text-slate-400 max-w-2xl mx-auto text-lg">We've broken down the complex task of map-making into an intuitive, guided workflow.</p>
           </div>
 

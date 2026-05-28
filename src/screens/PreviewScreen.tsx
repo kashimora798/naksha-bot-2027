@@ -22,7 +22,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [panY, setPanY] = useState(0);
   const [mapImg, setMapImg] = useState('');
   const [orient, setOrient] = useState<'landscape' | 'portrait'>(mapData.orientation || 'portrait');
-  const [showControls, setShowControls] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   // Tab system
   const [activeTab, setActiveTab] = useState<ViewTab>('sketch');
@@ -38,7 +38,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [aiError, setAiError] = useState('');
   const [aiProgress, setAiProgress] = useState('');
   const [aiChunks, setAiChunks] = useState<{ label: string; bbox: Coordinate[]; imageBase64: string }[]>(mapData.aiMapChunks || []);
-
+  const [aiPreviewImg, setAiPreviewImg] = useState<string | null>(null);
+  const [aiPreviewResolve, setAiPreviewResolve] = useState<((approved: boolean) => void) | null>(null);
   const isDrag = useRef(false);
   const lastP = useRef({ x: 0, y: 0 });
   const frameRef = useRef<HTMLDivElement>(null);
@@ -100,7 +101,13 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
       const result = await generateSurveyMapFromBoundary(
         mapData,
         orient,
-        (msg) => setAiProgress(msg)
+        (msg) => setAiProgress(msg),
+        (base64DataUrl) => {
+          return new Promise<boolean>((resolve) => {
+            setAiPreviewImg(base64DataUrl);
+            setAiPreviewResolve(() => resolve);
+          });
+        }
       );
 
       if (result.success && result.imageUrl) {
@@ -234,56 +241,102 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
   // ─── EDITOR ─────────────────────────────────────────────
   return (
-    <div className="h-full bg-[#111] flex flex-col">
-      <div className="bg-white px-3 py-3 flex items-center justify-between z-30 flex-shrink-0 shadow relative">
-        <button onClick={onBack} className="text-sm text-gray-600 font-semibold">← Back</button>
-        <span className="text-base font-bold font-[Baloo_2] absolute left-1/2 -translate-x-1/2">Preview</span>
+    <div className="h-full bg-[#111] flex flex-col relative overflow-hidden">
+      
+      {/* Sleek Header Overlay (Hamburger Menu) */}
+      <div className="absolute top-4 left-4 right-4 z-[45] flex flex-wrap gap-2 justify-between items-center bg-white/90 backdrop-blur p-2 rounded-2xl shadow-sm border border-slate-200/50">
+        <button onClick={onBack} className="text-sm text-gray-600 font-bold hover:text-gray-900 transition-colors px-2">← Back</button>
+        
+        {/* Inline Tabs */}
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          <button onClick={() => setActiveTab('sketch')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'sketch' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>✏️ Sketch</button>
+          <button onClick={() => setActiveTab('satellite')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'satellite' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🛰️ Sat{satLoading ? '...' : ''}</button>
+          <button onClick={() => setActiveTab('ai')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${activeTab === 'ai' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>🗺️ AI Map{aiLoading ? '...' : ''}</button>
+        </div>
+
+        <button onClick={() => setShowSidebar(true)} className="text-gray-600 p-2 hover:bg-gray-100 rounded-lg transition-colors">
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
       </div>
 
-      <div className="bg-white border-b border-gray-200 flex flex-shrink-0">
-        <button onClick={() => setActiveTab('sketch')} className={`flex-1 py-2.5 text-xs font-bold transition-colors ${activeTab === 'sketch' ? 'text-orange-600 border-b-2 border-orange-500 bg-orange-50/50' : 'text-gray-500'}`}>✏️ Sketch</button>
-        <button onClick={() => setActiveTab('satellite')} className={`flex-1 py-2.5 text-xs font-bold transition-colors ${activeTab === 'satellite' ? 'text-blue-600 border-b-2 border-blue-500 bg-blue-50/50' : 'text-gray-500'}`}>🛰️ Satellite{satLoading ? '...' : ''}</button>
-        <button onClick={() => setActiveTab('ai')} className={`flex-1 py-2.5 text-xs font-bold transition-colors ${activeTab === 'ai' ? 'text-purple-600 border-b-2 border-purple-500 bg-purple-50/50' : 'text-gray-500'}`}>🗺️ AI Map{aiLoading ? '...' : ''}</button>
-      </div>
+      <div className="flex-1 overflow-auto relative bg-[#111] pt-24 pb-24">
+        {/* AI PREVIEW DIALOG */}
+        {aiPreviewImg && (
+          <div className="absolute inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-2xl w-full flex flex-col max-h-full">
+              <h3 className="text-xl font-bold mb-4 font-[Baloo_2]">AI Image Preview (Debug)</h3>
+              <p className="text-slate-500 text-sm mb-4">This is the exact image about to be sent to the AI engine. Approve it to continue.</p>
+              
+              <div className="flex-1 min-h-0 bg-slate-100 rounded-xl overflow-auto border border-slate-200 mb-6 flex justify-center">
+                <img src={aiPreviewImg} alt="AI Input Preview" className="max-w-full object-contain" />
+              </div>
+              
+              <div className="flex justify-end gap-4 shrink-0">
+                <button
+                  onClick={() => {
+                    aiPreviewResolve?.(false);
+                    setAiPreviewImg(null);
+                    setAiPreviewResolve(null);
+                  }}
+                  className="px-6 py-3 rounded-xl font-bold bg-slate-100 text-slate-700 hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    aiPreviewResolve?.(true);
+                    setAiPreviewImg(null);
+                    setAiPreviewResolve(null);
+                  }}
+                  className="px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg hover:-translate-y-0.5 transition-transform"
+                >
+                  Approve & Generate
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-      <div className="flex-1 overflow-hidden relative">
         {/* Floating Icons for Zoom and Print */}
         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[40]">
            <button onClick={() => setZoom(z => Math.min(5, z + 0.2))} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors">+</button>
            <button onClick={() => setZoom(z => Math.max(0.3, z - 0.2))} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors">−</button>
            <button onClick={resetView} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors mt-1 text-xs">Reset</button>
-           {activeTab !== 'ai' && (
-             <button onClick={handleExport} disabled={exporting || isLimitReached} className={`w-10 h-10 rounded-full shadow-lg font-bold flex items-center justify-center mt-3 transition-colors ${exporting ? 'bg-gray-400 text-white' : isLimitReached ? 'bg-red-400 text-white' : 'bg-orange-500 text-white'}`}>
-                {exporting ? '⏳' : '🖨️'}
-             </button>
-           )}
+           <button onClick={handleExport} disabled={exporting || isLimitReached} className={`w-10 h-10 rounded-full shadow-lg font-bold flex items-center justify-center mt-3 transition-colors ${exporting ? 'bg-gray-400 text-white' : isLimitReached ? 'bg-red-400 text-white' : 'bg-orange-500 text-white'}`}>
+              {exporting ? '⏳' : '🖨️'}
+           </button>
         </div>
 
-        {/* Bottom Sheet Settings */}
-        <div className="absolute bottom-0 left-0 right-0 z-[50] pointer-events-none">
-          <div className={`bg-white rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.15)] pointer-events-auto transition-transform duration-300 ${showControls ? 'translate-y-0' : 'translate-y-full'}`}>
-            {/* Handle for the bottom sheet - visually pulled up slightly when collapsed */}
-            <div 
-               className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white px-6 py-2 rounded-t-2xl shadow-[0_-4px_10px_rgba(0,0,0,0.1)] cursor-pointer flex flex-col items-center gap-1"
-               onClick={() => setShowControls(c => !c)}
-            >
-               <div className="w-8 h-1.5 bg-gray-300 rounded-full" />
-               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{showControls ? 'Hide' : 'Settings'}</span>
+        {/* Sidebar Overlay */}
+        {showSidebar && <div className="fixed inset-0 bg-black/50 z-[100] transition-opacity" onClick={() => setShowSidebar(false)} />}
+        
+        {/* Sliding Sidebar Settings */}
+        <div className={`fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-[101] transform transition-transform duration-300 ease-out flex flex-col ${showSidebar ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+              <h2 className="font-bold text-gray-800">Settings</h2>
+              <button onClick={() => setShowSidebar(false)} className="text-gray-500 hover:bg-gray-200 p-2 rounded-full">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
             </div>
-
-            <div className="px-5 pt-4 pb-5 space-y-4">
-              <div className="flex gap-2">
-                <button onClick={() => { setOrient('landscape'); resetView(); }} className={`flex-1 py-3 rounded-xl text-sm font-bold ${orient === 'landscape' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>📄 Landscape</button>
-                <button onClick={() => { setOrient('portrait'); resetView(); }} className={`flex-1 py-3 rounded-xl text-sm font-bold ${orient === 'portrait' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>📄 Portrait</button>
+            
+            <div className="p-5 overflow-auto flex-1 space-y-6">
+              <div>
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Orientation</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => { setOrient('landscape'); resetView(); }} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${orient === 'landscape' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>📄 Landscape</button>
+                  <button onClick={() => { setOrient('portrait'); resetView(); }} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${orient === 'portrait' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>📄 Portrait</button>
+                </div>
               </div>
 
-              <div className="flex gap-1 justify-between">
-                {[0, 90, 180, 270].map(d => (
-                  <button key={d} onClick={() => setRotate(d)} className={`px-4 py-2 rounded-lg text-xs font-semibold ${rotate === d ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'}`}>{d}°</button>
-                ))}
+              <div>
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Rotation</h3>
+                <div className="grid grid-cols-4 gap-2">
+                  {[0, 90, 180, 270].map(d => (
+                    <button key={d} onClick={() => setRotate(d)} className={`py-2 rounded-lg text-xs font-semibold transition-all ${rotate === d ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{d}°</button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
         </div>
 
         {/* Loading and empty states */}
@@ -398,6 +451,19 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           </div>
         )}
       </div>
+
+      {/* AI Preview Modal */}
+      {aiPreviewImg && (
+        <div className="fixed inset-0 bg-black/80 z-[3000] flex flex-col items-center justify-center p-4">
+          <h2 className="text-white font-bold text-lg mb-2">Review Image For AI</h2>
+          <p className="text-gray-300 text-xs mb-4">This exact image will be sent to the AI for generation.</p>
+          <img src={aiPreviewImg} className="max-w-full max-h-[60vh] object-contain rounded-lg border-2 border-purple-500 shadow-2xl mb-6" />
+          <div className="flex gap-4">
+            <button onClick={() => { aiPreviewResolve?.(false); setAiPreviewImg(null); setAiPreviewResolve(null); setAiLoading(false); setAiProgress(''); setAiError('Generation cancelled by user.'); }} className="px-6 py-3 rounded-full bg-gray-600 text-white font-bold hover:bg-gray-700">Cancel</button>
+            <button onClick={() => { aiPreviewResolve?.(true); setAiPreviewImg(null); setAiPreviewResolve(null); }} className="px-6 py-3 rounded-full bg-purple-500 text-white font-bold hover:bg-purple-600 shadow-lg">Confirm & Send to AI ✨</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

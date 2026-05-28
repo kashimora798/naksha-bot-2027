@@ -3,7 +3,29 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import "./index.css";
+
+// Polyfill for crypto.randomUUID (fixes crashes on mobile/HTTP local networks)
+if (!window.crypto) {
+  (window as any).crypto = {};
+}
+if (!window.crypto.randomUUID) {
+  window.crypto.randomUUID = function () {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+}
+// Fix for default marker icons in Leaflet with Vite
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 import App from "./App";
 import TermsScreen from "./screens/TermsScreen";
 import RefundScreen from "./screens/RefundScreen";
@@ -11,12 +33,18 @@ import ContactScreen from "./screens/ContactScreen";
 import SignInScreen from "./screens/SignInScreen";
 import SignUpScreen from "./screens/SignUpScreen";
 import LandingScreen from "./screens/LandingScreen";
+import SessionsDashboard from "./screens/SessionsDashboard";
+import SessionDetailScreen from "./screens/SessionDetailScreen";
+import LiveSurveyPrep from "./screens/LiveSurveyPrep";
+import LiveSurveyScreen from "./screens/LiveSurveyScreen";
 // New pages to be created:
 import HowItWorksPage from "./screens/HowItWorksPage";
 import FaqPage from "./screens/FaqPage";
 import StateLandingPage from "./screens/StateLandingPage";
 import BlogSchedulePage from "./screens/BlogSchedulePage";
 import BlogRulesPage from "./screens/BlogRulesPage";
+import SeoArticlePage from "./screens/SeoArticlePage";
+import { seoArticles } from "./data/seoContent";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -26,11 +54,21 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<LandingScreen />} />
           <Route path="/app" element={<App />} />
           
+          <Route path="/live-dashboard" element={<SessionsDashboard />} />
+          <Route path="/live-session/:id" element={<SessionDetailScreen />} />
+          <Route path="/live-prep" element={<LiveSurveyPrep />} />
+          <Route path="/live-survey" element={<LiveSurveyScreen />} />
+          
           <Route path="/how-it-works" element={<HowItWorksPage />} />
           <Route path="/faq" element={<FaqPage />} />
           
           <Route path="/schedule" element={<BlogSchedulePage />} />
           <Route path="/rules" element={<BlogRulesPage />} />
+          
+          {/* SEO Pages */}
+          {seoArticles.map((article) => (
+            <Route key={article.id} path={article.url} element={<SeoArticlePage articleId={article.id} />} />
+          ))}
           
           {/* State Pages */}
           <Route path="/up-census-map" element={<StateLandingPage stateKey="UP" />} />

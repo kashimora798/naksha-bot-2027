@@ -107,17 +107,17 @@ export function getPolygonCentroid(geom: Array<{ lat: number; lon: number }>): C
 }
 
 export function generateBlocks(pins: Coordinate[], count: number): Block[] {
-  if (pins.length < 3 || count < 20) return [];
-  const area = polygonArea(pins);
-  const grid = area < 30000 || count < 35 ? 2 : area < 80000 || count < 60 ? 3 : 4;
-  const bb = getBbox(pins); const dlat = (bb.north - bb.south) / grid, dlng = (bb.east - bb.west) / grid;
-  const labels = 'ABCDEFGHIJKLMNOP';
-  const blocks: Block[] = [];
-  for (let r = 0; r < grid; r++) for (let c = 0; c < grid; c++) {
-    const idx = r * grid + c;
-    blocks.push({ id: crypto.randomUUID(), label: idx < labels.length ? labels[idx] : String(idx + 1), south: bb.south + r * dlat, north: bb.south + (r + 1) * dlat, west: bb.west + c * dlng, east: bb.west + (c + 1) * dlng });
-  }
-  return blocks;
+  if (pins.length < 3) return [];
+  const bb = getBbox(pins); 
+  const latMid = (bb.north + bb.south) / 2;
+  const lngMid = (bb.east + bb.west) / 2;
+  
+  return [
+    { id: crypto.randomUUID(), label: 'NW', south: latMid, north: bb.north, west: bb.west, east: lngMid },
+    { id: crypto.randomUUID(), label: 'NE', south: latMid, north: bb.north, west: lngMid, east: bb.east },
+    { id: crypto.randomUUID(), label: 'SW', south: bb.south, north: latMid, west: bb.west, east: lngMid },
+    { id: crypto.randomUUID(), label: 'SE', south: bb.south, north: latMid, west: lngMid, east: bb.east }
+  ];
 }
 
 export function getBestOrientation(pins: Coordinate[]): 'landscape' | 'portrait' {
@@ -138,7 +138,12 @@ function serpentineRows(houses: PlacedSymbol[], blockIdx: number): Coordinate[] 
   const rows: PlacedSymbol[][] = Array.from({ length: numRows }, () => []);
   for (const h of sorted) { rows[Math.min(numRows - 1, Math.floor((maxLat - h.lat) / rowH))].push(h); }
   const path: Coordinate[] = [];
-  for (let i = 0; i < numRows; i++) { if (!rows[i].length) continue; rows[i].sort((i % 2 === 1) ? (a, b) => b.lng - a.lng : (a, b) => a.lng - b.lng); for (const h of rows[i]) path.push({ lat: h.lat, lng: h.lng }); }
+  for (let i = 0; i < numRows; i++) { 
+    if (!rows[i].length) continue; 
+    // Always sort West to East for strict NW to SE numbering
+    rows[i].sort((a, b) => a.lng - b.lng); 
+    for (const h of rows[i]) path.push({ lat: h.lat, lng: h.lng }); 
+  }
   return path;
 }
 
@@ -467,12 +472,8 @@ export function serpentineNumbering(symbols: any[]) {
   sortedRows.forEach((rowKey, rowIndex) => {
     const rowHouses = [...rows[rowKey]];
     
-    // Serpentine: even rows west-to-east, odd rows east-to-west
-    if (rowIndex % 2 === 0) {
-      rowHouses.sort((a, b) => a.lng - b.lng);
-    } else {
-      rowHouses.sort((a, b) => b.lng - a.lng);
-    }
+    // Always sort west-to-east to achieve strict NW to SE numbering
+    rowHouses.sort((a, b) => a.lng - b.lng);
     
     rowHouses.forEach(house => {
       // Respect manual overrides

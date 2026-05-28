@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import type { MapData, RoadFeature, PlacedSymbol, Coordinate } from './types';
-import ProgressBar from './components/ProgressBar';
+import AppHeader from './components/AppHeader';
 import SMSParseScreen from './screens/SMSParseScreen';
 import MapWorkspace from './screens/MapWorkspace';
 import PreviewScreen from './screens/PreviewScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import LiveSurveyScreen from './screens/LiveSurveyScreen';
+import SessionsDashboard from './screens/SessionsDashboard';
+import SessionDetailScreen from './screens/SessionDetailScreen';
 
 const DEFAULT_MAP_DATA: MapData = {
   hlbNumber: '', center: { lat: 26.4499, lng: 80.3319 },
@@ -24,7 +26,9 @@ export default function App() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [mapData, setMapData] = useState<MapData>(DEFAULT_MAP_DATA);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
+  const navigate = useNavigate();
   // To track when we should actually save vs initial load
   const isInitialLoad = useRef(true);
   const [resumeSessionId, setResumeSessionId] = useState<string | null>(null);
@@ -100,8 +104,49 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const isPaymentSuccess = params.get('payment') === 'success';
     const paymentProjectId = params.get('project_id');
+    const livePreviewId = params.get('live_preview_id');
 
-    if (isPaymentSuccess && paymentProjectId) {
+    if (livePreviewId) {
+      import('./lib/idb').then(({ idbStore }) => {
+        idbStore.getSession(livePreviewId).then(session => {
+           if (!session) return;
+           Promise.all([
+             idbStore.getSymbolsForSession(livePreviewId),
+             idbStore.getSegmentsForSession(livePreviewId)
+           ]).then(([symbols, segments]) => {
+             const df = session.drawn_features ? JSON.parse(session.drawn_features) : { blocks: [], farmlandBlocks: [], forests: [], waterBodies: [], landuseAreas: [], landmarks: [] };
+             let poly = null;
+             if (session.polygon_geojson) try { poly = JSON.parse(session.polygon_geojson); } catch(e){}
+             const center = poly && poly.geometry?.coordinates[0][0] ? { lat: poly.geometry.coordinates[0][0][1], lng: poly.geometry.coordinates[0][0][0] } : DEFAULT_MAP_DATA.center;
+             
+             const roadFeatures = segments.filter(seg => seg.points.length >= 2).map(seg => ({
+                id: seg.segment_id,
+                type: seg.type as any,
+                points: seg.points
+             }));
+
+             setMapData({
+               ...DEFAULT_MAP_DATA,
+               hlbNumber: session.hlb_number || 'LIVE',
+               center: center,
+               symbols: symbols as any[],
+               roads: roadFeatures,
+               blocks: df.blocks,
+               farmlandBlocks: df.farmlandBlocks,
+               forests: df.forests,
+               waterBodies: df.waterBodies,
+               landuseAreas: df.landuseAreas,
+               landmarks: df.landmarks,
+               boundaryPins: poly ? poly.geometry.coordinates[0].map((c: any) => ({ lat: c[1], lng: c[0] })) : [],
+               boundaryClosed: true,
+               numberingComplete: true,
+             });
+             setStep(7);
+           });
+        });
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (isPaymentSuccess && paymentProjectId) {
       // 1. Force update the DB locally so they don't have to wait for the webhook
       supabase.from('projects').update({ payment_status: 'paid' }).eq('id', paymentProjectId).then(() => {
         // 2. Fetch the project
@@ -226,7 +271,20 @@ export default function App() {
   }
 
   if (!isSignedIn) {
-    return <Navigate to="/sign-in" replace />;
+    return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
+      {step === 0 && <DashboardScreen 
+        user={session?.user} 
+        onLoadProject={(id, d) => { setProjectId(id); setMapData(prev => ({...prev, ...d, projectId: id, paymentStatus: (d as any).payment_status})); setStep(3); }} 
+        onNewProject={() => { setMapData(DEFAULT_MAP_DATA); setProjectId(null); setStep(1); }} 
+        onLiveSurvey={() => setStep(10)}
+        onResumeLiveSurvey={(id) => { setResumeSessionId(id); setStep(10); }}
+        onDemoMap={() => { setMapData(DEFAULT_MAP_DATA); setProjectId(null); setIsDemoMode(true); setStep(2); }}
+      />}
+      
+      {step === 1 && <SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); setStep(3); }} onBack={() => setStep(0)} isDemoMode={isDemoMode} />}
+      
+      {step === 10 && <LiveSurveyScreen onExit={() => { setStep(0); setResumeSessionId(null); }} resumeSessionId={resumeSessionId || undefined} />}
+    </div>;
   }
 
   if (step === 0) {
@@ -235,6 +293,7 @@ export default function App() {
         user={user}
         onLoadProject={(id, data) => {
           setProjectId(id);
+          setIsDemoMode(false);
           setMapData({ ...DEFAULT_MAP_DATA, ...data, projectId: id, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
           // Determine where to resume based on data
@@ -246,20 +305,22 @@ export default function App() {
         }}
         onNewProject={() => {
           setProjectId(null);
+          setIsDemoMode(false);
           setMapData({ ...DEFAULT_MAP_DATA, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
           setStep(2); // SMS Parse step
         }}
         onLiveSurvey={() => {
-          setProjectId(null);
-          setResumeSessionId(null);
-          setMapData({ ...DEFAULT_MAP_DATA, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
-          isInitialLoad.current = true;
-          setStep(8); // Live Survey step
+          navigate('/live-dashboard');
         }}
         onResumeLiveSurvey={(sessionId) => {
-          setResumeSessionId(sessionId);
-          setStep(8);
+          navigate(`/live-session/${sessionId}`);
+        }}
+        onDemoMap={() => {
+          setMapData(DEFAULT_MAP_DATA);
+          setProjectId(null);
+          setIsDemoMode(true);
+          setStep(2);
         }}
       />
     );
@@ -267,24 +328,17 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-gray-50 flex flex-col relative">
-      {/* Header controls */}
-      {inMap && (
-        <div className="absolute top-2 right-12 flex items-center gap-2" style={{ zIndex: 2000 }}>
-          <span className={`text-xs px-2 py-1 rounded-full bg-white/90 shadow pointer-events-none ${saveStatus === 'error' ? 'text-red-500' : 'text-gray-500'}`}>
-            {saveStatus === 'saving' ? '⏳ Saving...' : saveStatus === 'saved' ? '✓ Saved' : '⚠️ Save Failed'}
-          </span>
-          <button 
-            onClick={() => { forceSave(); setStep(0); setProjectId(null); }} 
-            className="bg-white shadow px-3 py-1 rounded-full text-xs font-bold text-gray-700 hover:bg-gray-100 border border-gray-200 transition-colors"
-          >
-            ← Exit & Save
-          </button>
-        </div>
+      {step >= 2 && step < 8 && (
+        <AppHeader 
+          currentStep={step} 
+          setStep={setStep} 
+          saveStatus={saveStatus} 
+          onSaveAndExit={() => { forceSave(); setStep(0); setProjectId(null); setIsDemoMode(false); }} 
+          inMap={inMap} 
+        />
       )}
-
-      {step >= 2 && step <= 7 && <div className="flex-shrink-0"><ProgressBar currentStep={step} /></div>}
       <div className="flex-1 relative overflow-hidden min-h-0">
-        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); setStep(3); }} /></div>}
+        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); setStep(3); }} isDemoMode={isDemoMode} /></div>}
         {inMap && <MapWorkspace
           step={step} center={mapData.center} boundaryPins={mapData.boundaryPins} boundaryClosed={mapData.boundaryClosed}
           roads={mapData.roads} symbols={mapData.symbols} hlbNumber={mapData.hlbNumber} blocks={mapData.blocks} farmlandBlocks={mapData.farmlandBlocks}
@@ -302,22 +356,17 @@ export default function App() {
           onUpdateMapData={update}
           onStepComplete={() => setStep(s => s + 1)}
           onJumpToPreview={() => setStep(7)}
+          isDemoMode={isDemoMode}
+          onDemoComplete={() => setIsDemoMode(false)}
         />}
         {(step === 7) && (
           <div className="h-full">
             <PreviewScreen
               mapData={mapData}
               onBack={() => setStep(5)}
-              onExitToDashboard={() => { forceSave(); setStep(0); setProjectId(null); }}
+              onExitToDashboard={() => { forceSave(); setStep(0); setProjectId(null); setIsDemoMode(false); }}
             />
           </div>
-        )}
-        {step === 8 && (
-          <LiveSurveyScreen 
-             resumeSessionId={resumeSessionId || undefined}
-             onExit={() => { setStep(0); setProjectId(null); setResumeSessionId(null); }}
-             onSaveAsDraft={() => { setStep(0); setProjectId(null); setResumeSessionId(null); }}
-          />
         )}
       </div>
     </div>

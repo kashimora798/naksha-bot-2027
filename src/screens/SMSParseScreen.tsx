@@ -3,6 +3,8 @@ import type { Coordinate } from '../types';
 
 interface Props {
   onComplete: (hlb: string, center: Coordinate, district: string, state: string) => void;
+  onBack: () => void;
+  isDemoMode?: boolean;
 }
 
 function parseCoordinatesFromURL(text: string): { lat: number; lng: number } | null {
@@ -33,7 +35,7 @@ const DEMO_LOCATIONS = [
   { hlb: '0812', lat: 19.0760, lng: 72.8777, district: 'Mumbai', state: 'Maharashtra' },
 ];
 
-export default function SMSParseScreen({ onComplete }: Props) {
+export default function SMSParseScreen({ onComplete, onBack, isDemoMode }: Props) {
   const [smsText, setSmsText] = useState('');
   const [manualMode, setManualMode] = useState(false);
   const [manualHLB, setManualHLB] = useState('');
@@ -97,6 +99,21 @@ export default function SMSParseScreen({ onComplete }: Props) {
       </div>
 
       <div className="flex-1 overflow-auto px-4 py-4 space-y-4">
+        {isDemoMode && (
+          <div className="bg-blue-50 border border-blue-200 rounded-[12px] p-4 mb-4">
+            <h3 className="font-bold text-blue-800 mb-2">Interactive Demo Mode</h3>
+            <p className="text-sm text-blue-700 mb-3">
+              Skip typing! Click the button below to auto-fill a demo location and start building your map immediately.
+            </p>
+            <button
+              onClick={() => handleDemoLocation(DEMO_LOCATIONS[1])}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow active:scale-95 transition-all"
+            >
+              Fill Demo Location (New Delhi)
+            </button>
+          </div>
+        )}
+
         {/* SMS Paste Area */}
         <div>
           <label className="block text-sm font-semibold text-[var(--color-charcoal)] mb-1 font-noto-sans">

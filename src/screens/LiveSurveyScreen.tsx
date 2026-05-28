@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import L from 'leaflet';
 import * as turf from '@turf/turf';
 import { LiveSurveyEngine, SurveyState } from '../lib/LiveSurveyEngine';
@@ -7,6 +8,8 @@ import { getSmallSymbolSVG } from '../lib/symbols';
 import { supabase } from '../lib/supabase';
 import { buildComprehensiveQuery, processOverpassData, getBbox } from '../lib/geo';
 import { beautifyPath } from '../lib/PathBeautifier';
+import { generateLiveExportPdf } from '../lib/pdf-export';
+import { HouseDataSidebar } from '../components/forms/HouseDataSidebar';
 import type { Coordinate, SymbolType } from '../types';
 
 // ─── Extended state types ──────────────────────────────────────
@@ -50,7 +53,14 @@ function getArrowSVG(bearing: number, accuracy: number) {
   </svg>`;
 }
 
-export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit, onSaveAsDraft }: Props) {
+export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propResumeSessionId, onExit: propOnExit, onSaveAsDraft: propOnSaveAsDraft }: Props) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  const resumeSessionId = propResumeSessionId || searchParams.get('session') || undefined;
+  const onExit = propOnExit || (() => navigate('/live-dashboard'));
+  const onSaveAsDraft = propOnSaveAsDraft || (() => navigate('/live-dashboard'));
+
   // ── Map refs ────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -71,6 +81,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   const frmGrp = useRef(L.layerGroup());       // farmland / landuse
   const bldGrp = useRef(L.layerGroup());       // buildings / POIs
   const lmkGrp = useRef(L.layerGroup());       // landmark labels
+  const drawnFeaturesGrp = useRef(L.layerGroup()); // custom drawn features
 
   // GPS marker refs (smooth updates — no clear/re-add flicker)
   const gpsMarkerRef = useRef<L.Marker | null>(null);
@@ -85,7 +96,9 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
 
   // ── Phase ───────────────────────────────────────────────────
-  const [phase, setPhase] = useState<LivePhase>(blockPolygon ? 'READY' : 'LOCATION_ENTRY');
+  const [phase, setPhase] = useState<LivePhase>(blockPolygon ? 'READY' : (resumeSessionId ? 'DOWNLOADING' : 'LOCATION_ENTRY'));
+
+  const engineInitialized = useRef(false);
 
   // ── Location entry ──────────────────────────────────────────
   const [smsText, setSmsText] = useState('');
@@ -127,11 +140,32 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   const [osmToast, setOsmToast] = useState<string | null>(null);
   const [returnDialog, setReturnDialog] = useState(false);
   const [returnModeState, setReturnModeState] = useState<'none' | 'two_lane' | 'follow_back'>('none');
+  const [selectedPlacedSymbol, setSelectedPlacedSymbol] = useState<SurveySymbol | null>(null);
+  const [houseFormStep, setHouseFormStep] = useState<1 | 2>(1);
+  const [drawMode, setDrawMode] = useState<'none' | 'block' | 'farmland' | 'forest' | 'waterBody' | 'landmark'>('none');
+  const [drawingPoints, setDrawingPoints] = useState<Coordinate[]>([]);
+  const drawingPolylineRef = useRef<L.Polyline | null>(null);
 
-  // ── Initialize engine when polygon is ready ──────────────────
+  // ── Initialize engine when polygon is ready or resuming ──────────────────
   useEffect(() => {
-    if (!activePolygon) return;
-    engineRef.current = new LiveSurveyEngine(activePolygon, supabase, idbStore);
+    if (engineInitialized.current) return;
+    if (!activePolygon && !resumeSessionId) return;
+    engineInitialized.current = true;
+
+    engineRef.current = new LiveSurveyEngine(activePolygon, supabase, idbStore, resumeSessionId);
+
+    if (resumeSessionId) {
+      engineRef.current.loadSessionData().then(() => {
+        if (engineRef.current) {
+          setActivePolygon(engineRef.current.blockPolygon);
+          setSymbols([...engineRef.current.symbols]);
+          // Re-trigger draw if map exists
+          setTimeout(() => drawLivePath(), 500);
+          setPhase('PAUSED');
+        }
+      });
+    }
+
     engineRef.current.on('stateChanged', () => {});
     engineRef.current.on('positionUpdate', (data: any) => {
       // Always update marker + basic info (fires on EVERY GPS fix)
@@ -271,6 +305,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
     roadGrp.current.addTo(map);  // user-drawn roads
     pathGrp.current.addTo(map);  // GPS path
     symGrp.current.addTo(map);   // placed symbols
+    drawnFeaturesGrp.current.addTo(map); // custom drawn features
     gpsGrp.current.addTo(map);   // GPS marker (top)
 
     if (activePolygon?.geometry) {
@@ -300,6 +335,14 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
 
     mapRef.current = map;
     setMapInstance(map);
+    
+    // Listen to zoom changes to resize custom markers
+    map.on('zoomend', () => {
+      if (engineRef.current) {
+        drawSymbols(engineRef.current.symbols);
+      }
+    });
+    
   }, [phase, activePolygon]);  // Note: osmRoads/osmLandmarks handled in separate effect below
 
   // ── Reactive OSM overlay redraw when background data arrives ─
@@ -346,13 +389,13 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
     });
 
     // 4. Draw buildings (bldGrp)
-    osmBuildings.forEach(b => {
-      const st = b.symbol_type;
+    osmBuildings.forEach(s => {
+      const st = s.symbol_type;
       const html = `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,0.85);border:1.5px solid #6b7280;box-shadow:0 1px 4px rgba(0,0,0,0.2)">
         <div style="width:14px;height:14px">${getSmallSymbolSVG(st)}</div>
       </div>`;
-      const icon = L.divIcon({ html, className: '', iconSize: [24, 24], iconAnchor: [12, 12] });
-      L.marker([b.lat, b.lng], { icon }).addTo(bldGrp.current);
+      const icon = L.divIcon({ html, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
+      L.marker([s.lat, s.lng], { icon }).addTo(bldGrp.current);
     });
 
     // 5. Draw roads (osmRoadGrp)
@@ -468,17 +511,115 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
 
   const drawSymbols = (syms: SurveySymbol[]) => {
     if (!mapRef.current) return;
+    
+    // Dynamic size based on zoom (Mapbox interpolation equivalent)
+    const zoom = mapRef.current.getZoom();
+    const size = Math.max(12, Math.min(36, (zoom - 15) * 6 + 18));
+    const innerSize = size * 0.6;
+    const textSize = Math.max(8, size * 0.35);
+    
     symGrp.current.clearLayers();
     syms.forEach(sym => {
       const isConfirmed = phase === 'REVIEWING' || sym.number !== null;
-      const html = `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:50%;background:${isConfirmed ? 'white' : 'rgba(255,107,0,0.15)'};border:2px solid ${isConfirmed ? '#22c55e' : '#FF6B00'};box-shadow:0 2px 6px rgba(0,0,0,0.3)">
-        <div style="width:18px;height:18px">${getSmallSymbolSVG(sym.symbol_type)}</div>
-        ${sym.number ? `<div style="position:absolute;top:-8px;right:-8px;background:#2563eb;color:white;font-size:9px;font-weight:700;padding:1px 4px;border-radius:8px">${sym.number}</div>` : ''}
+      const html = `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:${isConfirmed ? 'white' : 'rgba(255,107,0,0.15)'};border:2px solid ${isConfirmed ? '#22c55e' : '#FF6B00'};box-shadow:0 2px 6px rgba(0,0,0,0.3); transition: all 0.2s ease;">
+        <div style="width:${innerSize}px;height:${innerSize}px">${getSmallSymbolSVG(sym.symbol_type)}</div>
+        ${sym.number ? `<div style="position:absolute;top:-${size*0.25}px;right:-${size*0.25}px;background:#2563eb;color:white;font-size:${textSize}px;font-weight:700;padding:1px 4px;border-radius:8px">${sym.number}</div>` : ''}
       </div>`;
-      const icon = L.divIcon({ html, className: '', iconSize: [30, 30], iconAnchor: [15, 15] });
+      const icon = L.divIcon({ html, className: 'dynamic-house-icon', iconSize: [size, size], iconAnchor: [size/2, size/2] });
       const m = L.marker([sym.lat, sym.lng], { icon }).addTo(symGrp.current);
-      if (phase === 'REVIEWING') m.on('click', () => setSelectedReviewSym(sym));
+      if (phase === 'REVIEWING') {
+        m.on('click', () => setSelectedReviewSym(sym));
+      } else if (['pucca_house', 'kutcha_house', 'apartment', 'non_residential'].includes(sym.symbol_type)) {
+        m.on('click', () => {
+          setSelectedPlacedSymbol(sym);
+          setHouseFormStep(1);
+        });
+      }
     });
+  };
+
+  const drawDrawnFeatures = useCallback(() => {
+    if (!engineRef.current) return;
+    drawnFeaturesGrp.current.clearLayers();
+    const df = engineRef.current.drawnFeatures;
+    
+    df.blocks.forEach((p: any) => L.polygon(p.points.map((c: any) => [c.lat, c.lng]), { color: '#000', weight: 2, fillColor: '#fca5a5', fillOpacity: 0.4 }).addTo(drawnFeaturesGrp.current));
+    df.farmlandBlocks.forEach((p: any) => L.polygon(p.points.map((c: any) => [c.lat, c.lng]), { color: '#16a34a', weight: 2, fillColor: '#bbf7d0', fillOpacity: 0.4 }).addTo(drawnFeaturesGrp.current));
+    df.forests.forEach((p: any) => L.polygon(p.points.map((c: any) => [c.lat, c.lng]), { color: '#15803d', weight: 2, dashArray: '6,3', fillColor: '#86efac', fillOpacity: 0.4 }).addTo(drawnFeaturesGrp.current));
+    df.waterBodies.forEach((p: any) => L.polygon(p.points.map((c: any) => [c.lat, c.lng]), { color: '#2563eb', weight: 2, fillColor: '#bfdbfe', fillOpacity: 0.5 }).addTo(drawnFeaturesGrp.current));
+    df.landuseAreas.forEach((p: any) => L.polygon(p.points.map((c: any) => [c.lat, c.lng]), { color: '#a855f7', weight: 2, fillColor: '#e9d5ff', fillOpacity: 0.3 }).addTo(drawnFeaturesGrp.current));
+    df.landmarks.forEach((l: any) => L.marker([l.lat, l.lng], { icon: L.divIcon({ html: `<div style="background:rgba(255,255,255,0.85);color:#333;font-size:9px;font-weight:600;padding:2px 5px;border-radius:4px;white-space:nowrap;border:1px solid #ccc">📌 ${l.name}</div>`, className: '', iconAnchor: [0, 0] }) }).addTo(drawnFeaturesGrp.current));
+  }, []);
+
+  // ── Drawing Logic ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapInstance || drawMode === 'none') return;
+    
+    const onMapClick = (e: L.LeafletMouseEvent) => {
+      if (drawMode === 'landmark') {
+        const name = prompt("Landmark Name / पहचान चिह्न का नाम:", "New Landmark");
+        if (name && engineRef.current) {
+          engineRef.current.addDrawnFeature('landmarks', { lat: e.latlng.lat, lng: e.latlng.lng, name: name });
+          drawDrawnFeatures();
+        }
+        setDrawMode('none');
+      } else {
+        setDrawingPoints(prev => [...prev, { lat: e.latlng.lat, lng: e.latlng.lng }]);
+      }
+    };
+    
+    mapInstance.on('click', onMapClick);
+    return () => { mapInstance.off('click', onMapClick); };
+  }, [mapInstance, drawMode, drawDrawnFeatures]);
+
+  useEffect(() => {
+    if (!mapInstance) return;
+    
+    if (drawingPoints.length > 0) {
+      if (!drawingPolylineRef.current) {
+        drawingPolylineRef.current = L.polyline(drawingPoints.map(p => [p.lat, p.lng]), { color: '#FF6B00', weight: 3, dashArray: '5,5' }).addTo(mapInstance);
+      } else {
+        drawingPolylineRef.current.setLatLngs(drawingPoints.map(p => [p.lat, p.lng]));
+      }
+    } else {
+      if (drawingPolylineRef.current) {
+        drawingPolylineRef.current.remove();
+        drawingPolylineRef.current = null;
+      }
+    }
+  }, [drawingPoints, mapInstance]);
+
+
+  useEffect(() => {
+    if (phase === 'PAUSED' || phase === 'RECORDING') {
+      drawDrawnFeatures();
+    }
+  }, [phase, drawDrawnFeatures]);
+
+  const finishDrawing = () => {
+    if (!engineRef.current || drawMode === 'none') return;
+    
+    if (drawMode === 'landmark') {
+      if (drawingPoints.length > 0) {
+        const name = prompt("Landmark Name / पहचान चिह्न का नाम:", "New Landmark");
+        if (name) {
+          engineRef.current.drawnFeatures.landmarks.push({ lat: drawingPoints[0].lat, lng: drawingPoints[0].lng, name: name });
+        }
+      }
+    } else {
+      if (drawingPoints.length >= 3) {
+        if (drawMode === 'block') engineRef.current.drawnFeatures.blocks.push({ points: drawingPoints });
+        else if (drawMode === 'farmland') engineRef.current.drawnFeatures.farmlandBlocks.push({ points: drawingPoints });
+        else if (drawMode === 'forest') engineRef.current.drawnFeatures.forests.push({ points: drawingPoints });
+        else if (drawMode === 'waterBody') engineRef.current.drawnFeatures.waterBodies.push({ points: drawingPoints });
+        else if (drawMode === 'landuseArea') engineRef.current.drawnFeatures.landuseAreas.push({ points: drawingPoints });
+      }
+    }
+    
+    engineRef.current.saveToIDB();
+    setDrawMode('none');
+    setDrawingPoints([]);
+    drawDrawnFeatures();
   };
 
   // ── Confirm location entry ───────────────────────────────────
@@ -744,6 +885,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
       const center = mapRef.current.getCenter();
       fallback = { lat: center.lat, lng: center.lng };
     }
+    
     engineRef.current?.placeSymbol(symType, dir, fallback || undefined);
   };
   const handleUndo = () => engineRef.current?.undoLastSymbol();
@@ -776,7 +918,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   if (phase === 'LOCATION_ENTRY') {
     const parsed = smsText ? parseCoords(smsText) : null;
     return (
-      <div className="w-full h-full bg-[var(--color-warm-paper)] flex flex-col overflow-auto font-noto-sans">
+      <div className="fixed inset-0 z-[9999] h-[100dvh] w-[100dvw] bg-[var(--color-warm-paper)] flex flex-col overflow-auto font-noto-sans">
         <div className="bg-[var(--color-saffron)] text-white px-4 pt-4 pb-3 shadow-md flex-shrink-0">
           <div className="flex items-center gap-3 mb-1">
             <button onClick={onExit} className="text-white/80 hover:text-white min-w-[44px] min-h-[44px] flex items-center">← Back</button>
@@ -872,7 +1014,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   // ════════════════════════════════════════════════════════════
   if (phase === 'BOUNDARY_DRAW') {
     return (
-      <div className="w-full h-full flex flex-col relative bg-black">
+      <div className="fixed inset-0 z-[9999] h-[100dvh] w-[100dvw] flex flex-col bg-black">
         {/* Top instruction bar */}
         <div className="absolute top-0 left-0 right-0 z-[2000] bg-white shadow-lg px-4 py-3 rounded-b-2xl">
           <div className="flex items-center justify-between">
@@ -888,7 +1030,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
         <div ref={setupContainerRef} className="flex-1 w-full" style={{ paddingTop: '70px', paddingBottom: '130px' }} />
 
         {/* Bottom controls */}
-        <div className="absolute bottom-0 left-0 right-0 z-[2000] bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.15)] px-4 py-4">
+        <div className="absolute bottom-0 left-0 right-0 z-[2000] bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.15)] px-4 pt-4" style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
           {distanceToSite !== null && distanceToSite > 0.2 && (
             <div className="bg-red-50 text-red-700 px-3 py-2 rounded-xl mb-3 border border-red-200 flex items-center gap-2">
               <span className="text-lg">⚠️</span>
@@ -938,7 +1080,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
     ];
     const allDone = Object.values(dlProgress).every(v => v >= 100);
     return (
-      <div className="w-full h-full bg-[var(--color-warm-paper)] flex flex-col px-4 pt-10 overflow-hidden font-noto-sans">
+      <div className="fixed inset-0 z-[9999] h-[100dvh] w-[100dvw] bg-[var(--color-warm-paper)] flex flex-col px-4 pt-10 overflow-hidden font-noto-sans">
         <div className="mb-6 text-center">
           <div className="text-5xl mb-3 animate-pulse">🗺️</div>
           <h1 className="font-baloo text-2xl font-bold text-[var(--color-charcoal)]">चलते-चलते नक्शा</h1>
@@ -983,8 +1125,11 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   // ════════════════════════════════════════════════════════════
   if (phase === 'READY') {
     return (
-      <div className="w-full h-full bg-[var(--color-warm-paper)] flex flex-col px-4 pt-10 overflow-auto font-noto-sans">
-        <button onClick={onExit} className="text-[var(--color-secondary-text)] text-sm mb-4 self-start min-h-[44px]">← Dashboard</button>
+      <div className="fixed inset-0 z-[9999] h-[100dvh] w-[100dvw] bg-[var(--color-warm-paper)] flex flex-col px-4 pt-10 overflow-auto font-noto-sans">
+        <div className="flex justify-between items-center mb-4 w-full">
+          <button onClick={onExit} className="text-[var(--color-secondary-text)] text-sm min-h-[44px]">← Dashboard</button>
+          <button onClick={handleSaveAsDraft} className="text-[var(--color-india-green)] font-bold text-sm min-h-[44px] bg-green-50 px-3 py-1 rounded-xl border border-green-200 shadow-sm active:scale-95">💾 Save & Exit</button>
+        </div>
         <h1 className="font-baloo text-2xl font-bold text-[var(--color-charcoal)] mb-1">Ready to Survey</h1>
         <p className="text-sm text-[var(--color-secondary-text)] mb-6">
           {locationName || 'Survey Area'} — {osmRoads.length} roads loaded
@@ -1041,7 +1186,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
   // RENDER: RECORDING / PAUSED / REVIEWING
   // ════════════════════════════════════════════════════════════
   return (
-    <div className="relative w-full h-full bg-black flex flex-col font-noto-sans">
+    <div className="fixed inset-0 z-[9999] h-[100dvh] w-[100dvw] bg-black flex flex-col font-noto-sans">
 
       {/* STATUS BAR */}
       <div className="h-[48px] w-full bg-[var(--color-warm-ink)] text-white flex items-center justify-between px-3 z-[1001] shadow-md flex-shrink-0">
@@ -1119,17 +1264,62 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
       {/* MAP */}
       <div className="flex-1 relative">
         <div ref={containerRef} className="absolute inset-0" style={{ background: '#FAF6F0' }} />
+        
+        {drawMode !== 'none' && drawMode !== 'landmark' && (
+          <div className="absolute top-[20px] left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur rounded-full shadow-lg border border-gray-200 py-1.5 px-3 z-[2000] flex items-center gap-4 w-max min-w-[200px]">
+             <span className="font-bold text-xs text-[var(--color-saffron)] animate-pulse pl-1 flex-1 text-center">Drawing {drawMode}...</span>
+             <div className="flex items-center gap-2">
+               <button onClick={finishDrawing} className="w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center shadow-sm text-lg font-bold border border-green-200">✓</button>
+               <button onClick={() => { setDrawMode('none'); setDrawingPoints([]); }} className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-lg font-bold border border-red-100">✕</button>
+             </div>
+          </div>
+        )}
+        
+        {drawMode === 'landmark' && (
+          <div className="absolute top-[20px] left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur rounded-full shadow-lg border border-gray-200 py-1.5 px-4 z-[2000] flex items-center gap-4 w-max">
+             <span className="font-bold text-xs text-[var(--color-saffron)] animate-pulse">Tap map to place landmark 📌</span>
+             <button onClick={() => setDrawMode('none')} className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-lg font-bold border border-red-100">✕</button>
+          </div>
+        )}
+        
+        {phase === 'RECORDING' && (
+          <div className="absolute left-4 z-[2000] flex flex-col gap-3" style={{ bottom: 'calc(16px + env(safe-area-inset-bottom))' }}>
+            <button
+              onClick={() => engineRef.current?.undoLastSymbol()}
+              className="w-11 h-11 bg-white rounded-full shadow-lg border border-gray-200 flex items-center justify-center active:scale-95"
+              title="Undo Last Symbol"
+            >
+              <div className="relative flex items-center justify-center w-full h-full">
+                <span className="text-lg">↩️</span>
+                <span className="absolute -top-1 -right-2 bg-red-100 text-[8px] px-1 rounded border border-red-200 text-red-700 font-black">SYM</span>
+              </div>
+            </button>
+            <button
+              onClick={() => engineRef.current?.undoLastRoadSegment()}
+              className="w-11 h-11 bg-white rounded-full shadow-lg border border-gray-200 flex items-center justify-center active:scale-95"
+              title="Undo Last Track Segment"
+            >
+              <div className="relative flex items-center justify-center w-full h-full">
+                <span className="text-lg">↩️</span>
+                <span className="absolute -top-1 -right-2 bg-amber-100 text-[8px] px-1 rounded border border-amber-200 text-amber-700 font-black">TRK</span>
+              </div>
+            </button>
+          </div>
+        )}
+
         <CompassWidget />
         <button
           onClick={() => setPureCanvasMode(!pureCanvasMode)}
-          className={`absolute bottom-20 right-4 z-[2000] w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 border border-gray-100 ${pureCanvasMode ? 'bg-[var(--color-saffron)] text-white' : 'bg-white text-gray-700'}`}
+          className={`absolute right-4 z-[2000] w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 border border-gray-100 ${pureCanvasMode ? 'bg-[var(--color-saffron)] text-white' : 'bg-white text-gray-700'}`}
+          style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))' }}
           title="Toggle Map Background"
         >
           <span className="text-xl">{pureCanvasMode ? '🛰️' : '🎨'}</span>
         </button>
         <button
           onClick={handleLocateMe}
-          className="absolute bottom-4 right-4 z-[2000] w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg active:scale-95 border border-gray-100"
+          className="absolute right-4 z-[2000] w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg active:scale-95 border border-gray-100"
+          style={{ bottom: 'calc(16px + env(safe-area-inset-bottom))' }}
           title="Locate Me"
         >
           <span className="text-xl">{locating ? '🌀' : '🎯'}</span>
@@ -1161,17 +1351,27 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
                 <div className="w-5 h-5" dangerouslySetInnerHTML={{ __html: getSmallSymbolSVG(s.id as SymbolType) }} />
               </button>
             ))}
+            
+            {/* Draw Tools */}
+            <div className="w-px h-6 bg-gray-200 mx-1 flex-shrink-0" />
+            <button onClick={() => setDrawMode(drawMode === 'block' ? 'none' : 'block')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'block' ? 'border-b-2 border-red-500 bg-red-50' : ''}`} title="Draw Block">🟥</button>
+            <button onClick={() => setDrawMode(drawMode === 'farmland' ? 'none' : 'farmland')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'farmland' ? 'border-b-2 border-green-500 bg-green-50' : ''}`} title="Draw Farmland">🌾</button>
+            <button onClick={() => setDrawMode(drawMode === 'forest' ? 'none' : 'forest')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'forest' ? 'border-b-2 border-green-500 bg-green-50' : ''}`} title="Draw Forest">🌳</button>
+            <button onClick={() => setDrawMode(drawMode === 'waterBody' ? 'none' : 'waterBody')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'waterBody' ? 'border-b-2 border-blue-500 bg-blue-50' : ''}`} title="Draw Water">💧</button>
+            <button onClick={() => setDrawMode(drawMode === 'landmark' ? 'none' : 'landmark')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'landmark' ? 'border-b-2 border-gray-500 bg-gray-50' : ''}`} title="Drop Landmark">📌</button>
           </div>
         </div>
       )}
 
       {/* BOTTOM STRIP (recording) */}
       {phase === 'RECORDING' && (
-        <div className="h-[52px] w-full bg-[var(--color-warm-ink)] flex items-center justify-between px-3 z-[1001] flex-shrink-0">
-          <button onClick={handleUndo} className="text-gray-300 text-xs font-semibold min-w-[44px] min-h-[44px] flex items-center">↩ Undo</button>
-          <button onClick={handleSaveAsDraft} className="text-green-400 text-xs font-bold min-w-[44px] min-h-[44px] flex items-center">💾 Save</button>
-          <span className="text-[10px] font-jetbrains text-gray-500">ID: {engineRef.current?.sessionId?.substr(0, 8)}</span>
-          <button onClick={() => setShowEndConfirm(true)} className="text-[var(--color-saffron)] text-xs font-bold min-w-[44px] min-h-[44px] flex items-center justify-end">End ↑</button>
+        <div className="w-full bg-[var(--color-warm-ink)] z-[1001] flex-shrink-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="h-[52px] flex items-center justify-between px-3 w-full">
+            <button onClick={handleUndo} className="text-gray-300 text-xs font-semibold min-w-[44px] min-h-[44px] flex items-center">↩ Undo</button>
+            <button onClick={handleSaveAsDraft} className="text-green-400 text-xs font-bold min-w-[44px] min-h-[44px] flex items-center">💾 Save</button>
+            <span className="text-[10px] font-jetbrains text-gray-500">ID: {engineRef.current?.sessionId?.substr(0, 8)}</span>
+            <button onClick={() => setShowEndConfirm(true)} className="text-[var(--color-saffron)] text-xs font-bold min-w-[44px] min-h-[44px] flex items-center justify-end">End ↑</button>
+          </div>
         </div>
       )}
 
@@ -1201,7 +1401,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
               <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xl font-bold">{(stats.distance / 1000).toFixed(2)}km</p><p className="text-xs text-gray-500">Distance walked</p></div>
             </div>
             <p className="text-xs text-gray-500 text-center">Tap any house on the map to edit its number</p>
-            <button onClick={onExit} className="w-full min-h-[52px] bg-[var(--color-india-green)] text-white rounded-full font-bold text-lg font-baloo active:scale-95">✓ Generate Map</button>
+            <button onClick={() => window.location.href = `/app?live_preview_id=${engineRef.current?.sessionId}`} className="w-full min-h-[52px] bg-[var(--color-india-green)] text-white rounded-full font-bold text-lg font-baloo active:scale-95">✓ Generate Map</button>
           </div>
         </>
       )}
@@ -1222,6 +1422,20 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId, onExit
             </div>
           </div>
         </div>
+      )}
+
+      {/* Selected House Details Sidebar */}
+      {selectedPlacedSymbol && (
+        <HouseDataSidebar
+          house={selectedPlacedSymbol}
+          onClose={() => setSelectedPlacedSymbol(null)}
+          onSave={(details) => {
+            if (engineRef.current) {
+              engineRef.current.updateSymbolDetails(selectedPlacedSymbol.symbol_id, details);
+            }
+            setSelectedPlacedSymbol(null);
+          }}
+        />
       )}
 
       {/* RETURN PATH DETECTION DIALOG */}

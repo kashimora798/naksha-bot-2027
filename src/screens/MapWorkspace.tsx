@@ -6,6 +6,7 @@ import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygo
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { declutterSymbols, buildRotationMap } from '../lib/declutter';
 import SymbolDrawer from '../components/SymbolDrawer';
+import GuidedTour from '../components/GuidedTour';
 import { supabase } from '../lib/supabase';
 
 interface Props {
@@ -24,6 +25,8 @@ interface Props {
   onUpdateStats: (s: AreaStats) => void;
   onUpdateOrientation: (o: 'landscape' | 'portrait') => void;
   onStepComplete: () => void; onJumpToPreview: () => void;
+  isDemoMode?: boolean;
+  onDemoComplete?: () => void;
 }
 
 const BC = ['#E74C3C','#3498DB','#27AE60','#F39C12','#9B59B6','#1ABC9C','#E67E22','#2980B9','#C0392B','#16A085','#D35400','#8E44AD'];
@@ -33,7 +36,7 @@ export default function MapWorkspace({
   waterBodies, forests, landuseAreas, landmarks, areaStats,
   onUpdateBoundary, onUpdateRoads, onUpdateSymbols, onUpdateBlocks, onUpdateFarmland,
   onUpdateWater, onUpdateForests, onUpdateLandmarks, onUpdateStats, onUpdateOrientation,
-  onStepComplete, onJumpToPreview, onUpdateMapData
+  onStepComplete, onJumpToPreview, onUpdateMapData, isDemoMode, onDemoComplete
 }: Props) {
   const existingMax = symbols.reduce((m, s) => Math.max(m, s.number ?? 0), 0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,6 +46,7 @@ export default function MapWorkspace({
   const srpGrp = useRef(L.layerGroup()); const frmGrp = useRef(L.layerGroup());
   const watGrp = useRef(L.layerGroup()); const forGrp = useRef(L.layerGroup());
   const lmkGrp = useRef(L.layerGroup()); const hlGrp = useRef(L.layerGroup());
+  const luGrp = useRef(L.layerGroup());
   const mks = useRef<Map<string, L.Marker>>(new Map());
   const tileRef = useRef<L.TileLayer | null>(null);
   const rotMap = useRef<Map<string, number>>(new Map());
@@ -62,12 +66,13 @@ export default function MapWorkspace({
 
 
   const [autoData, setAutoData] = useState<{ buildings: number; farmlands: number; water: number; forests: number; landmarks: number; total: number; isVision?: boolean } | null>(null);
-  const [showBlk, setShowBlk] = useState(false);
+  const [showBlk, setShowBlk] = useState(true);
   const [showGuide, setShowGuide] = useState(true);
   const [serpPath, setSerpPath] = useState<Coordinate[]>([]); const [serpOrd, setSerpOrd] = useState<string[]>([]);
   const [aptUnits, setAptUnits] = useState(2);
   const [editMode, setEditMode] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [drawMode, setDrawMode] = useState<'none' | 'farmland' | 'block' | 'label'>('none');
   const [polyPts, setPolyPts] = useState<Coordinate[]>([]);
   const [farmLbl, setFarmLbl] = useState('A'); const [blkLbl, setBlkLbl] = useState('A');
@@ -145,7 +150,7 @@ export default function MapWorkspace({
     // Add Hybrid labels overlay for Places and Roads
     L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
     L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
-    [bndGrp, blkGrp, rdGrp, drwGrp, srpGrp, watGrp, forGrp, lmkGrp, frmGrp, hlGrp].forEach(g => {
+    [bndGrp, blkGrp, rdGrp, drwGrp, srpGrp, watGrp, forGrp, lmkGrp, frmGrp, hlGrp, luGrp].forEach(g => {
       if (!map.hasLayer(g.current)) {
         g.current.addTo(map);
       }
@@ -263,8 +268,7 @@ export default function MapWorkspace({
       park:         { fill: '#90EE90', stroke: '#228B22', width: 1, dash: '',    label: '⛲' }
     };
 
-    const g = frmGrp.current; 
-    // We reuse frmGrp for landuse to avoid making too many layer groups
+    const g = luGrp.current; 
     g.clearLayers();
     landuseAreas.forEach(la => {
       if (la.points.length < 3) return;
@@ -288,7 +292,8 @@ export default function MapWorkspace({
   useEffect(() => { if(ready)renderFor(); }, [ready,renderFor]);
   useEffect(() => { if(ready)renderLmk(); }, [ready,renderLmk]);
   useEffect(() => { if(ready)renderBlks(); }, [ready,renderBlks]);
-  useEffect(() => { if(ready)renderLanduse(); else renderFrms(); }, [ready, renderLanduse, renderFrms]);
+  useEffect(() => { if(ready)renderLanduse(); }, [ready, renderLanduse]);
+  useEffect(() => { if(ready)renderFrms(); }, [ready, renderFrms]);
   useEffect(() => { if(ready)renderSrp(); }, [ready,renderSrp]);
   useEffect(() => { if(ready) symbols.forEach(s => addMk(s)); }, [ready]);
   useEffect(() => { if(tileRef.current) tileRef.current.setOpacity(showSat?1:0); }, [showSat]);
@@ -320,8 +325,11 @@ export default function MapWorkspace({
           way["track"];
         );
         out geom;`;
-      const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
-      if (!r.ok) throw new Error();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!r.ok) throw new Error('Failed to fetch roads');
       const d = await r.json();
       const cl = clipRoadsToPolygon(d.elements || [], boundaryPins);
       console.log(`🗺️ [OSM] Loaded ${cl.length} roads for bounding box.`);
@@ -334,8 +342,9 @@ export default function MapWorkspace({
         source: 'osm' as const,
         osm_id: c.osm_id
       })));
-    } catch {
-      setRdErr('Could not load roads.');
+    } catch (e) {
+      console.warn("Road fetch failed (likely timeout). Returning empty roads.");
+      setRdErr('Could not load roads from OSM. Please draw manually.');
     } finally {
       setRdLoad(false);
     }
@@ -383,12 +392,24 @@ export default function MapWorkspace({
     try {
       const bb = getBbox(boundaryPins);
       const q = buildComprehensiveQuery(bb, 0.002);
-      const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
-      if (!r.ok) throw new Error();
-      const d = await r.json();
       const area = polygonArea(boundaryPins);
-      const res = processOverpassData(d.elements || [], boundaryPins, area);
-      console.log(`🗺️ [OSM] Auto-Detect found: ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farms, ${res.waterBodies.length} water bodies, ${res.forests.length} forests, ${res.landmarks.length} landmarks. Total landuse coverage: ${(res.stats.farmlandArea / area * 100).toFixed(1)}%`);
+      let res = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } };
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+        const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (r.ok) {
+          const d = await r.json();
+          res = processOverpassData(d.elements || [], boundaryPins, area);
+          console.log(`🗺️ [OSM] Auto-Detect found: ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farms, ${res.waterBodies.length} water bodies, ${res.forests.length} forests, ${res.landmarks.length} landmarks. Total landuse coverage: ${(res.stats.farmlandArea / area * 100).toFixed(1)}%`);
+        } else {
+          console.warn("Overpass API returned non-OK status.");
+        }
+      } catch (err) {
+        console.warn("Overpass API failed or timed out. Continuing with empty OSM data.", err);
+      }
       
       setAutoData({
         buildings: res.symbols.length,
@@ -438,7 +459,8 @@ export default function MapWorkspace({
       setAutoBanner(true);
       setHasAuto(true);
     } catch (e) {
-      alert("Failed to auto-detect area. Please check your internet connection.");
+      console.error(e);
+      alert("An unexpected error occurred during auto-detect.");
     }
   }
 
@@ -556,43 +578,85 @@ export default function MapWorkspace({
       )}
 
       {panelOpen && (
-      <div className="px-4 pb-3 bg-white">
-        <div className="flex gap-2 mb-2">
-          <button onClick={startFarmDraw} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-green-50 text-green-700 border border-green-200">🌾 Farm</button>
-          <button onClick={startBlkDraw} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">🔲 Block</button>
-          <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="flex-1 py-2 rounded-lg text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">🏷️ Drop Place</button>
+      <div className="px-4 pb-4 bg-white">
+        <div className="flex gap-2 mb-3">
+          <button onClick={startFarmDraw} className="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-green-50 text-green-700 border border-green-200">🌾 Farm</button>
+          <button onClick={startBlkDraw} className="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">🔲 Block</button>
+          <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">🏷️ Place</button>
         </div>
         
-        {/* Landmarks Checklist */}
-        {landmarks.length > 0 && (
-          <div className="mb-3 bg-[var(--color-warm-paper)] rounded-[16px] p-3 border border-[var(--color-saffron)]/20 shadow-[var(--shadow-warm-1)] max-h-32 overflow-y-auto">
-            <h4 className="text-xs font-bold text-[var(--color-charcoal)] mb-2 font-public-sans">📍 Selected Places for PDF:</h4>
-            {landmarks.map(lm => (
-              <label key={lm.id} className="flex items-center gap-2 mb-1">
-                <input 
-                  type="checkbox" 
-                  checked={lm.selectedForPdf !== false} 
-                  onChange={(e) => {
-                    const u = landmarks.map(l => l.id === lm.id ? { ...l, selectedForPdf: e.target.checked } : l);
-                    onUpdateLandmarks(u);
-                  }}
-                  className="rounded text-[var(--color-saffron)] w-4 h-4"
-                />
-                <span className="text-xs text-[var(--color-charcoal)] truncate font-noto-sans">{lm.name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-        <div className="flex gap-2 mb-2">
-          {!hasAuto && <button onClick={autoDetectArea} className="flex-1 py-3 rounded-full text-sm font-bold bg-purple-500 text-white shadow-[var(--shadow-warm-1)] hover:bg-purple-600 min-h-[52px]">✨ Auto-Detect Area</button>}
-          {areaStats&&<button onClick={()=>setShowStats(s=>!s)} className="flex-1 py-3 rounded-full text-sm font-semibold bg-[var(--color-warm-paper)] text-gray-700 border border-[var(--color-saffron)]/20 min-h-[52px]">📊 Stats</button>}
-          {symbols.length>15&&<button onClick={()=>{if(!showBlk&&!blocks.length)onUpdateBlocks(generateBlocks(boundaryPins,symbols.length));setShowBlk(!showBlk);}} className={`flex-1 py-3 rounded-full text-sm font-semibold min-h-[52px] ${showBlk?'bg-blue-100 text-blue-700 border border-blue-300':'bg-gray-100 text-gray-600 border border-gray-200'}`}>{showBlk?'Hide Blk':'Show Blk'}</button>}
+        <div className="flex gap-2 items-center">
+          {!hasAuto && <button onClick={autoDetectArea} className="flex-1 py-3 rounded-full text-sm font-bold bg-purple-500 text-white shadow-sm hover:bg-purple-600">✨ Auto-Detect</button>}
+          {totH>0&&<button onClick={onStepComplete} className="flex-1 py-3 bg-blue-500 text-white rounded-full font-bold text-sm shadow-sm">Number ({totH}) →</button>}
         </div>
-        {totH>0&&<button onClick={onStepComplete} className="w-full py-3 mt-2 bg-blue-500 text-white rounded-full font-bold text-lg font-public-sans shadow-[var(--shadow-warm-1)] min-h-[52px]">Number ({totH}) →</button>}
-        <button onClick={onJumpToPreview} className="w-full py-3 mt-2 text-sm text-gray-500 hover:text-[var(--color-saffron)] font-bold min-h-[52px]">Preview →</button>
+        <button onClick={() => {
+          if (isDemoMode) {
+            setShowDemoCompleteModal(true);
+            localStorage.setItem('naksha_demo_done', 'true');
+          } else {
+            onJumpToPreview();
+          }
+        }} className="w-full py-2 mt-2 text-xs text-gray-500 font-bold">Preview →</button>
       </div>
       )}
     </div>;
+  }
+
+  function rightSidebar() {
+    return (
+      <>
+        {/* Sidebar Overlay */}
+        {showSidebar && <div className="fixed inset-0 bg-black/50 z-[1100] transition-opacity" onClick={() => setShowSidebar(false)} />}
+        
+        {/* Sliding Sidebar */}
+        <div className={`fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-[1101] transform transition-transform duration-300 ease-out flex flex-col ${showSidebar ? 'translate-x-0' : 'translate-x-full'}`}>
+          <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+            <h2 className="font-bold text-gray-800">Map Data & Zones</h2>
+            <button onClick={() => setShowSidebar(false)} className="text-gray-500 hover:bg-gray-200 w-8 h-8 flex items-center justify-center rounded-full">✕</button>
+          </div>
+          <div className="p-4 overflow-auto flex-1 space-y-4">
+            
+            {/* Landmarks Checklist */}
+            {landmarks.length > 0 && (
+              <div className="bg-[var(--color-warm-paper)] rounded-[16px] p-3 border border-[var(--color-saffron)]/20 shadow-sm">
+                <h4 className="text-xs font-bold text-[var(--color-charcoal)] mb-2 font-public-sans">📍 Selected Places for PDF:</h4>
+                {landmarks.map(lm => (
+                  <label key={lm.id} className="flex items-center gap-2 mb-1">
+                    <input type="checkbox" checked={lm.selectedForPdf !== false} onChange={(e) => { const u = landmarks.map(l => l.id === lm.id ? { ...l, selectedForPdf: e.target.checked } : l); onUpdateLandmarks(u); }} className="rounded text-[var(--color-saffron)] w-4 h-4" />
+                    <span className="text-xs text-[var(--color-charcoal)] truncate font-noto-sans">{lm.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {/* Drawn Zones Management */}
+            {(blocks.length > 0 || farmlandBlocks.length > 0) && (
+              <div className="bg-[var(--color-warm-paper)] rounded-[16px] p-3 border border-[var(--color-saffron)]/20 shadow-sm">
+                <h4 className="text-xs font-bold text-[var(--color-charcoal)] mb-2 font-public-sans">🗺️ Drawn Zones:</h4>
+                {blocks.map(b => (
+                  <div key={b.id} className="flex items-center justify-between mb-1.5 bg-white px-2 py-1.5 rounded-lg border border-gray-100 shadow-sm">
+                    <span className="text-xs font-bold text-blue-700 truncate font-noto-sans">🔲 Block {b.label}</span>
+                    <button onClick={() => onUpdateBlocks(blocks.filter(x => x.id !== b.id))} className="text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded text-[10px] font-bold">Delete</button>
+                  </div>
+                ))}
+                {farmlandBlocks.map(f => (
+                  <div key={f.id} className="flex items-center justify-between mb-1.5 bg-white px-2 py-1.5 rounded-lg border border-gray-100 shadow-sm">
+                    <span className="text-xs font-bold text-green-700 truncate font-noto-sans">🌾 Farm {f.label}</span>
+                    <button onClick={() => onUpdateFarmland(farmlandBlocks.filter(x => x.id !== f.id))} className="text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded text-[10px] font-bold">Delete</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2 mb-2">
+              {areaStats&&<button onClick={()=>setShowStats(s=>!s)} className="flex-1 py-3 rounded-xl text-sm font-semibold bg-[var(--color-warm-paper)] text-gray-700 border border-[var(--color-saffron)]/20 min-h-[52px]">📊 Stats</button>}
+              {symbols.length>15&&<button onClick={()=>{if(!showBlk&&!blocks.length)onUpdateBlocks(generateBlocks(boundaryPins,symbols.length));setShowBlk(!showBlk);}} className={`flex-1 py-3 rounded-xl text-sm font-semibold min-h-[52px] ${showBlk?'bg-blue-100 text-blue-700 border border-blue-300':'bg-gray-100 text-gray-600 border border-gray-200'}`}>{showBlk?'Hide Blk':'Show Blk'}</button>}
+            </div>
+
+          </div>
+        </div>
+      </>
+    );
   }
 
   function pNumFull(){const done=numDone===totH&&totH>0;return <P>
@@ -601,23 +665,47 @@ export default function MapWorkspace({
     {done?<div className="text-center py-1"><div className="text-green-500 text-xl">✓</div><p className="text-sm font-semibold text-green-700">{totH} houses ({totU})!</p></div>:<><p className="text-sm font-semibold"><span className="text-blue-600">{numDone}</span>/{totH}</p><p className="text-xs text-gray-400">{editMode?'Tap to clear':'Tap to number'}</p></>}
     <div className="flex gap-2 mt-2 mb-2">{!done&&<button onClick={autoNum} className="flex-1 py-2 bg-purple-500 text-white rounded-lg text-xs font-bold">⚡ Auto</button>}<button onClick={clearNum} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold">🗑</button></div>
     {numHist.current.length>0&&<button onClick={undoNum} className="w-full text-sm text-gray-500 py-1">↩ {numHist.current.length}</button>}
-    {done?<div className="mt-2"><Btn green onClick={onStepComplete}>Preview →</Btn></div>:totH>0?<button onClick={onJumpToPreview} className="w-full text-sm text-gray-400 mt-2">Skip →</button>:null}
+    {done?<div className="mt-2"><Btn green onClick={() => {
+      if (isDemoMode) {
+        setShowDemoCompleteModal(true);
+        localStorage.setItem('naksha_demo_done', 'true');
+      } else {
+        onStepComplete();
+      }
+    }}>Preview →</Btn></div>:totH>0?<button onClick={() => {
+      if (isDemoMode) {
+        setShowDemoCompleteModal(true);
+        localStorage.setItem('naksha_demo_done', 'true');
+      } else {
+        onJumpToPreview();
+      }
+    }} className="w-full text-sm text-gray-400 mt-2">Skip →</button>:null}
   </P>;}
 
   // ─── COLLAPSED BAR ──────────────────────────────────────
   function collapsedBar(){
     if(drawMode!=='none'){
       if (drawMode === 'label') {
-        return <div className="absolute bottom-3 left-3 right-3 z-[1002] pointer-events-auto"><div className="bg-white/95 backdrop-blur rounded-2xl shadow-lg px-4 py-3"><div className="flex items-center justify-between mb-2"><span className="text-sm font-bold text-orange-700">🏷️ Drop Place Name</span></div><input type="text" value={customLabel} onChange={e=>setCustomLabel(e.target.value)} placeholder="e.g. Main Market" className="w-full border rounded p-2 mb-2 text-sm"/><div className="flex gap-2"><button onClick={cancelDraw} className="flex-1 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-semibold">Cancel</button></div></div></div>;
+        return <div className="absolute left-3 right-3 z-[1002] pointer-events-auto" style={{ bottom: 'calc(12px + env(safe-area-inset-bottom))' }}><div className="bg-white/95 backdrop-blur rounded-2xl shadow-lg px-4 py-3"><div className="flex items-center justify-between mb-2"><span className="text-sm font-bold text-orange-700">🏷️ Drop Place Name</span></div><input type="text" value={customLabel} onChange={e=>setCustomLabel(e.target.value)} placeholder="e.g. Main Market" className="w-full border rounded p-2 mb-2 text-sm"/><div className="flex gap-2"><button onClick={cancelDraw} className="flex-1 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-semibold">Cancel</button></div></div></div>;
       }
-      const isF=drawMode==='farmland';const lbl=isF?farmLbl:blkLbl;const col=isF?'green':'blue';return <div className="absolute bottom-3 left-3 right-3 z-[1002] pointer-events-auto"><div className="bg-white/95 backdrop-blur rounded-2xl shadow-lg px-4 py-3"><div className="flex items-center justify-between mb-2"><span className={`text-sm font-bold text-${col}-700`}>{isF?'🌾':'🔲'} {isF?'Farm':'Block'} {lbl}</span><span className="text-xs text-gray-500">{polyPts.length} pts</span></div><div className="flex gap-2">{polyPts.length>0&&<button onClick={undoPolyPt} className="px-3 py-2 bg-gray-200 rounded-lg text-xs font-semibold">↩</button>}{polyPts.length>=3&&<button onClick={closePolyDraw} className="flex-1 py-2 bg-green-500 text-white rounded-lg text-xs font-bold">✓ Close</button>}<button onClick={cancelDraw} className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-semibold">✕</button></div></div></div>;
+      const isF=drawMode==='farmland';const lbl=isF?farmLbl:blkLbl;const col=isF?'green':'blue';return <div className="absolute left-3 right-3 z-[1002] pointer-events-auto" style={{ bottom: 'calc(12px + env(safe-area-inset-bottom))' }}><div className="bg-white/95 backdrop-blur rounded-2xl shadow-lg px-4 py-3"><div className="flex items-center justify-between mb-2"><span className={`text-sm font-bold text-${col}-700`}>{isF?'🌾':'🔲'} {isF?'Farm':'Block'} {lbl}</span><span className="text-xs text-gray-500">{polyPts.length} pts</span></div><div className="flex gap-2">{polyPts.length>0&&<button onClick={undoPolyPt} className="px-3 py-2 bg-gray-200 rounded-lg text-xs font-semibold">↩</button>}{polyPts.length>=3&&<button onClick={closePolyDraw} className="flex-1 py-2 bg-green-500 text-white rounded-lg text-xs font-bold">✓ Close</button>}<button onClick={cancelDraw} className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-semibold">✕</button></div></div></div>;
     }
     return null;
   }
 
-  // ═══════════ RENDER ══════════════════════════════════════
+  // ═══════════ LIFECYCLE ══════════════════════════════════════
+  const [showDemoCompleteModal, setShowDemoCompleteModal] = useState(false);
   return (
     <div className="relative w-full h-full bg-gray-900">
+      {isDemoMode && (
+        <GuidedTour 
+          step={step} 
+          onSkip={() => {
+            localStorage.setItem('naksha_demo_done', 'true');
+            if (onDemoComplete) onDemoComplete();
+          }} 
+        />
+      )}
       <div ref={containerRef} className="absolute inset-0" />
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-[1000]">
         <svg width="64" height="64" viewBox="0 0 64 64">
@@ -627,10 +715,10 @@ export default function MapWorkspace({
       </div>
       <div className="absolute top-2 left-2 bg-black/60 text-white px-2 py-1 rounded-lg text-xs font-mono z-[1001] pointer-events-none">{cross.lat.toFixed(4)}°N {cross.lng.toFixed(4)}°E</div>
       <div className="absolute top-2 right-2 flex flex-col gap-1 z-[1001]">
-        <button onClick={()=>mapRef.current?.zoomIn()} className="bg-white/90 backdrop-blur w-9 h-9 rounded-lg flex items-center justify-center text-lg font-bold shadow">+</button>
-        <button onClick={()=>mapRef.current?.zoomOut()} className="bg-white/90 backdrop-blur w-9 h-9 rounded-lg flex items-center justify-center text-lg font-bold shadow">−</button>
+        <button onClick={()=>mapRef.current?.zoomIn()} className="bg-white/90 backdrop-blur w-9 h-9 rounded-lg flex items-center justify-center text-lg font-bold">+</button>
+        <button onClick={()=>mapRef.current?.zoomOut()} className="bg-white/90 backdrop-blur w-9 h-9 rounded-lg flex items-center justify-center text-lg font-bold">−</button>
         <button onClick={()=>setShowSat(s=>!s)} className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs shadow ${showSat?'bg-white/90':'bg-blue-500 text-white'}`}>{showSat?'🗺️':'🛰️'}</button>
-        {step>=5&&<button onClick={()=>setPanelOpen(p=>!p)} className="w-9 h-9 rounded-lg flex items-center justify-center text-xs shadow bg-white/90">📂</button>}
+        {step>=5&&<button onClick={()=>setShowSidebar(true)} className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shadow bg-white/90 font-bold text-gray-700">☰</button>}
       </div>
       <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[var(--color-saffron-container)] text-white px-4 py-2 rounded-full text-xs font-bold z-[1001] pointer-events-none shadow-[var(--shadow-warm-1)] font-public-sans tracking-wide">HLB {hlbNumber}</div>
 
@@ -646,14 +734,41 @@ export default function MapWorkspace({
 
 
       {/* Bottom Panel */}
-      <div className="absolute bottom-0 left-0 right-0 z-[1002] pointer-events-none">
+      <div className="absolute bottom-0 left-0 right-0 z-[1002] pointer-events-none" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {step===3&&pBnd()}{step===4&&pRd()}{step===5&&drawMode==='none'&&!autoBanner&&pSymFull()}{step===6&&pNumFull()}
       </div>
 
       {step===5&&drawMode!=='none'&&!autoBanner&&collapsedBar()}
-      {step===6&&!panelOpen&&<div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1002] pointer-events-auto"><button onClick={()=>setPanelOpen(true)} className="bg-white/95 backdrop-blur rounded-full shadow-lg px-5 py-3 flex items-center gap-3 text-sm font-semibold text-gray-700"><span>{numDone}/{totH}</span><span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full" onClick={e=>{e.stopPropagation();autoNum();}}>⚡</span><span className="text-xs bg-gray-200 px-2 py-1 rounded-full">📂</span></button></div>}
+      {step===6&&!panelOpen&&<div className="absolute left-1/2 -translate-x-1/2 z-[1002] pointer-events-auto" style={{ bottom: 'calc(12px + env(safe-area-inset-bottom))' }}><button onClick={()=>setPanelOpen(true)} className="bg-white/95 backdrop-blur rounded-full shadow-lg px-5 py-3 flex items-center gap-3 text-sm font-semibold text-gray-700"><span>{numDone}/{totH}</span><span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full" onClick={e=>{e.stopPropagation();autoNum();}}>⚡</span><span className="text-xs bg-gray-200 px-2 py-1 rounded-full">📂</span></button></div>}
 
       {detectionBanner()}
+      {rightSidebar()}
+
+      {showDemoCompleteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full animate-in fade-in zoom-in duration-300 text-center">
+            <div className="text-5xl mb-4">🎉</div>
+            <h2 className="text-2xl font-black text-gray-800 mb-2">Demo Completed!</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              You've successfully built your first NakshaBot map! The demo map cannot be exported to PDF. To build and download a real map for your census area, please exit and click <strong>+ Create New Map</strong>.
+            </p>
+            <button 
+              onClick={() => {
+                setShowDemoCompleteModal(false);
+                if (onDemoComplete) onDemoComplete();
+                // Since MapWorkspace doesn't have an explicit exit function passed, 
+                // we can just force the step to 0 via App by triggering onJumpToPreview and then letting them exit,
+                // OR we can just let them click 'Exit & Save' in App.tsx.
+                // Wait, App.tsx handles the top bar "Exit & Save".
+                // Let's just alert them to click Exit.
+              }}
+              className="w-full bg-[var(--color-saffron)] text-white font-bold py-3 rounded-xl shadow active:scale-95 transition-all"
+            >
+              Got it!
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

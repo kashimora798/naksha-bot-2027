@@ -8,7 +8,7 @@ import { getBbox } from './geo';
 // Change this to your API server address
 export const API_BASE = import.meta.env.VITE_API_BASE || 'https://pixelster.vercel.app';
 
-const SURVEY_MAP_PROMPT = `Convert this satellite aerial image into a clean official survey map in the style of Survey of India topographic sheets. Use cream white paper background. Roads and lanes must be the dominant visual element — draw main roads as bold double black lines 3px wide with white fill between them, small lanes as single solid black lines 1.5px, footpaths as dashed black lines 1px. Building clusters must be drawn as simple solid black outlined rectangles grouped together, no individual roof details, no irregular shapes, just clean rectangular blocks. Agricultural fields and open land must have only a thin 1px outline with zero fill or hatching inside — fields must appear as empty white outlined polygons, not textured. Trees and vegetation must be represented only as small simple circular outlines 0.5px, no shading, no scribble, placed at the edge of settlement areas only. Water bodies must be light blue filled simple shapes. The entire image must have high contrast black lines on white/cream background. No artistic shading, no pencil texture, no crosshatching anywhere except optionally very light parallel lines inside agricultural fields only. The visual hierarchy must be: roads most prominent, then settlement block outlines, then field boundaries, then vegetation last. This is a government census layout map not an artistic illustration.`;
+const SURVEY_MAP_PROMPT = `Convert this satellite aerial image into a clean official survey map in the style of Survey of India topographic sheets. Use cream white paper background. Roads and lanes must be the dominant visual element — draw main roads as bold double black lines 3px wide with white fill between them, small lanes as single solid black lines 1.5px, footpaths as dashed black lines 1px. Building clusters must be drawn as simple solid black outlined rectangles grouped together, no individual roof details, no irregular shapes, just clean rectangular blocks. Agricultural fields and open land must have only a thin 1px outline with zero fill or hatching inside — fields must appear as empty white outlined polygons, not textured. Trees and vegetation must be represented only as small simple circular outlines 0.5px, no shading, no scribble, placed at the edge of settlement areas only. Water bodies must be light blue filled simple shapes. The entire image must have high contrast black lines on white/cream background. No artistic shading, no pencil texture, no crosshatching anywhere except optionally very light parallel lines inside agricultural fields only. The visual hierarchy must be: roads most prominent, then settlement block outlines, then field boundaries, then vegetation last. This is a government census layout map not an artistic illustration. and also the red colour boundary should be marked with the dotted line in the map `;
 
 // ═══════════════════════════════════════════════════════════
 // SATELLITE TILE CAPTURE — High quality rectangular capture
@@ -25,23 +25,50 @@ function lat2tile(lat: number, z: number): number {
  * Capture high-quality satellite tiles covering the boundary area.
  * Returns a canvas with the satellite imagery.
  */
-async function captureSatelliteTiles(
+export async function captureSatelliteTiles(
   boundary: Coordinate[],
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  targetAspect?: number
 ): Promise<{ canvas: HTMLCanvasElement; tileBounds: { north: number; south: number; east: number; west: number } }> {
   const bb = getBbox(boundary);
-  // Add 10% padding for context
-  const padLat = (bb.north - bb.south) * 0.1;
-  const padLng = (bb.east - bb.west) * 0.1;
-  const south = bb.south - padLat;
-  const north = bb.north + padLat;
-  const west = bb.west - padLng;
-  const east = bb.east + padLng;
+  // Add 5% base padding to ensure boundary never touches the very edge
+  const padLat = (bb.north - bb.south) * 0.05;
+  const padLng = (bb.east - bb.west) * 0.05;
+  let south = bb.south - padLat;
+  let north = bb.north + padLat;
+  let west = bb.west - padLng;
+  let east = bb.east + padLng;
 
-  // Use zoom 18 for high quality, fallback to 17 for large areas
+  // If a target aspect ratio is provided (e.g. A4 paper), pad the bounds further
+  // so that the resulting image perfectly matches the aspect ratio without being cropped by CSS object-cover
+  if (targetAspect) {
+    const latDiff = north - south;
+    const lngDiff = east - west;
+    const centerLat = (north + south) / 2;
+    const lngMultiplier = Math.cos(centerLat * Math.PI / 180);
+    const widthMeters = lngDiff * 111320 * lngMultiplier;
+    const heightMeters = latDiff * 111000;
+    
+    const currentAspect = widthMeters / heightMeters;
+    if (currentAspect < targetAspect) {
+      // Too tall, pad width (longitude)
+      const newWidthMeters = heightMeters * targetAspect;
+      const paddingLng = ((newWidthMeters - widthMeters) / (111320 * lngMultiplier)) / 2;
+      west -= paddingLng;
+      east += paddingLng;
+    } else {
+      // Too wide, pad height (latitude)
+      const newHeightMeters = widthMeters / targetAspect;
+      const paddingLat = ((newHeightMeters - heightMeters) / 111000) / 2;
+      south -= paddingLat;
+      north += paddingLat;
+    }
+  }
+
   const latDiff = north - south;
   const lngDiff = east - west;
-  const zoom = latDiff > 0.008 || lngDiff > 0.012 ? 16 : latDiff > 0.004 || lngDiff > 0.006 ? 17 : 18;
+  // Prioritize high-res zoom 18/19 for quality AI detection
+  const zoom = latDiff > 0.008 || lngDiff > 0.012 ? 17 : latDiff > 0.004 || lngDiff > 0.006 ? 18 : 19;
 
   const TILE = 256;
   const tx1 = lng2tile(west, zoom);
@@ -149,10 +176,10 @@ export async function captureSatelliteForBoundary(
   onProgress?.('Capturing satellite tiles...');
   const { canvas: satCanvas } = await captureSatelliteTiles(boundary, onProgress);
 
-  // Now clip to polygon
+  // Now calculate crop to padded bounding box
   const bb = getBbox(boundary);
-  const padLat = (bb.north - bb.south) * 0.1;
-  const padLng = (bb.east - bb.west) * 0.1;
+  const padLat = (bb.north - bb.south) * 0.05;
+  const padLng = (bb.east - bb.west) * 0.05;
   const south = bb.south - padLat;
   const north = bb.north + padLat;
   const west = bb.west - padLng;
@@ -160,7 +187,7 @@ export async function captureSatelliteForBoundary(
 
   const latDiff = north - south;
   const lngDiff = east - west;
-  const zoom = latDiff > 0.008 || lngDiff > 0.012 ? 16 : latDiff > 0.004 || lngDiff > 0.006 ? 17 : 18;
+  const zoom = latDiff > 0.008 || lngDiff > 0.012 ? 17 : latDiff > 0.004 || lngDiff > 0.006 ? 18 : 19;
 
   const tx1 = lng2tile(west, zoom);
   const tx2 = lng2tile(east, zoom);
@@ -174,35 +201,35 @@ export async function captureSatelliteForBoundary(
   const projX = (lng: number) => ((lng - tileBounds.west) / (tileBounds.east - tileBounds.west)) * cw;
   const projY = (lat: number) => ((tileBounds.north - lat) / (tileBounds.north - tileBounds.south)) * ch;
 
-  // Create clipped canvas
-  const clipped = document.createElement('canvas');
-  clipped.width = cw;
-  clipped.height = ch;
-  const ctx = clipped.getContext('2d')!;
+  // Find the exact pixel bounding box of the padded area
+  const pxWest = Math.max(0, projX(west));
+  const pxEast = Math.min(cw, projX(east));
+  const pxNorth = Math.max(0, projY(north)); 
+  const pxSouth = Math.min(ch, projY(south));
 
-  // Fill white background
+  const cropWidth = pxEast - pxWest;
+  const cropHeight = pxSouth - pxNorth;
+
+  // Create heavily zoomed canvas
+  const zoomed = document.createElement('canvas');
+  zoomed.width = cropWidth;
+  zoomed.height = cropHeight;
+  const ctx = zoomed.getContext('2d')!;
+
+  // Fill background
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, cw, ch);
+  ctx.fillRect(0, 0, cropWidth, cropHeight);
 
-  // Clip to polygon and draw satellite
-  ctx.save();
+  // Draw ONLY the cropped region for maximum zoom
+  ctx.drawImage(satCanvas, pxWest, pxNorth, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+  // Draw bold red boundary outline for context
+  ctx.strokeStyle = 'rgba(255,0,0,1.0)';
+  ctx.lineWidth = Math.max(3, cropWidth * 0.005);
   ctx.beginPath();
   boundary.forEach((p, i) => {
-    const x = projX(p.lng), y = projY(p.lat);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.closePath();
-  ctx.clip();
-  ctx.drawImage(satCanvas, 0, 0);
-  ctx.restore();
-
-  // Draw thin red boundary outline for context
-  ctx.strokeStyle = 'rgba(200,0,0,0.4)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  boundary.forEach((p, i) => {
-    const x = projX(p.lng), y = projY(p.lat);
+    // offset projection by crop origin
+    const x = projX(p.lng) - pxWest, y = projY(p.lat) - pxNorth;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
@@ -211,32 +238,31 @@ export async function captureSatelliteForBoundary(
 
   onProgress?.('Processing image...');
 
-  // Convert to base64, ensure under 3.5MB
+  // Convert to base64, ensure under 3.4MB
   let quality = 0.92;
-  let base64 = clipped.toDataURL('image/jpeg', quality);
-
-  // Strip the data:image/jpeg;base64, prefix for size check
+  let base64 = zoomed.toDataURL('image/jpeg', quality);
   let rawB64 = base64.split(',')[1];
   let sizeBytes = rawB64.length * 0.75;
 
-  while (sizeBytes > 3.4 * 1024 * 1024 && quality > 0.3) {
+  let currentCanvas = zoomed;
+
+  while (sizeBytes > 3.4 * 1024 * 1024) {
     quality -= 0.1;
-    // Also downscale if still too big
-    if (quality < 0.5) {
+    if (quality < 0.4) {
       const smaller = document.createElement('canvas');
-      smaller.width = Math.round(cw * 0.7);
-      smaller.height = Math.round(ch * 0.7);
+      smaller.width = Math.max(100, Math.round(currentCanvas.width * 0.7));
+      smaller.height = Math.max(100, Math.round(currentCanvas.height * 0.7));
       const sctx = smaller.getContext('2d')!;
-      sctx.drawImage(clipped, 0, 0, smaller.width, smaller.height);
-      base64 = smaller.toDataURL('image/jpeg', quality);
-    } else {
-      base64 = clipped.toDataURL('image/jpeg', quality);
+      sctx.drawImage(currentCanvas, 0, 0, smaller.width, smaller.height);
+      currentCanvas = smaller;
+      quality = 0.8; 
     }
+    base64 = currentCanvas.toDataURL('image/jpeg', Math.max(0.1, quality));
     rawB64 = base64.split(',')[1];
     sizeBytes = rawB64.length * 0.75;
   }
 
-  return { canvas: clipped, base64: rawB64, tileBounds };
+  return { canvas: currentCanvas, base64: rawB64, tileBounds };
 }
 
 /**
@@ -244,9 +270,10 @@ export async function captureSatelliteForBoundary(
  */
 export async function captureFullSatellite(
   boundary: Coordinate[],
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  targetAspect?: number
 ): Promise<{ canvas: HTMLCanvasElement; tileBounds: { north: number; south: number; east: number; west: number } }> {
-  return captureSatelliteTiles(boundary, onProgress);
+  return captureSatelliteTiles(boundary, onProgress, targetAspect);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -326,75 +353,28 @@ export async function fetchImageAsBase64(url: string): Promise<string> {
 export async function generateSurveyMapFromBoundary(
   mapData: any, // using any to avoid circular type dependency if MapData isn't imported, but we can import MapData
   orientation: 'landscape' | 'portrait',
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  onPreviewImage?: (base64DataUrl: string) => Promise<boolean>
 ): Promise<SurveyMapResult> {
   const boundary = mapData.boundaryPins;
   if (!boundary || boundary.length < 3) return { success: false, error: 'Need at least 3 boundary points' };
 
-  onProgress?.('Capturing full satellite view...');
+  onProgress?.('Capturing tight satellite view...');
   
-  // Calculate bounding box with 5% padding
-  const { getBbox } = await import('./geo');
-  const bb = getBbox(boundary);
-  const pLng = (bb.east - bb.west) * 0.05 || 0.0005;
-  const pLat = (bb.north - bb.south) * 0.05 || 0.0005;
-  
-  // Create a padded bounding box representing the full canvas view
-  const paddedBoundary = [
-    { lat: bb.south - pLat, lng: bb.west - pLng },
-    { lat: bb.north + pLat, lng: bb.west - pLng },
-    { lat: bb.north + pLat, lng: bb.east + pLng },
-    { lat: bb.south - pLat, lng: bb.east + pLng }
-  ];
+  const { base64 } = await captureSatelliteForBoundary(boundary, onProgress);
+  const fullBase64DataUrl = `data:image/jpeg;base64,${base64}`;
 
-  const { canvas: satCanvas, tileBounds } = await captureFullSatellite(paddedBoundary, onProgress);
-  const cw = satCanvas.width;
-  const ch = satCanvas.height;
-
-  // Composite sketch map over satellite so AI can trace roads
-  const { renderMapToCanvas } = await import('./pdf-export');
-  const overlayCanvas = document.createElement('canvas');
-  overlayCanvas.width = cw;
-  overlayCanvas.height = ch;
-  const ctx = overlayCanvas.getContext('2d')!;
-  ctx.drawImage(satCanvas, 0, 0);
-
-  const sketchCanvas = document.createElement('canvas');
-  renderMapToCanvas(sketchCanvas, { ...mapData, orientation }, cw, ch, { transparentBg: true, hideSymbols: true, focusBounds: tileBounds });
-  ctx.drawImage(sketchCanvas, 0, 0);
-
-  onProgress?.('Processing image for AI...');
-  
-  // Convert to base64, ensure under 3.4MB
-  let quality = 0.92;
-  let base64 = overlayCanvas.toDataURL('image/jpeg', quality);
-  let rawB64 = base64.split(',')[1];
-  let sizeBytes = rawB64.length * 0.75;
-
-  while (sizeBytes > 3.4 * 1024 * 1024 && quality > 0.3) {
-    quality -= 0.1;
-    if (quality < 0.5) {
-      const smaller = document.createElement('canvas');
-      smaller.width = Math.round(cw * 0.7);
-      smaller.height = Math.round(ch * 0.7);
-      const sctx = smaller.getContext('2d')!;
-      sctx.drawImage(overlayCanvas, 0, 0, smaller.width, smaller.height);
-      base64 = smaller.toDataURL('image/jpeg', quality);
-    } else {
-      base64 = overlayCanvas.toDataURL('image/jpeg', quality);
+  if (onPreviewImage) {
+    onProgress?.('Waiting for preview approval...');
+    const approved = await onPreviewImage(fullBase64DataUrl);
+    if (!approved) {
+      return { success: false, error: 'Cancelled by user after preview' };
     }
-    rawB64 = base64.split(',')[1];
-    sizeBytes = rawB64.length * 0.75;
+    onProgress?.('Sending to AI...');
   }
 
-  const ar = cw / ch;
-  let ratio = '1:1';
-  if (ar > 1.4) ratio = '16:9';
-  else if (ar > 1.15) ratio = '4:3';
-  else if (ar < 0.7) ratio = '9:16';
-  else if (ar < 0.85) ratio = '3:4';
-  
-  return generateSurveyMap(rawB64, ratio, onProgress);
+  // The Vercel API supports ratio: "auto" to preserve our carefully calculated A4 dimensions!
+  return generateSurveyMap(base64, 'auto', onProgress);
 }
 
 export async function generateChunkedSurveyMaps(

@@ -11,6 +11,7 @@ export interface SurveySession {
   houses_count?: number;
   distance_m?: number;
   polygon_geojson?: string;
+  drawn_features?: string;
 }
 
 export interface SurveyPoint extends Coordinate {
@@ -174,4 +175,35 @@ export const idbStore = {
     const db = await getDB();
     return db.getAllFromIndex('road_segments', 'session_id', session_id);
   },
+
+  async deleteSession(session_id: string) {
+    const db = await getDB();
+    
+    // Delete session entry
+    await db.delete('survey_sessions', session_id);
+    
+    // Delete associated points
+    const pointsTx = db.transaction('survey_points', 'readwrite');
+    const pointsKeys = await pointsTx.store.index('session_id').getAllKeys(session_id);
+    for (const key of pointsKeys) {
+      pointsTx.store.delete(key);
+    }
+    await pointsTx.done;
+    
+    // Delete associated symbols
+    const symbolsTx = db.transaction('survey_symbols', 'readwrite');
+    const symbolsKeys = await symbolsTx.store.index('session_id').getAllKeys(session_id);
+    for (const key of symbolsKeys) {
+      symbolsTx.store.delete(key);
+    }
+    await symbolsTx.done;
+    
+    // Delete associated road segments
+    const roadsTx = db.transaction('road_segments', 'readwrite');
+    const roadsKeys = await roadsTx.store.index('session_id').getAllKeys(session_id);
+    for (const key of roadsKeys) {
+      roadsTx.store.delete(key);
+    }
+    await roadsTx.done;
+  }
 };

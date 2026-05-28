@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
-import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature } from '../types';
-import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter } from '../types';
+import autoTable from 'jspdf-autotable';
+import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature, SurveySession, SurveySymbol, SurveyPoint, RoadSegment } from '../types';
+import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter, isHouseType } from '../types';
 import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon } from './geo';
 import { drawSymbolOnCanvas } from './symbols';
 import { declutterSymbols } from './declutter';
@@ -53,7 +54,10 @@ export function renderMapToCanvas(
     (pN - c.lat) * scY
   ];
   const avgSc = (scX + scY) / 2;
-  const symSz = Math.max(16, Math.min(30, avgSc * 0.00013));
+  const numSymbols = data.symbols?.length || 1;
+  // If density is very high, scale down the house symbols so they fit cleanly
+  const densityScale = Math.max(0.4, Math.min(1, 100 / numSymbols));
+  const symSz = Math.max(16 * densityScale, Math.min(42 * densityScale, avgSc * 0.0002));
 
   // ─── LANDUSE AREAS ────────────────────────────────────────────
   const landusStyles: Record<string, { fill: string; stroke: string; width: number; dash: number[]; label: string }> = {
@@ -171,7 +175,7 @@ export function renderMapToCanvas(
     const rs = ['residential', 'unclassified', 'tertiary', 'service', 'living_street'].includes(road.highway);
     const kt = ['footway', 'path', 'track', 'pedestrian', 'steps'].includes(road.highway);
     let oW: number, iW: number;
-    if (pk) { oW = 7; iW = 3.5; } else if (rs) { oW = 5; iW = 2; } else if (kt) { oW = 4; iW = 1.5; } else { oW = 4.5; iW = 2; }
+    if (pk) { oW = 16; iW = 8; } else if (rs) { oW = 12; iW = 6; } else if (kt) { oW = 10; iW = 5; } else { oW = 11; iW = 5.5; }
     const dash = kt ? [8, 5] : [];
     const col = road.confirmed ? '#000' : '#555';
     
@@ -200,9 +204,9 @@ export function renderMapToCanvas(
         ctx.translate(cx, cy);
         ctx.rotate(angle);
         // Add a slight white outline and larger, bolder font
-        ctx.font = 'bold 9px sans-serif'; 
+        ctx.font = 'bold 18px sans-serif'; 
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2;
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4;
         ctx.strokeText((road as any).name, 0, 0);
         ctx.fillStyle = '#111';
         ctx.fillText((road as any).name, 0, 0);
@@ -224,13 +228,51 @@ export function renderMapToCanvas(
 
   // ─── SYMBOLS — Upright viewport aligned ───────
   if (!options?.hideSymbols) {
-    // Phase 5: Fast Symbol Collision Detection
-    // Declutter has been removed as it was displacing user's exact manual placements
-    const resolvedSymbols = data.symbols;
+    // Phase 5: Canvas-Space Solar Grid Snapping
+    // Align symbols into a perfect non-overlapping grid on the high-res canvas
+    const gridSz = symSz * 1.25;
+    const occupied = new Set<string>();
+    const snappedSymbols: { x: number, y: number, sym: PlacedSymbol }[] = [];
 
-    for (const sym of resolvedSymbols) {
-      const [x, y] = proj(sym);
-      ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.beginPath(); ctx.arc(x, y, symSz * 0.5, 0, Math.PI * 2); ctx.fill();
+    // Prioritize houses first to ensure they get the best grid spots
+    const sortedSymbols = [...data.symbols].sort((a, b) => {
+      const aH = isHouseType(a.symbol_type) ? -1 : 1;
+      const bH = isHouseType(b.symbol_type) ? -1 : 1;
+      return aH - bH;
+    });
+
+    for (const sym of sortedSymbols) {
+      const [idealX, idealY] = proj(sym);
+      let gX = Math.round(idealX / gridSz);
+      let gY = Math.round(idealY / gridSz);
+      
+      if (!occupied.has(`${gX},${gY}`)) {
+        occupied.add(`${gX},${gY}`);
+        snappedSymbols.push({ x: gX * gridSz, y: gY * gridSz, sym });
+      } else {
+        // Spiral search for nearest empty cell
+        let found = false;
+        for (let ring = 1; ring <= 20 && !found; ring++) {
+          for (let dx = -ring; dx <= ring && !found; dx++) {
+            for (let dy = -ring; dy <= ring && !found; dy++) {
+              if (Math.abs(dx) === ring || Math.abs(dy) === ring) {
+                if (!occupied.has(`${gX + dx},${gY + dy}`)) {
+                  gX += dx; gY += dy;
+                  occupied.add(`${gX},${gY}`);
+                  snappedSymbols.push({ x: gX * gridSz, y: gY * gridSz, sym });
+                  found = true;
+                }
+              }
+            }
+          }
+        }
+        if (!found) { // Fallback just in case
+          snappedSymbols.push({ x: idealX, y: idealY, sym });
+        }
+      }
+    }
+
+    for (const { x, y, sym } of snappedSymbols) {
       drawSymbolOnCanvas(ctx, sym.symbol_type, x, y, symSz, sym.number, getUnitCount(sym));
     }
   }
@@ -240,7 +282,7 @@ export function renderMapToCanvas(
     for (const lm of (data.landmarks || [])) {
       if (lm.selectedForPdf === false) continue;
       const [x, y] = proj({ lat: lm.lat, lng: lm.lng });
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.font = 'bold 8px sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ctx.fillText(`• ${lm.name}`, x, y - 5);
     }
@@ -554,4 +596,85 @@ function addOverlays(doc: jsPDF, data: MapData, w: number, h: number, subtitle: 
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
   doc.text(`${data.enumeratorName || ''} | ${data.district}, ${data.state} | ${new Date().toLocaleDateString('en-IN')}`, w / 2, h - 2.5, { align: 'center' });
+}
+
+// ═══════════════════════════════════════════════════════════
+// LIVE SURVEY OFFICIAL EXPORTS
+// ═══════════════════════════════════════════════════════════
+
+export async function generateOfficialRegister(session: SurveySession, symbols: SurveySymbol[]) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`CENSUS 2027 - HLO REGISTER - HLB ${session.hlb_number}`, 14, 20);
+  
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Location: ${session.location_name || 'N/A'}`, 14, 28);
+  doc.text(`Date: ${new Date(session.created_at).toLocaleDateString('en-IN')}`, 200, 28);
+  
+  const tableData = symbols
+    .filter(s => s.number)
+    .sort((a, b) => parseInt(a.number as string || '0') - parseInt(b.number as string || '0'))
+    .map(s => [
+      s.number,
+      s.symbol_type.replace('_', ' ').toUpperCase(),
+      s.col_4_use_type === 1 ? 'Residence' : s.col_4_use_type === 2 ? 'Res+Shop' : s.col_4_use_type ? 'Other' : '-',
+      s.col_10_head_name || s.head_of_household || '-',
+      s.col_9_family_count || '-',
+      s.col_11_total_rooms || '-',
+      s.col_12_ownership === 1 ? 'Owned' : s.col_12_ownership === 2 ? 'Rented' : '-',
+      s.col_18_water_source ? 'Recorded' : '-',
+      s.col_20_latrine ? 'Recorded' : '-',
+      s.col_23_cooking_fuel ? 'Recorded' : '-',
+      `${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}`
+    ]);
+
+  autoTable(doc, {
+    startY: 35,
+    head: [['Bldg No', 'Type', 'Use', 'Head of Household', 'Families', 'Rooms', 'Ownership', 'Water', 'Latrine', 'Fuel', 'GPS Coordinates']],
+    body: tableData,
+    theme: 'grid',
+    headStyles: { fillColor: [40, 40, 40], textColor: 255 },
+    styles: { fontSize: 8, cellPadding: 2 },
+    alternateRowStyles: { fillColor: [245, 245, 245] },
+  });
+
+  doc.save(`HLO_Register_HLB_${session.hlb_number}.pdf`);
+}
+
+export async function generateLiveExportPdf(
+  session: SurveySession, 
+  symbols: SurveySymbol[], 
+  path: SurveyPoint[], 
+  roads: RoadSegment[],
+  onProgress: (msg: string) => void
+) {
+  // Construct MapData format for renderMapToCanvas
+  const mapData: MapData = {
+    blocks: [],
+    hlbNumber: session.hlb_number,
+    locationName: session.location_name,
+    boundaryPins: session.polygon_geojson ? (() => {
+      try {
+         const geo = JSON.parse(session.polygon_geojson);
+         if (geo && geo.geometry && geo.geometry.coordinates) {
+           return geo.geometry.coordinates[0].map((coord: any) => ({ lng: coord[0], lat: coord[1] }));
+         }
+      } catch(e) {}
+      return [];
+    })() : [],
+    symbols: symbols as PlacedSymbol[],
+    roads: roads.map(r => ({
+      id: r.segment_id,
+      coords: r.points,
+      highway: r.road_type,
+      confirmed: true,
+      source: 'user'
+    } as RoadFeature)),
+    gridConfig: { enabled: true, columns: 2, rows: 2 }
+  };
+
+  await exportBlockPDF(mapData, 'portrait', onProgress);
 }

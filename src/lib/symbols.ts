@@ -86,11 +86,22 @@ export function drawSymbolOnCanvas(
   const drawNum = (nx: number, ny: number) => {
     if (num !== null && num !== undefined) {
       const lbl = unitCount > 1 ? `${num}-${num + unitCount - 1}` : String(num);
-      ctx.fillStyle = '#000000';
-      ctx.font = `bold ${Math.max(6, size * 0.4)}px sans-serif`;
+      ctx.font = `bold ${Math.max(12, size * 0.65)}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      
+      // White halo for readability over roads
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 4;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(lbl, nx, ny);
+      
+      // Black text
+      ctx.fillStyle = '#000000';
       ctx.fillText(lbl, nx, ny);
-      ctx.fillStyle = '#000000'; // restore
+      
+      // Restore stroke properties for the next shapes
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
     }
   };
 

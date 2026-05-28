@@ -25,6 +25,7 @@ export class LiveSurveyEngine {
   roadSegments: RoadSegment[] = [];
   currentSegment: { type: string, points: SurveyPoint[] } = { type: 'residential', points: [] };
   symbols: SurveySymbol[] = [];
+  drawnFeatures: any = { blocks: [], farmlandBlocks: [], forests: [], waterBodies: [], landuseAreas: [], landmarks: [] };
   sessionId: string;
   startTime: number | null = null;
   state: SurveyState = 'READY';
@@ -48,11 +49,39 @@ export class LiveSurveyEngine {
   returnDetectedFlag = false;
   returnMode: 'none' | 'two_lane' | 'follow_back' = 'none';
 
-  constructor(blockPolygon: any, supabaseClient: any, idbService: typeof idbStore) {
+  // New buffers for advanced filtering & OSRM
+  snapBuffer: SurveyPoint[] = [];
+  snapInterval: any = null;
+  recentPointsBuffer: SurveyPoint[] = [];
+
+  constructor(blockPolygon: any, supabaseClient: any, idbService: typeof idbStore, existingSessionId?: string) {
     this.blockPolygon = blockPolygon;
     this.supabase = supabaseClient;
     this.idb = idbService;
-    this.sessionId = crypto.randomUUID();
+    this.sessionId = existingSessionId || crypto.randomUUID();
+  }
+
+  async loadSessionData() {
+    const session = await this.idb.getSession(this.sessionId);
+    if (session) {
+      this.state = session.state === 'active' ? 'PAUSED' : (session.state as SurveyState);
+      this.startTime = session.startTime || Date.now();
+      if (session.polygon_geojson) {
+        try { this.blockPolygon = JSON.parse(session.polygon_geojson); } catch(e){}
+      }
+    }
+    
+    const syms = await this.idb.getSymbolsForSession(this.sessionId);
+    this.symbols = syms;
+    
+    const pts = await this.idb.getPointsForSession(this.sessionId);
+    this.rawPoints = pts;
+    this.smoothedPath = pts;
+    
+    const rds = await this.idb.getSegmentsForSession(this.sessionId);
+    this.roadSegments = rds;
+    
+    this.emit('symbolsUpdated', this.symbols);
   }
 
   on(event: string, callback: Function) {
@@ -83,8 +112,8 @@ export class LiveSurveyEngine {
       err => this.handleGPSError(err),
       {
         enableHighAccuracy: true,
-        maximumAge: 2000,
-        timeout: 10000
+        maximumAge: 0,
+        timeout: 5000
       }
     );
     
@@ -118,12 +147,18 @@ export class LiveSurveyEngine {
     
     this.saveToIDB();
     this.emit('stateChanged', this.state);
+    
+    if (this.snapInterval) {
+      clearInterval(this.snapInterval);
+      this.snapInterval = null;
+    }
   }
 
   resumeSurvey() {
     if (this.state !== 'PAUSED') return;
     this.state = 'RECORDING';
     this.emit('stateChanged', this.state);
+    this.startSnapInterval();
   }
 
   async endSurvey() {
@@ -197,19 +232,65 @@ export class LiveSurveyEngine {
       } catch (e) { /* ignore */ }
     }
 
+    // Update recent points buffer for stationary detection
+    this.recentPointsBuffer.push(smoothed);
+    if (this.recentPointsBuffer.length > 5) this.recentPointsBuffer.shift();
+
     let isPathPoint = false;
     let emitPosition: SurveyPoint = smoothed;
 
-    // Vehicle detection (OS-reported speed)
-    if (raw.speed > 4.2 && this.state === 'RECORDING') {
+    // Movement Classification
+    const classifyMovement = (p: SurveyPoint): 'vehicle' | 'bicycle' | 'fast_walk' | 'poor_gps' | 'walking' | 'unknown' => {
+      if (p.speed === null || p.speed === undefined) return 'unknown';
+      if (p.speed > 8.3) return 'vehicle';     // >30 km/h
+      if (p.speed > 4.2) return 'bicycle';     // >15 km/h
+      if (p.speed > 2.0) return 'fast_walk';   // >7 km/h
+      if (p.accuracy > 20) return 'poor_gps';
+      return 'walking';
+    };
+
+    const movementType = classifyMovement(raw);
+
+    // Vehicle detection
+    if (movementType === 'vehicle' && this.state === 'RECORDING') {
       this.handleVehicleDetected();
+      return;
+    }
+
+    // Stationary detection filter (Thick overlapping lines fix)
+    const isStationary = (recent: SurveyPoint[], threshold = 3) => {
+      if (recent.length < 5) return false;
+      const center = {
+        lat: recent.reduce((s, p) => s + p.lat, 0) / 5,
+        lng: recent.reduce((s, p) => s + p.lng, 0) / 5
+      };
+      const maxDeviation = Math.max(...recent.map(p => 
+        turf.distance(
+          turf.point([center.lng, center.lat]),
+          turf.point([p.lng, p.lat]),
+          { units: 'meters' }
+        )
+      ));
+      return maxDeviation < threshold;
+    };
+
+    if (isStationary(this.recentPointsBuffer)) {
+      // Update position but do not record path
+      this.emit('positionUpdate', {
+        position: emitPosition,
+        accuracy: raw.accuracy,
+        insideBoundary: inside,
+        bearing: this.getSmoothedBearing(),
+        pathLength: this.smoothedPath.length,
+        isPathPoint: false
+      });
       return;
     }
 
     const canRecord = this.state === 'RECORDING' && this.returnMode !== 'follow_back';
     const passesQuality = raw.accuracy <= 50;
 
-    if (canRecord && passesQuality) {
+    if (canRecord && passesQuality && (movementType === 'walking' || movementType === 'fast_walk' || movementType === 'unknown')) {
       let addToPath = true;
 
       if (this.smoothedPath.length > 0) {
@@ -244,6 +325,7 @@ export class LiveSurveyEngine {
         this.rawPoints.push(raw);
         this.smoothedPath.push(finalPoint);
         this.currentSegment.points.push(finalPoint);
+        this.snapBuffer.push(finalPoint); // For batch OSRM map matching
         isPathPoint = true;
         emitPosition = finalPoint;
 
@@ -318,9 +400,67 @@ export class LiveSurveyEngine {
       } catch (e) { /* ignore bad geometries */ }
     }
 
-    return closestDist < threshold
+    // Snapping threshold (only snap if within 10 meters)
+    return closestDist <= 10
       ? { onRoad: true, road: closestRoad, snappedPoint: closestSnapped! }
       : { onRoad: false };
+  }
+
+  // ── OSRM Map Matching ─────────────────────────────────────
+  startSnapInterval() {
+    if (this.snapInterval) clearInterval(this.snapInterval);
+    this.snapInterval = setInterval(async () => {
+      if (this.snapBuffer.length < 5) return;
+      
+      const pointsToSnap = [...this.snapBuffer];
+      // Keep last point for continuity in next batch
+      this.snapBuffer = [pointsToSnap[pointsToSnap.length - 1]]; 
+      
+      const snapped = await this.snapTrackToRoads(pointsToSnap);
+      
+      // Update the current segment with snapped coordinates
+      if (snapped && snapped.length > 0) {
+        // We replace the last N points in the current segment with the snapped points
+        const numToReplace = pointsToSnap.length - 1; // Don't replace the very first point of this batch to keep continuity
+        if (this.currentSegment.points.length >= numToReplace) {
+           this.currentSegment.points.splice(-numToReplace, numToReplace, ...snapped.slice(1));
+           this.emit('pathSnapped', this.currentSegment.points);
+           this.saveToIDB();
+        }
+      }
+    }, 30000); // every 30 seconds
+  }
+
+  async snapTrackToRoads(rawPoints: SurveyPoint[]) {
+    if (rawPoints.length < 2) return rawPoints;
+    
+    const coords = rawPoints.map(p => `${p.lng},${p.lat}`).join(';');
+    const radiuses = rawPoints.map(p => Math.min(p.accuracy * 2, 50)).join(';');
+    const timestamps = rawPoints.map(p => Math.floor(p.timestamp / 1000)).join(';');
+    
+    try {
+      const url = `https://router.project-osrm.org/match/v1/foot/${coords}?radiuses=${radiuses}&timestamps=${timestamps}&geometries=geojson&annotations=true&overview=full`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const data = await response.json();
+      
+      if (data.code !== 'Ok' || !data.matchings?.length) {
+        return rawPoints; 
+      }
+      
+      // Check confidence - if low, it's likely an unmapped gully, so keep raw
+      const confidence = data.matchings[0].confidence;
+      if (confidence < 0.6) return rawPoints;
+      
+      const snappedCoords = data.matchings[0].geometry.coordinates;
+      // Re-hydrate the snapped coords with point structure
+      return snappedCoords.map((coord: number[], i: number) => ({
+        ...rawPoints[Math.min(i, rawPoints.length - 1)],
+        lat: coord[1],
+        lng: coord[0]
+      }));
+    } catch (error) {
+      return rawPoints; // never break survey
+    }
   }
 
   // ── Return Path Detection ─────────────────────────────────
@@ -345,7 +485,7 @@ export class LiveSurveyEngine {
     this.returnMode = mode;
   }
 
-  placeSymbol(symbolType: string, direction: 'left'|'center'|'right' = 'center', fallbackPos?: { lat: number, lng: number }) {
+  placeSymbol(symbolType: string, direction: 'left'|'center'|'right' = 'center', fallbackPos?: { lat: number, lng: number }, details?: any) {
     // If not moving, just use center or default position
     let currentPos = this.smoothedPath.length > 0 ? this.smoothedPath[this.smoothedPath.length - 1] : null;
     if (!currentPos && fallbackPos) {
@@ -391,10 +531,12 @@ export class LiveSurveyEngine {
       placement_direction: direction,
       bearing_at_placement: bearing,
       gps_accuracy: currentPos.accuracy,
-      placed_at: new Date().toISOString()
+      placed_at: new Date().toISOString(),
+      ...(details || {})
     };
     
     this.symbols.push(symbol);
+    this.recalculateHouseNumbers();
     this.saveToIDB();
     
     const patterns = { left: [50], right: [50, 30, 50], center: [100] };
@@ -412,9 +554,43 @@ export class LiveSurveyEngine {
     if (removed) {
       this.idb.removeSymbol(removed.symbol_id);
     }
+    this.recalculateHouseNumbers();
     this.saveToIDB();
     this.emit('symbolsUpdated', this.symbols);
     return removed;
+  }
+
+  undoLastRoadSegment() {
+    if (this.roadSegments.length === 0) return;
+    const removed = this.roadSegments.pop();
+    this.saveToIDB();
+    this.emit('roadSegmentsUpdated', this.roadSegments);
+    return removed;
+  }
+
+  updateSymbolDetails(symbolId: string, details: any) {
+    const sym = this.symbols.find(s => s.symbol_id === symbolId);
+    if (sym) {
+      Object.assign(sym, details);
+      this.saveToIDB();
+      this.emit('symbolsUpdated', this.symbols);
+    }
+  }
+
+  private recalculateHouseNumbers() {
+    const houses = this.symbols.filter(s => 
+      ['pucca_house', 'kutcha_house', 'apartment', 'non_residential'].includes(s.symbol_type as string)
+    );
+    
+    // Sort chronologically by placement time
+    houses.sort((a, b) => new Date(a.placed_at || 0).getTime() - new Date(b.placed_at || 0).getTime());
+    
+    // Re-assign sequential building numbers
+    let currentNumber = 1;
+    for (const h of houses) {
+      h.number = currentNumber.toString();
+      currentNumber++;
+    }
   }
 
   switchRoadType(newType: string) {
@@ -440,10 +616,16 @@ export class LiveSurveyEngine {
   }
 
   kalmanFilter(raw: SurveyPoint): SurveyPoint {
+    // Dynamic measurement noise based on device's reported accuracy (variance)
+    // Scale it so that 1m accuracy = small r, 100m accuracy = large r
+    const dynamicR = (raw.accuracy * raw.accuracy) / 10; 
+    
     const filterAxis = (axis: 'lat' | 'lng', measurement: number) => {
       const k = this.kalman[axis];
       k.p = k.p + k.q;
-      const gain = k.p / (k.p + k.r);
+      // Use dynamicR if raw.accuracy is available, otherwise fallback to k.r
+      const currentR = raw.accuracy ? dynamicR : k.r;
+      const gain = k.p / (k.p + currentR);
       k.x = k.x === 0 ? measurement : k.x + gain * (measurement - k.x);
       k.p = (1 - gain) * k.p;
       return k.x;
@@ -458,11 +640,16 @@ export class LiveSurveyEngine {
 
   async saveToIDB() {
     // Basic auto-save.
-    // To prevent blocking, we could copy data and save asynchronously.
     const toSave = this.smoothedPath.slice(-20);
     if (toSave.length > 0) {
       await this.idb.addPoints(toSave);
     }
+    await this.idb.updateSessionState(this.sessionId, this.state, {
+       houses_count: this.symbols.filter(s => ['pucca_house', 'kutcha_house'].includes(s.symbol_type as string)).length,
+       distance_m: Math.round(this.calculateTotalDistance()),
+       polygon_geojson: this.blockPolygon ? JSON.stringify(this.blockPolygon) : undefined,
+       drawn_features: JSON.stringify(this.drawnFeatures)
+    });
   }
 
   async syncToSupabase() {

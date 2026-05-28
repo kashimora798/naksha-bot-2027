@@ -10,24 +10,7 @@
  * Applied at RENDER time only — raw data is never modified.
  */
 
-// ── Perpendicular distance of P from line AB (meters) ──────────
-function perpendicularDistM(
-  P: { lat: number; lng: number },
-  A: { lat: number; lng: number },
-  B: { lat: number; lng: number }
-): number {
-  const avgLat = (A.lat + B.lat + P.lat) / 3;
-  const mLat = 111320;
-  const mLng = 111320 * Math.cos(avgLat * Math.PI / 180);
-
-  const bx = (B.lng - A.lng) * mLng, by = (B.lat - A.lat) * mLat;
-  const px = (P.lng - A.lng) * mLng, py = (P.lat - A.lat) * mLat;
-
-  const abLen = Math.sqrt(bx * bx + by * by);
-  if (abLen < 0.001) return Math.sqrt(px * px + py * py);
-
-  return Math.abs(bx * py - by * px) / abLen;
-}
+import simplify from 'simplify-js';
 
 // ── Bearing (degrees 0-360) ─────────────────────────────────────
 function bearingDeg(
@@ -48,45 +31,6 @@ function angleDiff(a: number, b: number): number {
   while (d > 180) d -= 360;
   while (d < -180) d += 360;
   return d;
-}
-
-/**
- * Ramer-Douglas-Peucker line simplification.
- *
- * Removes intermediate points that lie within `tolerance` meters
- * of the simplified line → straight roads become truly straight.
- * Points where actual turns happen have high perpendicular distance
- * and are ALWAYS preserved.
- */
-function rdpSimplify(
-  points: { lat: number; lng: number }[],
-  tolerance: number
-): { lat: number; lng: number }[] {
-  if (points.length < 3) return [...points];
-
-  const start = points[0];
-  const end = points[points.length - 1];
-
-  let maxDist = 0;
-  let maxIdx = 0;
-
-  for (let i = 1; i < points.length - 1; i++) {
-    const d = perpendicularDistM(points[i], start, end);
-    if (d > maxDist) {
-      maxDist = d;
-      maxIdx = i;
-    }
-  }
-
-  if (maxDist > tolerance) {
-    // Split at the turn point and recurse both halves
-    const left = rdpSimplify(points.slice(0, maxIdx + 1), tolerance);
-    const right = rdpSimplify(points.slice(maxIdx), tolerance);
-    return [...left.slice(0, -1), ...right];
-  }
-
-  // All points within tolerance → collapse to a straight line
-  return [start, end];
 }
 
 /**
@@ -161,15 +105,21 @@ function chaikinSmooth(
  */
 export function beautifyPath(
   points: { lat: number; lng: number }[],
-  rdpTolerance = 1.5
+  rdpTolerance = 2.5
 ): { lat: number; lng: number }[] {
   if (points.length < 3) return [...points];
 
-  // Step 1 — Simplify (removes wobble, keeps turns)
-  const simplified = rdpSimplify(points, rdpTolerance);
+  // Step 1 — Simplify (removes wobble, keeps turns) using simplify-js
+  const tolerance = rdpTolerance * 0.000009; // approx 1 meter in degrees
+  const simplifiedPts = simplify(
+    points.map(p => ({ x: p.lng, y: p.lat })),
+    tolerance,
+    true
+  );
+  const simplified = simplifiedPts.map(p => ({ lat: p.y, lng: p.x }));
 
   // Step 2 — Smooth (rounds turn vertices into curves)
-  const smoothed = chaikinSmooth(simplified, 2, 8);
+  const smoothed = chaikinSmooth(simplified, 3, 12);
 
   // Step 3 — Pin endpoints exactly
   if (smoothed.length > 0) {

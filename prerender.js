@@ -12,6 +12,15 @@ const DIST_DIR = path.join(__dirname, 'dist');
 
 const routes = [
   '/',
+  '/nazri-naksha-kaise-banaye',
+  '/nazri-naksha-kya-hota-hai',
+  '/hlb-map-download',
+  '/hlb-full-form',
+  '/hlo-full-form',
+  '/hlo-house-numbering',
+  '/hlb-map-sample',
+  '/hlo-app-census-guide',
+  '/nazri-naksha-census-2027',
   '/how-it-works',
   '/faq',
   '/schedule',
@@ -125,6 +134,19 @@ async function run() {
       console.error(`Failed to prerender route ${route}:`, routeErr.message);
     }
   }
+
+  // Generate sitemap.xml
+  const sitemapContent = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${routes.map(route => `  <url>
+    <loc>https://nakshabot.in${route === '/' ? '' : route}</loc>
+    <changefreq>${route === '/' ? 'daily' : 'weekly'}</changefreq>
+    <priority>${route === '/' ? '1.0' : '0.8'}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+  
+  fs.writeFileSync(path.join(DIST_DIR, 'sitemap.xml'), sitemapContent);
+  console.log('Successfully generated sitemap.xml');
 
   console.log('Finished prerendering all routes.');
   await browser.close();

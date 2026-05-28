@@ -20,13 +20,21 @@ interface Props {
   onNewProject: () => void;
   onLiveSurvey?: () => void;
   onResumeLiveSurvey?: (sessionId: string) => void;
+  onDemoMap?: () => void;
 }
 
-export default function DashboardScreen({ user, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey }: Props) {
+export default function DashboardScreen({ user, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveSessions, setLiveSessions] = useState<SurveySession[]>([]);
+  const [showDemoModal, setShowDemoModal] = useState(false);
+
+  useEffect(() => {
+    if (!localStorage.getItem('naksha_demo_done')) {
+      setShowDemoModal(true);
+    }
+  }, []);
 
   useEffect(() => {
     async function loadProjects() {
@@ -186,6 +194,12 @@ export default function DashboardScreen({ user, onLoadProject, onNewProject, onL
               </button>
             )}
             <button
+              onClick={onDemoMap}
+              className="px-5 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]"
+            >
+              🎓 Try Demo
+            </button>
+            <button
               onClick={onNewProject}
               className="px-5 py-2.5 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]"
             >
@@ -245,6 +259,32 @@ export default function DashboardScreen({ user, onLoadProject, onNewProject, onL
           </div>
         )}
       </div>
+
+      {showDemoModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full animate-in fade-in zoom-in duration-300">
+            <div className="text-4xl text-center mb-4">🗺️</div>
+            <h2 className="text-xl font-black text-gray-800 text-center mb-2">Welcome to NakshaBot!</h2>
+            <p className="text-sm text-gray-600 text-center mb-6">
+              Learn how to quickly create a stunning HLO Census map in less than 2 minutes. We've set up a guided demo for you.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => { setShowDemoModal(false); onDemoMap?.(); }}
+                className="w-full bg-[var(--color-saffron)] text-white font-bold py-3 rounded-xl shadow active:scale-95 transition-all"
+              >
+                Start Interactive Demo
+              </button>
+              <button 
+                onClick={() => { localStorage.setItem('naksha_demo_done', 'true'); setShowDemoModal(false); }}
+                className="w-full bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200 active:scale-95 transition-all"
+              >
+                Skip for now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

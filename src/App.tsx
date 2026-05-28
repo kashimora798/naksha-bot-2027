@@ -39,12 +39,12 @@ export default function App() {
   const update = useCallback((u: Partial<MapData>) => setMapData(p => ({ ...p, ...u })), []);
   const inMap = step >= 3 && step <= 6;
 
-  // ─── SESSION STORAGE PERSISTENCE ────────────────────────
+  // ─── LOCAL STORAGE PERSISTENCE ────────────────────────
   useEffect(() => {
-    // Check session storage on initial load
-    const savedStep = sessionStorage.getItem('app_step');
-    const savedProjectId = sessionStorage.getItem('app_project_id');
-    const savedMapData = sessionStorage.getItem('app_map_data');
+    // Check local storage on initial load
+    const savedStep = localStorage.getItem('app_step');
+    const savedProjectId = localStorage.getItem('app_project_id');
+    const savedMapData = localStorage.getItem('app_map_data');
 
     const params = new URLSearchParams(window.location.search);
     const isPaymentSuccess = params.get('payment') === 'success';
@@ -53,7 +53,7 @@ export default function App() {
       if (savedProjectId) {
         setProjectId(savedProjectId);
         if (savedStep) setStep(Number(savedStep));
-        // We will fetch from supabase in a moment, but load from session storage instantly to avoid flicker
+        // We will fetch from supabase in a moment, but load from local storage instantly to avoid flicker
         if (savedMapData) {
           try { setMapData(JSON.parse(savedMapData)); } catch(e) {}
         }
@@ -72,23 +72,23 @@ export default function App() {
     }
   }, []);
 
-  // Save state to session storage whenever it changes
+  // Save state to local storage whenever it changes
   useEffect(() => {
     if (step > 0) {
-      sessionStorage.setItem('app_step', step.toString());
+      localStorage.setItem('app_step', step.toString());
       if (projectId) {
-        sessionStorage.setItem('app_project_id', projectId);
+        localStorage.setItem('app_project_id', projectId);
       }
       try {
-        sessionStorage.setItem('app_map_data', JSON.stringify(mapData));
+        localStorage.setItem('app_map_data', JSON.stringify(mapData));
       } catch (e) {
-        console.warn('Could not save mapData to session storage (might be too large)');
+        console.warn('Could not save mapData to local storage (might be too large)');
       }
     } else {
-      // Step 0 means Dashboard - clear session storage
-      sessionStorage.removeItem('app_step');
-      sessionStorage.removeItem('app_project_id');
-      sessionStorage.removeItem('app_map_data');
+      // Step 0 means Dashboard - clear local storage
+      localStorage.removeItem('app_step');
+      localStorage.removeItem('app_project_id');
+      localStorage.removeItem('app_map_data');
     }
   }, [step, projectId, mapData]);
 

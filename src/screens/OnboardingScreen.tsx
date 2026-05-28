@@ -62,14 +62,22 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
       return;
     }
     const nonce = crypto.randomUUID();
-    window.location.href = `truecallersdk://truesdk/web_verify?requestNonce=${nonce}&partnerKey=${APP_KEY}&partnerName=NakshaBot&lang=en&title=Login`;
+    const deepLink = `truecallersdk://truesdk/web_verify?requestNonce=${nonce}&partnerKey=${APP_KEY}&partnerName=NakshaBot&lang=en&title=Login`;
+    
+    // Use hidden iframe to avoid page refresh/navigation error
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = deepLink;
+    document.body.appendChild(iframe);
+    
     setTruecallerWait(true);
     
     // Fallback if app is not installed
     setTimeout(() => {
+      document.body.removeChild(iframe);
       if (document.hasFocus()) {
         setTruecallerWait(false);
-        // App not opened
+        alert("Truecaller App not detected on this device. Please enter your mobile number manually.");
       }
     }, 2000);
   };

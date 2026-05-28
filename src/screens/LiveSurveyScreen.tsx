@@ -146,6 +146,62 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
   const [drawingPoints, setDrawingPoints] = useState<Coordinate[]>([]);
   const drawingPolylineRef = useRef<L.Polyline | null>(null);
 
+  // ── Compass tracking ──────────────────────────────────────────
+  const [compassHeading, setCompassHeading] = useState<number | null>(null);
+  const [hasCompassPermission, setHasCompassPermission] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleOrientation = (e: DeviceOrientationEvent) => {
+      let heading = null;
+      if ('webkitCompassHeading' in e) {
+        heading = (e as any).webkitCompassHeading;
+      } else if (e.alpha !== null) {
+        heading = 360 - e.alpha;
+      }
+      if (heading !== null) {
+        setCompassHeading(heading);
+      }
+    };
+    
+    if (typeof DeviceOrientationEvent !== 'undefined') {
+      if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+        // iOS requires explicit interaction to grant permission
+      } else {
+        setHasCompassPermission(true);
+        window.addEventListener('deviceorientationabsolute', handleOrientation);
+        window.addEventListener('deviceorientation', handleOrientation);
+      }
+    }
+    
+    return () => {
+      window.removeEventListener('deviceorientationabsolute', handleOrientation);
+      window.removeEventListener('deviceorientation', handleOrientation);
+    };
+  }, []);
+
+  const requestCompassPermission = async () => {
+    if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+      try {
+        const permissionState = await (DeviceOrientationEvent as any).requestPermission();
+        if (permissionState === 'granted') {
+          setHasCompassPermission(true);
+          const handleOrientation = (e: DeviceOrientationEvent) => {
+            let heading = null;
+            if ('webkitCompassHeading' in e) {
+              heading = (e as any).webkitCompassHeading;
+            } else if (e.alpha !== null) {
+              heading = 360 - e.alpha;
+            }
+            if (heading !== null) setCompassHeading(heading);
+          };
+          window.addEventListener('deviceorientation', handleOrientation);
+        }
+      } catch (err) {
+        console.error('Compass permission error', err);
+      }
+    }
+  };
+
   // ── Initialize engine when polygon is ready or resuming ──────────────────
   useEffect(() => {
     if (engineInitialized.current) return;
@@ -559,7 +615,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
       if (drawMode === 'landmark') {
         const name = prompt("Landmark Name / पहचान चिह्न का नाम:", "New Landmark");
         if (name && engineRef.current) {
-          engineRef.current.addDrawnFeature('landmarks', { lat: e.latlng.lat, lng: e.latlng.lng, name: name });
+          engineRef.current.drawnFeatures.landmarks.push({ lat: e.latlng.lat, lng: e.latlng.lng, name: name });
           drawDrawnFeatures();
         }
         setDrawMode('none');
@@ -879,14 +935,14 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
     }
   };
 
-  const handlePlace = (dir: 'left' | 'center' | 'right') => {
+  const handlePlace = (dir: 'left' | 'center' | 'right' | 'compass') => {
     let fallback = lastGpsPos.current;
     if (!fallback && mapRef.current) {
       const center = mapRef.current.getCenter();
       fallback = { lat: center.lat, lng: center.lng };
     }
     
-    engineRef.current?.placeSymbol(symType, dir, fallback || undefined);
+    engineRef.current?.placeSymbol(symType, dir, fallback || undefined, undefined, compassHeading !== null ? compassHeading : undefined);
   };
   const handleUndo = () => engineRef.current?.undoLastSymbol();
   const handleRoadTypeChange = (rt: string) => {
@@ -895,7 +951,6 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
     if (navigator.vibrate) navigator.vibrate(30);
   };
 
-  // ── Compass indicator ────────────────────────────────────────
   const CompassWidget = () => (
     <div className="absolute top-[60px] right-3 z-[2000] w-10 h-10 flex items-center justify-center">
       <svg width="40" height="40" viewBox="0 0 40 40">
@@ -904,6 +959,11 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
           <polygon points="20,5 23,20 20,17 17,20" fill="#ef4444"/>
           <polygon points="20,35 23,20 20,23 17,20" fill="white"/>
         </g>
+        {compassHeading !== null && (
+          <g transform={`rotate(${compassHeading - gpsBearing}, 20, 20)`}>
+            <polygon points="20,2 24,10 16,10" fill="#3b82f6"/>
+          </g>
+        )}
         <circle cx="20" cy="20" r="3" fill="white"/>
         <text x="20" y="3" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">N</text>
       </svg>
@@ -1335,7 +1395,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
               <span className="text-[var(--color-saffron)] text-2xl font-bold mb-0.5">↰</span>
               <span className="text-[10px] font-bold text-[var(--color-saffron)]">बाईं ओर</span>
             </button>
-            <button onClick={() => handlePlace('center')} className="w-[28%] flex flex-col items-center justify-center active:bg-gray-50 min-w-[44px]">
+            <button onClick={() => handlePlace('center')} className="w-[20%] flex flex-col items-center justify-center active:bg-gray-50 min-w-[44px]">
               <div className="w-7 h-7 mb-0.5" dangerouslySetInnerHTML={{ __html: getSmallSymbolSVG(symType as SymbolType) }} />
               <span className="text-[10px] font-bold text-gray-700">यहाँ</span>
             </button>
@@ -1343,6 +1403,17 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
               <span className="text-[var(--color-saffron)] text-2xl font-bold mb-0.5">↱</span>
               <span className="text-[10px] font-bold text-[var(--color-saffron)]">दाईं ओर</span>
             </button>
+            {!hasCompassPermission ? (
+              <button onClick={requestCompassPermission} className="flex-1 flex flex-col items-center justify-center bg-blue-50/50 active:bg-blue-100 transition-colors min-w-[44px]">
+                <span className="text-blue-500 text-xl font-bold mb-0.5">🧭</span>
+                <span className="text-[10px] font-bold text-blue-600">Enable Point</span>
+              </button>
+            ) : (
+              <button onClick={() => handlePlace('compass')} className="flex-1 flex flex-col items-center justify-center bg-blue-50/80 active:bg-blue-200 transition-colors min-w-[44px]">
+                <span className="text-blue-600 text-2xl font-bold mb-0.5 transform" style={compassHeading !== null ? { transform: `rotate(${compassHeading - gpsBearing}deg)` } : {}}>⬆️</span>
+                <span className="text-[10px] font-bold text-blue-700 leading-tight text-center">Point & Map</span>
+              </button>
+            )}
           </div>
           <div className="h-[40px] border-t border-gray-100 flex items-center px-1 overflow-x-auto hide-scrollbar gap-1">
             {[{ id: 'pucca_house' }, { id: 'kutcha_house' }, { id: 'non_residential' }, { id: 'shop' }, { id: 'temple' }, { id: 'school' }].map(s => (

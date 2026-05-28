@@ -32,8 +32,8 @@ export class LiveSurveyEngine {
   bearingBuffer: SurveyPoint[] = [];
   
   kalman = {
-    lat: { x: 0, p: 1, q: 0.00001, r: 0.0001 },
-    lng: { x: 0, p: 1, q: 0.00001, r: 0.0001 }
+    lat: { x: 0, p: 1, q: 0.0005, r: 0.0005 },
+    lng: { x: 0, p: 1, q: 0.0005, r: 0.0005 }
   };
 
   watchId: number | null = null;
@@ -258,7 +258,7 @@ export class LiveSurveyEngine {
     }
 
     // Stationary detection filter (Thick overlapping lines fix)
-    const isStationary = (recent: SurveyPoint[], threshold = 3) => {
+    const isStationary = (recent: SurveyPoint[], threshold = 1.0) => {
       if (recent.length < 5) return false;
       const center = {
         lat: recent.reduce((s, p) => s + p.lat, 0) / 5,
@@ -485,7 +485,7 @@ export class LiveSurveyEngine {
     this.returnMode = mode;
   }
 
-  placeSymbol(symbolType: string, direction: 'left'|'center'|'right' = 'center', fallbackPos?: { lat: number, lng: number }, details?: any) {
+  placeSymbol(symbolType: string, direction: 'left'|'center'|'right'|'compass' = 'center', fallbackPos?: { lat: number, lng: number }, details?: any, customHeading?: number) {
     // If not moving, just use center or default position
     let currentPos = this.smoothedPath.length > 0 ? this.smoothedPath[this.smoothedPath.length - 1] : null;
     if (!currentPos && fallbackPos) {
@@ -506,7 +506,17 @@ export class LiveSurveyEngine {
     let finalLat = currentPos.lat;
     let finalLng = currentPos.lng;
     
-    if (direction !== 'center') {
+    if (direction === 'compass' && customHeading !== undefined) {
+      // Place 7 meters in the direction the phone is pointing
+      const offset = turf.destination(
+        turf.point([currentPos.lng, currentPos.lat]),
+        0.007, // 7 meters
+        customHeading,
+        { units: 'kilometers' }
+      );
+      finalLng = offset.geometry.coordinates[0];
+      finalLat = offset.geometry.coordinates[1];
+    } else if (direction !== 'center') {
       const offsetBearing = direction === 'left' ? bearing - 90 : bearing + 90;
       const normalized = ((offsetBearing % 360) + 360) % 360;
       const offset = turf.destination(
@@ -539,7 +549,7 @@ export class LiveSurveyEngine {
     this.recalculateHouseNumbers();
     this.saveToIDB();
     
-    const patterns = { left: [50], right: [50, 30, 50], center: [100] };
+    const patterns = { left: [50], right: [50, 30, 50], center: [100], compass: [100] };
     if (navigator.vibrate) {
       navigator.vibrate(patterns[direction]);
     }

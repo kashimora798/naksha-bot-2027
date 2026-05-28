@@ -180,7 +180,8 @@ export default function App() {
   useEffect(() => {
     if (session?.user?.id) {
       setProfileLoading(true);
-      supabase.from('user_profiles').select('*').eq('id', session.user.id).single().then(({ data }) => {
+      supabase.from('user_profiles').select('*').eq('id', session.user.id).maybeSingle().then(({ data, error }) => {
+        if (error && error.code !== 'PGRST116') console.error('Error fetching profile:', error);
         setUserProfile(data);
         setProfileLoading(false);
       });

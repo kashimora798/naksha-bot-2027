@@ -10,6 +10,7 @@ import DashboardScreen from './screens/DashboardScreen';
 import LiveSurveyScreen from './screens/LiveSurveyScreen';
 import SessionsDashboard from './screens/SessionsDashboard';
 import SessionDetailScreen from './screens/SessionDetailScreen';
+import OnboardingScreen from './screens/OnboardingScreen';
 
 const DEFAULT_MAP_DATA: MapData = {
   hlbNumber: '', center: { lat: 26.4499, lng: 80.3319 },
@@ -27,6 +28,8 @@ export default function App() {
   const [mapData, setMapData] = useState<MapData>(DEFAULT_MAP_DATA);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   const navigate = useNavigate();
   // To track when we should actually save vs initial load
@@ -174,6 +177,19 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (session?.user?.id) {
+      setProfileLoading(true);
+      supabase.from('user_profiles').select('*').eq('id', session.user.id).single().then(({ data }) => {
+        setUserProfile(data);
+        setProfileLoading(false);
+      });
+    } else {
+      setUserProfile(null);
+      setProfileLoading(false);
+    }
+  }, [session]);
+
   const isSignedIn = !!session;
   const user = session?.user;
 
@@ -266,17 +282,26 @@ export default function App() {
   // ═══════════════════════════════════════════════════════════
   // RENDERERS
   // ═══════════════════════════════════════════════════════════───────────────────────────────────────────
-  if (!isLoaded) {
-    return <div className="h-screen w-screen bg-gray-50 flex items-center justify-center">Loading...</div>;
+  if (!isLoaded || profileLoading) {
+    return <div className="h-screen w-screen bg-gray-50 flex flex-col items-center justify-center">
+      <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4 animate-bounce"><span className="text-2xl">🗺️</span></div>
+      <p className="text-slate-500 font-bold font-[Baloo_2] animate-pulse">Loading NakshaBot...</p>
+    </div>;
   }
 
   if (!isSignedIn) {
     return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
       {step === 0 && <DashboardScreen 
         user={session?.user} 
+        userProfile={userProfile}
         onLoadProject={(id, d) => { setProjectId(id); setMapData(prev => ({...prev, ...d, projectId: id, paymentStatus: (d as any).payment_status})); setStep(3); }} 
-        onNewProject={() => { setMapData(DEFAULT_MAP_DATA); setProjectId(null); setStep(1); }} 
-        onLiveSurvey={() => setStep(10)}
+        onNewProject={(initialData) => { setMapData({ ...DEFAULT_MAP_DATA, ...initialData }); setProjectId(null); setStep(initialData?.hlbNumber ? 3 : 1); }} 
+        onLiveSurvey={(initialData) => { 
+          if (initialData) {
+            update({ ...initialData });
+          }
+          setStep(10); 
+        }}
         onResumeLiveSurvey={(id) => { setResumeSessionId(id); setStep(10); }}
         onDemoMap={() => { setMapData(DEFAULT_MAP_DATA); setProjectId(null); setIsDemoMode(true); setStep(2); }}
       />}
@@ -288,9 +313,16 @@ export default function App() {
   }
 
   if (step === 0) {
+    const needsOnboarding = !userProfile || !userProfile.onboarding_completed;
+    
+    if (needsOnboarding) {
+      return <OnboardingScreen user={user} onComplete={(profile) => setUserProfile(profile)} />;
+    }
+
     return (
       <DashboardScreen
         user={user}
+        userProfile={userProfile}
         onLoadProject={(id, data) => {
           setProjectId(id);
           setIsDemoMode(false);
@@ -303,15 +335,18 @@ export default function App() {
           else if (data.boundaryClosed) setStep(3);
           else setStep(3);
         }}
-        onNewProject={() => {
+        onNewProject={(initialData) => {
+          setMapData({ ...DEFAULT_MAP_DATA, ...initialData, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           setProjectId(null);
           setIsDemoMode(false);
-          setMapData({ ...DEFAULT_MAP_DATA, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
-          setStep(2); // SMS Parse step
+          setStep(initialData?.hlbNumber ? 3 : 1); // Skip SMS if we already have HLB
         }}
-        onLiveSurvey={() => {
-          navigate('/live-dashboard');
+        onLiveSurvey={(initialData) => {
+          if (initialData) {
+            update({ ...initialData });
+          }
+          setStep(10);
         }}
         onResumeLiveSurvey={(sessionId) => {
           navigate(`/live-session/${sessionId}`);

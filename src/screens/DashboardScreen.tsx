@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { idbStore, SurveySession } from '../lib/idb';
 import type { MapData } from '../types';
+import LocationSelectModal from '../components/LocationSelectModal';
 
 export interface Project {
   id: string;
@@ -16,19 +17,21 @@ export interface Project {
 
 interface Props {
   user: any;
+  userProfile?: any;
   onLoadProject: (projectId: string, data: Partial<MapData>) => void;
-  onNewProject: () => void;
-  onLiveSurvey?: () => void;
+  onNewProject: (initialData?: Partial<MapData>) => void;
+  onLiveSurvey?: (initialData?: Partial<MapData>) => void;
   onResumeLiveSurvey?: (sessionId: string) => void;
   onDemoMap?: () => void;
 }
 
-export default function DashboardScreen({ user, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap }: Props) {
+export default function DashboardScreen({ user, userProfile, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveSessions, setLiveSessions] = useState<SurveySession[]>([]);
   const [showDemoModal, setShowDemoModal] = useState(false);
+  const [locationModalType, setLocationModalType] = useState<'map' | 'live' | null>(null);
 
   useEffect(() => {
     if (!localStorage.getItem('naksha_demo_done')) {
@@ -90,6 +93,12 @@ export default function DashboardScreen({ user, onLoadProject, onNewProject, onL
   const pendingSessions = liveSessions.filter(s => s.state === 'paused');
   const completedSessions = liveSessions.filter(s => s.state === 'completed');
 
+  const handleLocationSelect = (data?: Partial<MapData>) => {
+    if (locationModalType === 'map') onNewProject(data);
+    if (locationModalType === 'live') onLiveSurvey?.(data);
+    setLocationModalType(null);
+  };
+
   return (
     <div className="min-h-screen flex flex-col p-6 font-noto-sans bg-transparent">
       <div className="max-w-4xl w-full mx-auto">
@@ -119,7 +128,7 @@ export default function DashboardScreen({ user, onLoadProject, onNewProject, onL
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold font-public-sans text-[var(--color-charcoal)]">🗺️ Live Surveys</h2>
               <button
-                onClick={onLiveSurvey}
+                onClick={() => setLocationModalType('live')}
                 className="px-4 py-2 bg-[var(--color-saffron)] text-white rounded-xl font-bold text-sm shadow active:scale-95 transition-all min-h-[44px]"
               >
                 + New Survey
@@ -187,7 +196,7 @@ export default function DashboardScreen({ user, onLoadProject, onNewProject, onL
           <div className="flex gap-2">
             {liveSessions.length === 0 && (
               <button
-                onClick={onLiveSurvey}
+                onClick={() => setLocationModalType('live')}
                 className="px-5 py-2.5 bg-white border border-[var(--color-saffron)] text-[var(--color-saffron)] rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-orange-50 transition-colors min-h-[52px]"
               >
                 🚶‍♂️ Live Survey
@@ -200,7 +209,7 @@ export default function DashboardScreen({ user, onLoadProject, onNewProject, onL
               🎓 Try Demo
             </button>
             <button
-              onClick={onNewProject}
+              onClick={() => setLocationModalType('map')}
               className="px-5 py-2.5 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]"
             >
               + Create New Map
@@ -215,8 +224,8 @@ export default function DashboardScreen({ user, onLoadProject, onNewProject, onL
             <h3 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)] mb-2">No maps yet</h3>
             <p className="text-sm text-gray-600 max-w-sm mx-auto mb-6">Start by creating a new map or using Live Survey mode.</p>
             <div className="flex gap-3 justify-center">
-              <button onClick={onLiveSurvey} className="px-6 py-3 bg-white border border-[var(--color-saffron)] text-[var(--color-saffron)] rounded-xl font-bold shadow hover:bg-orange-50 transition-colors min-h-[52px]">🚶‍♂️ Live Survey</button>
-              <button onClick={onNewProject} className="px-6 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
+              <button onClick={() => setLocationModalType('live')} className="px-6 py-3 bg-white border border-[var(--color-saffron)] text-[var(--color-saffron)] rounded-xl font-bold shadow hover:bg-orange-50 transition-colors min-h-[52px]">🚶‍♂️ Live Survey</button>
+              <button onClick={() => setLocationModalType('map')} className="px-6 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
             </div>
           </div>
         ) : (
@@ -284,6 +293,31 @@ export default function DashboardScreen({ user, onLoadProject, onNewProject, onL
             </div>
           </div>
         </div>
+      )}
+
+      {locationModalType && (
+        <LocationSelectModal
+          type={locationModalType}
+          userProfile={userProfile}
+          onClose={() => setLocationModalType(null)}
+          onSelectSaved={() => handleLocationSelect({
+            hlbNumber: userProfile.hlb_number,
+            center: { lat: userProfile.hlb_lat, lng: userProfile.hlb_lng }
+          })}
+          onSelectDemoKanpur={() => handleLocationSelect({
+            hlbNumber: '0455',
+            center: { lat: 26.4499, lng: 80.3319 },
+            district: 'Kanpur',
+            state: 'Uttar Pradesh'
+          })}
+          onSelectDemoLucknow={() => handleLocationSelect({
+            hlbNumber: '1102',
+            center: { lat: 26.8467, lng: 80.9462 },
+            district: 'Lucknow',
+            state: 'Uttar Pradesh'
+          })}
+          onSelectNew={() => handleLocationSelect(undefined)}
+        />
       )}
     </div>
   );

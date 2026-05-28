@@ -96,11 +96,18 @@ async function run() {
     server.listen(PORT, resolve);
   });
 
-  console.log('Launching Puppeteer...');
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: "new",
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+  } catch (err) {
+    console.warn('⚠️ WARNING: Failed to launch Puppeteer (often happens on Vercel/CI environments due to missing system libraries).');
+    console.warn('Skipping prerendering step. The app will deploy as a standard SPA.');
+    server.close();
+    process.exit(0);
+  }
   
   const page = await browser.newPage();
 

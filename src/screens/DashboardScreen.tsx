@@ -33,6 +33,12 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [showDemoModal, setShowDemoModal] = useState(false);
   const [locationModalType, setLocationModalType] = useState<'map' | 'live' | null>(null);
 
+  // Feedback State
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+
   useEffect(() => {
     if (!localStorage.getItem('naksha_demo_done')) {
       setShowDemoModal(true);
@@ -52,6 +58,11 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
         if (error) throw error;
         const visibleProjects = (data || []).filter(p => !p.data?.deletedUI);
         setProjects(visibleProjects);
+
+        // Show feedback if they have maps and haven't seen it yet
+        if (visibleProjects.length > 0 && !localStorage.getItem('naksha_dashboard_feedback')) {
+          setShowFeedback(true);
+        }
       } catch (err: any) {
         console.error('Error fetching projects:', err);
         setError(err.message || 'Failed to load projects');
@@ -97,6 +108,28 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
     if (locationModalType === 'map') onNewProject(data);
     if (locationModalType === 'live') onLiveSurvey?.(data);
     setLocationModalType(null);
+  };
+
+  const submitFeedback = async () => {
+    setFeedbackLoading(true);
+    try {
+      await supabase.from('feedbacks').insert([{
+        suggestions: feedbackText,
+        useful: 'Dashboard Experience'
+      }]);
+      setFeedbackSubmitted(true);
+      localStorage.setItem('naksha_dashboard_feedback', 'true');
+    } catch (err) {
+      console.error(err);
+      setFeedbackSubmitted(true);
+      localStorage.setItem('naksha_dashboard_feedback', 'true');
+    }
+    setFeedbackLoading(false);
+  };
+
+  const skipFeedback = () => {
+    localStorage.setItem('naksha_dashboard_feedback', 'true');
+    setShowFeedback(false);
   };
 
   return (
@@ -318,6 +351,44 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
           })}
           onSelectNew={() => handleLocationSelect(undefined)}
         />
+      )}
+
+      {showFeedback && (
+        <div className="fixed inset-0 z-[3000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          {!feedbackSubmitted ? (
+            <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mb-4 text-2xl">✨</div>
+              <h3 className="font-bold text-slate-800 mb-2 font-[Baloo_2] text-xl">How is your experience?</h3>
+              <p className="text-sm text-slate-500 mb-6">You've created some maps! We'd love to hear your thoughts or any suggestions you have.</p>
+              
+              <div className="space-y-4">
+                <textarea 
+                  value={feedbackText} onChange={e => setFeedbackText(e.target.value)}
+                  placeholder="Tell us what you think..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm h-32 focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none"
+                />
+
+                <div className="flex gap-3 pt-2">
+                  <button onClick={skipFeedback} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors">
+                    Skip
+                  </button>
+                  <button onClick={submitFeedback} disabled={feedbackLoading || !feedbackText.trim()} className="flex-1 py-3 bg-[var(--color-saffron)] text-white rounded-xl font-bold shadow-lg hover:bg-orange-600 disabled:opacity-70 transition-all">
+                    {feedbackLoading ? 'Sending...' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8 text-center relative">
+              <div className="text-6xl mb-4">🙏</div>
+              <h3 className="font-bold text-green-800 text-2xl mb-2 font-[Baloo_2]">Thank You!</h3>
+              <p className="text-sm text-slate-600 mb-6">Your feedback has been recorded.</p>
+              <button onClick={() => setShowFeedback(false)} className="w-full py-3 bg-[var(--color-saffron)] text-white rounded-xl font-bold font-[Baloo_2] shadow hover:bg-orange-600">
+                Close
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

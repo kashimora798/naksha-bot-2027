@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { isValidPhoneNumber } from 'libphonenumber-js';
 
 interface Props {
   user: any;
@@ -14,6 +15,12 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
   const [fullName, setFullName] = useState(user?.user_metadata?.full_name || '');
   const [profession, setProfession] = useState('');
   const [mobile, setMobile] = useState('');
+  const [mobileVerified, setMobileVerified] = useState(false);
+  const [mobileError, setMobileError] = useState('');
+  
+  // Truecaller integration
+  const APP_KEY = import.meta.env.VITE_TRUECALLER_APP_KEY || ''; // To be filled later
+  const [truecallerWait, setTruecallerWait] = useState(false);
   
   // HLB Option
   const [hlbMode, setHlbMode] = useState<'sms' | 'manual' | null>(null);
@@ -42,9 +49,33 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
     };
   };
 
+  const handleVerifyTruecaller = () => {
+    if (!APP_KEY) {
+      alert("Truecaller SDK is not configured yet (Missing App Key). Please use manual entry for now.");
+      return;
+    }
+    const nonce = crypto.randomUUID();
+    window.location.href = `truecallersdk://truesdk/web_verify?requestNonce=${nonce}&partnerKey=${APP_KEY}&partnerName=NakshaBot&lang=en&title=Login`;
+    setTruecallerWait(true);
+    
+    // Fallback if app is not installed
+    setTimeout(() => {
+      if (document.hasFocus()) {
+        setTruecallerWait(false);
+        // App not opened
+      }
+    }, 2000);
+  };
+
   const handleFinish = async () => {
     if (!fullName || !mobile) {
       alert("Please provide your name and mobile number.");
+      return;
+    }
+
+    if (!isValidPhoneNumber(mobile, 'IN')) {
+      setMobileError('Please enter a valid 10-digit Indian mobile number.');
+      alert("Invalid Mobile Number! Please ensure you enter a valid Indian number.");
       return;
     }
 
@@ -71,6 +102,7 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
       hlb_lat: finalLat,
       hlb_lng: finalLng,
       hlb_address: finalAddr,
+      is_mobile_verified: mobileVerified,
       onboarding_completed: true,
       updated_at: new Date().toISOString()
     };
@@ -136,11 +168,40 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Mobile Number *</label>
-                  <input type="tel" value={mobile} onChange={e => setMobile(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" placeholder="+91 XXXXX XXXXX" />
+                  <div className="bg-orange-50 border border-orange-200 p-3 rounded-lg mb-3">
+                    <p className="text-sm text-orange-800 font-medium">🎁 Note: Verified early users will receive free gifts & premium access in the future! Please provide your exact mobile number.</p>
+                  </div>
+                  
+                  <div className="flex gap-2 mb-3">
+                    <button 
+                      onClick={handleVerifyTruecaller}
+                      className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 active:bg-blue-700"
+                    >
+                      <span>📞</span> Verify with Truecaller
+                    </button>
+                  </div>
+                  
+                  <div className="relative">
+                    <span className="absolute left-4 top-4 text-slate-500 font-bold">+91</span>
+                    <input 
+                      type="tel" 
+                      maxLength={10}
+                      value={mobile.replace('+91', '')} 
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setMobile(val ? `+91${val}` : '');
+                        setMobileError('');
+                      }} 
+                      className="w-full bg-slate-50 border border-slate-200 p-4 pl-12 rounded-xl outline-none focus:ring-2 focus:ring-orange-500" 
+                      placeholder="10-digit number" 
+                    />
+                  </div>
+                  {mobileError && <p className="text-red-500 text-xs mt-2 font-semibold">{mobileError}</p>}
                 </div>
                 <button 
                   onClick={() => {
                     if(!fullName || !mobile) return alert("Name and Mobile are required!");
+                    if (!isValidPhoneNumber(mobile, 'IN')) return setMobileError('Please enter a valid 10-digit Indian mobile number.');
                     setCurrentStep(3);
                   }}
                   className="w-full py-4 mt-4 bg-slate-900 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-slate-800 transition-colors"

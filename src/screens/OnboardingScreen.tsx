@@ -25,10 +25,7 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
     localStorage.setItem('onb_mobile', mobile);
   }, [fullName, profession, mobile]);
   
-  // Truecaller integration
-  const APP_KEY = import.meta.env.VITE_TRUECALLER_APP_KEY || ''; // To be filled later
-  const [truecallerWait, setTruecallerWait] = useState(false);
-  
+
   // HLB Option
   const [hlbMode, setHlbMode] = useState<'sms' | 'manual' | null>(null);
   const [hlbSms, setHlbSms] = useState('');
@@ -54,32 +51,6 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
       lng: coMatch ? parseFloat(coMatch[2]) : 0,
       address
     };
-  };
-
-  const handleVerifyTruecaller = () => {
-    if (!APP_KEY) {
-      alert("Truecaller SDK is not configured yet (Missing App Key). Please use manual entry for now.");
-      return;
-    }
-    const nonce = crypto.randomUUID();
-    const deepLink = `truecallersdk://truesdk/web_verify?requestNonce=${nonce}&partnerKey=${APP_KEY}&partnerName=NakshaBot&lang=en&title=Login`;
-    
-    // Use hidden iframe to avoid page refresh/navigation error
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = deepLink;
-    document.body.appendChild(iframe);
-    
-    setTruecallerWait(true);
-    
-    // Fallback if app is not installed
-    setTimeout(() => {
-      document.body.removeChild(iframe);
-      if (document.hasFocus()) {
-        setTruecallerWait(false);
-        alert("Truecaller App not detected on this device. Please enter your mobile number manually.");
-      }
-    }, 2000);
   };
 
   const handleFinish = async () => {
@@ -193,15 +164,7 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
                     <p className="text-sm text-orange-800 font-medium">🎁 Note: Verified early users will receive free gifts & premium access in the future! Please provide your exact mobile number.</p>
                   </div>
                   
-                  <div className="flex gap-2 mb-3">
-                    <button 
-                      onClick={handleVerifyTruecaller}
-                      className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 active:bg-blue-700"
-                    >
-                      <span>📞</span> Verify with Truecaller
-                    </button>
-                  </div>
-                  
+
                   <div className="relative">
                     <span className="absolute left-4 top-4 text-slate-500 font-bold">+91</span>
                     <input 

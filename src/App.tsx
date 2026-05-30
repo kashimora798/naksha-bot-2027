@@ -41,6 +41,17 @@ export default function App() {
   const update = useCallback((u: Partial<MapData>) => setMapData(p => ({ ...p, ...u })), []);
   const inMap = step >= 3 && step <= 6;
 
+  // Title-block particulars seeded from the user's profile (Phase 2). Saved project
+  // data overrides these; new projects inherit them so the PDF title block is filled.
+  const profileMapDefaults = (): Partial<MapData> => ({
+    enumeratorName: userProfile?.full_name || user?.user_metadata?.full_name || user?.email || 'Surveyor',
+    supervisorName: userProfile?.supervisor_name || '',
+    tehsil: userProfile?.tehsil || '',
+    townVillage: userProfile?.town_village || '',
+    wardNo: userProfile?.ward_no || '',
+    ebNo: userProfile?.eb_no || '',
+  });
+
   // ─── LOCAL STORAGE PERSISTENCE ────────────────────────
   useEffect(() => {
     // Check local storage on initial load
@@ -346,10 +357,11 @@ export default function App() {
       <DashboardScreen
         user={user}
         userProfile={userProfile}
+        onProfileUpdated={(prof) => setUserProfile(prof)}
         onLoadProject={(id, data) => {
           setProjectId(id);
           setIsDemoMode(false);
-          setMapData({ ...DEFAULT_MAP_DATA, ...data, projectId: id, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
+          setMapData({ ...DEFAULT_MAP_DATA, ...profileMapDefaults(), ...data, projectId: id, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
           // Determine where to resume based on data
           if (data.blocks && data.blocks.length > 0) setStep(7);
@@ -359,7 +371,7 @@ export default function App() {
           else setStep(3);
         }}
         onNewProject={(initialData) => {
-          setMapData({ ...DEFAULT_MAP_DATA, ...initialData, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
+          setMapData({ ...DEFAULT_MAP_DATA, ...profileMapDefaults(), ...initialData, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           setProjectId(null);
           setIsDemoMode(false);
           isInitialLoad.current = true;

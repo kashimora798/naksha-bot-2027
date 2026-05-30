@@ -36,6 +36,13 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
   const [hlbLng, setHlbLng] = useState('');
   const [hlbAddress, setHlbAddress] = useState('');
 
+  // Census layout-map title-block particulars (Phase 2)
+  const [tehsil, setTehsil] = useState('');
+  const [townVillage, setTownVillage] = useState('');
+  const [wardNo, setWardNo] = useState('');
+  const [ebNo, setEbNo] = useState('');
+  const [supervisorName, setSupervisorName] = useState('');
+
   const parseSms = (text: string) => {
     // Regex based on current parser
     const hlbMatch = text.match(/HLB\s*Number\s*[:-]?\s*(\d+)/i);
@@ -88,6 +95,11 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
       hlb_lat: finalLat,
       hlb_lng: finalLng,
       hlb_address: finalAddr,
+      tehsil: tehsil || null,
+      town_village: townVillage || null,
+      ward_no: wardNo || null,
+      eb_no: ebNo || null,
+      supervisor_name: supervisorName || null,
       is_mobile_verified: mobileVerified,
       onboarding_completed: true,
       updated_at: new Date().toISOString()
@@ -241,7 +253,35 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
                 </div>
               )}
 
-              <button 
+              {hlbMode && (
+                <div className="animate-in fade-in duration-300 mt-5 pt-5 border-t border-slate-100">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Layout Map Details (for your PDF title block)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Tehsil / Taluk</label>
+                      <input type="text" value={tehsil} onChange={e => setTehsil(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="e.g. Sadar" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Town / Village</label>
+                      <input type="text" value={townVillage} onChange={e => setTownVillage(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="e.g. Bajheri" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Ward No.</label>
+                      <input type="text" value={wardNo} onChange={e => setWardNo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="e.g. 14" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">EB No. (2011)</label>
+                      <input type="text" value={ebNo} onChange={e => setEbNo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="optional" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">Supervisor Name</label>
+                      <input type="text" value={supervisorName} onChange={e => setSupervisorName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="Name of your Supervisor" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
                 onClick={handleFinish}
                 disabled={loading || !hlbMode}
                 className="w-full py-4 mt-8 bg-green-600 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"

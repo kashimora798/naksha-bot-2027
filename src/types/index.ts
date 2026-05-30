@@ -119,6 +119,15 @@ export interface MapData {
   autoExport?: boolean;
   locationName?: string;
   gridConfig?: { enabled: boolean; columns: number; rows: number };
+  // Census layout-map title-block location particulars (Phase 2)
+  tehsil?: string;
+  townVillage?: string;
+  wardNo?: string;
+  ebNo?: string;
+  supervisorName?: string;
+  sheetSize?: 'a4' | 'a3';
+  /** Neighbouring HLB/village names by compass side, drawn outside the boundary. */
+  neighbours?: { north?: string; south?: string; east?: string; west?: string };
 }
 
 export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; isHouse: boolean }[] = [

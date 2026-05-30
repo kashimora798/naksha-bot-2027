@@ -2,8 +2,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature } from '../types';
 import type { SurveySession, SurveySymbol, SurveyPoint, RoadSegment } from './idb';
-import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter, isHouseType } from '../types';
-import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon } from './geo';
+import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter, isHouseType, isNonResidential } from '../types';
+import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon, clusterByProximity, gridBlockOffsets, centroidXY } from './geo';
 import { drawSymbolOnCanvas } from './symbols';
 import { declutterSymbols } from './declutter';
 
@@ -56,9 +56,35 @@ export function renderMapToCanvas(
   ];
   const avgSc = (scX + scY) / 2;
   const numSymbols = data.symbols?.length || 1;
-  // If density is very high, scale down the house symbols so they fit cleanly
-  const densityScale = Math.max(0.4, Math.min(1, 100 / numSymbols));
-  const symSz = Math.max(16 * densityScale, Math.min(42 * densityScale, avgSc * 0.0002));
+  // Symbol size from LOCAL spacing, not global count: measure the median nearest-
+  // neighbour distance between symbols in canvas space and size boxes to ~70% of it,
+  // so sparse areas stay large/legible and only genuinely tight pockets shrink.
+  let symSz: number;
+  {
+    const globalScale = Math.max(0.4, Math.min(1, 100 / numSymbols));
+    const base = Math.max(16 * globalScale, Math.min(42 * globalScale, avgSc * 0.0002));
+    const pts = (data.symbols || []).map(s => proj(s));
+    if (pts.length >= 2) {
+      // Sample up to 60 symbols for nearest-neighbour spacing (O(n*k) but bounded).
+      const sample = pts.length > 60 ? pts.filter((_, i) => i % Math.ceil(pts.length / 60) === 0) : pts;
+      const nn: number[] = [];
+      for (let i = 0; i < sample.length; i++) {
+        let best = Infinity;
+        for (let j = 0; j < pts.length; j++) {
+          if (pts[j] === sample[i]) continue;
+          const d = Math.hypot(sample[i][0] - pts[j][0], sample[i][1] - pts[j][1]);
+          if (d < best) best = d;
+        }
+        if (isFinite(best)) nn.push(best);
+      }
+      nn.sort((a, b) => a - b);
+      const medianNN = nn.length ? nn[Math.floor(nn.length / 2)] : base;
+      // Box ~70% of local spacing, clamped to a legible range; never larger than base.
+      symSz = Math.max(10, Math.min(base, medianNN * 0.7));
+    } else {
+      symSz = base;
+    }
+  }
 
   // ─── LANDUSE AREAS ────────────────────────────────────────────
   const landusStyles: Record<string, { fill: string; stroke: string; width: number; dash: number[]; label: string }> = {
@@ -158,16 +184,39 @@ export function renderMapToCanvas(
   });
 
   // ─── BOUNDARY ───────────────────────────────────────────
-  ctx.strokeStyle = '#CC0000'; ctx.lineWidth = 3; ctx.setLineDash([]);
+  // Spec (ORGI §xiv): HLB boundary drawn as a dashed line; neighbouring HLB/
+  // village names written OUTSIDE the boundary on each side.
+  ctx.strokeStyle = '#B00000'; ctx.lineWidth = 2.5; ctx.setLineDash([12, 6]);
   ctx.beginPath();
   data.boundaryPins.forEach((p, i) => { const [x, y] = proj(p); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.closePath();
-  ctx.fillStyle = 'rgba(204,0,0,0.06)'; ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(176,0,0,0.04)'; ctx.fill(); ctx.stroke();
+  ctx.setLineDash([]);
   data.boundaryPins.forEach((p, i) => {
     const [x, y] = proj(p);
-    ctx.fillStyle = '#CC0000'; ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#B00000'; ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#FFF'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(String(i + 1), x, y);
   });
+
+  // Neighbour names just outside each edge of the boundary bbox.
+  if (data.neighbours) {
+    const xs = data.boundaryPins.map(p => proj(p)[0]);
+    const ys = data.boundaryPins.map(p => proj(p)[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const cx2 = (minX + maxX) / 2, cy2 = (minY + maxY) / 2;
+    ctx.fillStyle = '#7a0000'; ctx.font = `italic bold ${Math.max(9, symSz * 0.45)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const lbl = (t: string | undefined, x: number, y: number) => {
+      if (!t) return;
+      ctx.save(); ctx.strokeStyle = '#FFF'; ctx.lineWidth = 3;
+      ctx.strokeText(`◄ ${t} ►`, x, y); ctx.fillText(`◄ ${t} ►`, x, y); ctx.restore();
+    };
+    lbl(data.neighbours.north, cx2, Math.max(20, minY - 10));
+    lbl(data.neighbours.south, cx2, Math.min(h - 14, maxY + 12));
+    lbl(data.neighbours.west, Math.max(30, minX - 8), cy2);
+    lbl(data.neighbours.east, Math.min(w - 30, maxX + 8), cy2);
+  }
 
   // ─── ROADS — double-line style, ALL shown ──────────────
   for (const road of data.roads) {
@@ -224,6 +273,32 @@ export function renderMapToCanvas(
       ctx.strokeStyle = 'rgba(220,50,50,0.2)'; ctx.lineWidth = 2; ctx.setLineDash([8, 5]);
       ctx.beginPath(); serp.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
       ctx.setLineDash([]);
+
+      // ─── NUMBERING-DIRECTION ARROWS (ORGI Annexure-4 §xii) ───
+      // Draw an arrowhead wherever the numbering path changes heading beyond a
+      // threshold (a "jump"), plus the very first step so the start direction is clear.
+      const projPts = serp.map(c => proj(c));
+      const headingAt = (i: number) => Math.atan2(projPts[i + 1][1] - projPts[i][1], projPts[i + 1][0] - projPts[i][0]);
+      const drawArrow = (x: number, y: number, ang: number) => {
+        const len = Math.max(7, symSz * 0.5);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+        ctx.strokeStyle = '#C0392B'; ctx.fillStyle = '#C0392B'; ctx.lineWidth = 2; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(0, 0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-len * 0.5, -len * 0.35); ctx.lineTo(-len * 0.5, len * 0.35); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      };
+      let prevAng = headingAt(0);
+      // First-step arrow at the start of the path
+      drawArrow(projPts[1][0], projPts[1][1], prevAng);
+      for (let i = 1; i < projPts.length - 1; i++) {
+        const ang = headingAt(i);
+        let d = Math.abs(ang - prevAng);
+        if (d > Math.PI) d = 2 * Math.PI - d;
+        // Heading changed by > ~50° → mark the jump with an arrow at the turn.
+        if (d > 0.9) drawArrow(projPts[i + 1][0], projPts[i + 1][1], ang);
+        prevAng = ang;
+      }
+      ctx.setLineDash([]);
     }
   }
 
@@ -233,7 +308,34 @@ export function renderMapToCanvas(
     // Align symbols into a perfect non-overlapping grid on the high-res canvas
     const gridSz = symSz * 1.25;
     const occupied = new Set<string>();
-    const snappedSymbols: { x: number, y: number, sym: PlacedSymbol }[] = [];
+    const snappedSymbols: { x: number, y: number, sym: PlacedSymbol, idealX: number, idealY: number }[] = [];
+
+    // Precompute road segments in canvas space for collision avoidance.
+    const roadSegs: [number, number, number, number][] = [];
+    for (const road of data.roads || []) {
+      if (road.coords.length < 2) continue;
+      for (let i = 0; i < road.coords.length - 1; i++) {
+        const [x1, y1] = proj(road.coords[i]);
+        const [x2, y2] = proj(road.coords[i + 1]);
+        roadSegs.push([x1, y1, x2, y2]);
+      }
+    }
+    // Distance from point to a line segment (canvas px).
+    const ptSegDist = (px: number, py: number, x1: number, y1: number, x2: number, y2: number): number => {
+      const dx = x2 - x1, dy = y2 - y1;
+      const l2 = dx * dx + dy * dy;
+      let t = l2 ? ((px - x1) * dx + (py - y1) * dy) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+    };
+    // A cell center is "clear" if it's at least clearDist from every road segment.
+    const clearDist = symSz * 0.62;
+    const cellClearsRoads = (cx: number, cy: number): boolean => {
+      for (const [x1, y1, x2, y2] of roadSegs) {
+        if (ptSegDist(cx, cy, x1, y1, x2, y2) < clearDist) return false;
+      }
+      return true;
+    };
 
     // Prioritize houses first to ensure they get the best grid spots
     const sortedSymbols = [...data.symbols].sort((a, b) => {
@@ -242,36 +344,91 @@ export function renderMapToCanvas(
       return aH - bH;
     });
 
+    // ─── DENSE-CLUSTER SCHEMATIC SPREAD (ORGI: map is not-to-scale) ───
+    // House symbols packed tighter than one grid cell are laid out as a neat block
+    // in numbering order near their real centroid, with a leader back to the cluster.
+    // Non-clustered symbols fall through to the spiral snap below.
+    const housePts = sortedSymbols
+      .map((s, i) => ({ s, i, p: proj(s) }))
+      .filter(o => isHouseType(o.s.symbol_type));
+    const clusterCell = gridSz; // schematic block spacing
+    const clusters = housePts.length >= 4
+      ? clusterByProximity(housePts.map(o => ({ x: o.p[0], y: o.p[1] })), gridSz * 0.9, 5)
+      : housePts.map((_, i) => [i]);
+    const prePlaced = new Map<string, { x: number; y: number; idealX: number; idealY: number }>();
+    for (const cl of clusters) {
+      if (cl.length < 5) continue; // only genuinely dense groups get spread
+      const members = cl.map(ci => housePts[ci]);
+      // Keep numbering order if already numbered, else spatial order.
+      members.sort((a, b) => (a.s.number ?? 1e9) - (b.s.number ?? 1e9));
+      const cen = centroidXY(members.map(m => ({ x: m.p[0], y: m.p[1] })));
+      const offs = gridBlockOffsets(members.length, cen.x, cen.y, clusterCell);
+      members.forEach((m, k) => {
+        const gx = Math.round(offs[k].x / gridSz), gy = Math.round(offs[k].y / gridSz);
+        occupied.add(`${gx},${gy}`);
+        prePlaced.set(m.s.id, { x: gx * gridSz, y: gy * gridSz, idealX: m.p[0], idealY: m.p[1] });
+      });
+    }
+
     for (const sym of sortedSymbols) {
+      const pre = prePlaced.get(sym.id);
+      if (pre) { snappedSymbols.push({ ...pre, sym }); continue; }
       const [idealX, idealY] = proj(sym);
-      let gX = Math.round(idealX / gridSz);
-      let gY = Math.round(idealY / gridSz);
-      
-      if (!occupied.has(`${gX},${gY}`)) {
-        occupied.add(`${gX},${gY}`);
-        snappedSymbols.push({ x: gX * gridSz, y: gY * gridSz, sym });
+      const gX0 = Math.round(idealX / gridSz);
+      const gY0 = Math.round(idealY / gridSz);
+      const free = (gx: number, gy: number) =>
+        !occupied.has(`${gx},${gy}`) && cellClearsRoads(gx * gridSz, gy * gridSz);
+
+      if (free(gX0, gY0)) {
+        occupied.add(`${gX0},${gY0}`);
+        snappedSymbols.push({ x: gX0 * gridSz, y: gY0 * gridSz, sym, idealX, idealY });
       } else {
-        // Spiral search for nearest empty cell
+        // Spiral search for the nearest cell that is empty AND clear of roads.
         let found = false;
-        for (let ring = 1; ring <= 20 && !found; ring++) {
+        for (let ring = 1; ring <= 24 && !found; ring++) {
           for (let dx = -ring; dx <= ring && !found; dx++) {
             for (let dy = -ring; dy <= ring && !found; dy++) {
               if (Math.abs(dx) === ring || Math.abs(dy) === ring) {
-                if (!occupied.has(`${gX + dx},${gY + dy}`)) {
-                  gX += dx; gY += dy;
+                if (free(gX0 + dx, gY0 + dy)) {
+                  const gX = gX0 + dx, gY = gY0 + dy;
                   occupied.add(`${gX},${gY}`);
-                  snappedSymbols.push({ x: gX * gridSz, y: gY * gridSz, sym });
+                  snappedSymbols.push({ x: gX * gridSz, y: gY * gridSz, sym, idealX, idealY });
                   found = true;
                 }
               }
             }
           }
         }
-        if (!found) { // Fallback just in case
-          snappedSymbols.push({ x: idealX, y: idealY, sym });
+        if (!found) {
+          // Last resort: nearest empty cell ignoring roads, so we never drop a house.
+          for (let ring = 1; ring <= 24 && !found; ring++) {
+            for (let dx = -ring; dx <= ring && !found; dx++) {
+              for (let dy = -ring; dy <= ring && !found; dy++) {
+                if ((Math.abs(dx) === ring || Math.abs(dy) === ring) && !occupied.has(`${gX0 + dx},${gY0 + dy}`)) {
+                  const gX = gX0 + dx, gY = gY0 + dy;
+                  occupied.add(`${gX},${gY}`);
+                  snappedSymbols.push({ x: gX * gridSz, y: gY * gridSz, sym, idealX, idealY });
+                  found = true;
+                }
+              }
+            }
+          }
         }
+        if (!found) snappedSymbols.push({ x: idealX, y: idealY, sym, idealX, idealY });
       }
     }
+
+    // Leader lines: when a box was nudged far from its true location, connect them
+    // so the number stays associated with the real house (standard cartographic practice).
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.8; ctx.setLineDash([3, 2]);
+    for (const { x, y, idealX, idealY } of snappedSymbols) {
+      if (Math.hypot(x - idealX, y - idealY) > gridSz * 1.5) {
+        ctx.beginPath(); ctx.moveTo(idealX, idealY); ctx.lineTo(x, y); ctx.stroke();
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath(); ctx.arc(idealX, idealY, 1.6, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.setLineDash([]);
 
     for (const { x, y, sym } of snappedSymbols) {
       drawSymbolOnCanvas(ctx, sym, x, y, symSz);
@@ -356,7 +513,7 @@ export function exportPDF(data: MapData, canvas?: HTMLCanvasElement): void {
   doc.rect(0, 0, a4W, 10, 'F');
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0);
+  doc.setTextColor(0, 0, 0);
   doc.text(`HLB No: ${data.hlbNumber}`, a4W / 2, 7, { align: 'center' });
 
   // Footer band OVERLAID on bottom of map
@@ -429,12 +586,16 @@ export async function exportBlockPDF(
   onProgress: (msg: string) => void
 ): Promise<void> {
   const isL = orient === 'landscape';
-  const a4W = isL ? 297 : 210;
-  const a4H = isL ? 210 : 297;
+  const sheet = data.sheetSize === 'a3' ? 'a3' : 'a4';
+  // A4: 210×297, A3: 297×420 (mm)
+  const shortSide = sheet === 'a3' ? 297 : 210;
+  const longSide = sheet === 'a3' ? 420 : 297;
+  const a4W = isL ? longSide : shortSide;
+  const a4H = isL ? shortSide : longSide;
   const dpi = 150;
   const pw = Math.round((a4W * dpi) / 25.4);
   const ph = Math.round((a4H * dpi) / 25.4);
-  const doc = new jsPDF({ orientation: orient, unit: 'mm', format: 'a4' });
+  const doc = new jsPDF({ orientation: orient, unit: 'mm', format: sheet });
 
   const blocks = data.blocks && data.blocks.length > 1 ? data.blocks : [];
   let totalPages = blocks.length > 1 ? 1 + blocks.length * 2 : 1;
@@ -458,7 +619,7 @@ export async function exportBlockPDF(
     const c = document.createElement('canvas');
     renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph);
     doc.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, a4W, a4H);
-    addOverlays(doc, data, a4W, a4H, 'OVERVIEW');
+    addOverlays(doc, data, a4W, a4H, 'OVERVIEW', { south: pS, west: pW, north: pN, east: pE });
   }
 
   // ─── PAGE 1.5: AI COMPARISON OVERLAY ────────────────────────
@@ -486,7 +647,7 @@ export async function exportBlockPDF(
 
     ctx2.globalAlpha = 1.0;
     doc.addImage(c2.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, a4W, a4H);
-    addOverlays(doc, data, a4W, a4H, 'AI COMPARISON OVERLAY');
+    addOverlays(doc, data, a4W, a4H, 'AI COMPARISON OVERLAY', { south: pS, west: pW, north: pN, east: pE });
 
     // ─── PAGE 1.6: FULL AI MAP (CLEAN) ──────────────────────────
     onProgress(`Page ${++page}/${totalPages} — Full AI Survey Map`);
@@ -494,7 +655,7 @@ export async function exportBlockPDF(
     doc.addPage();
     try {
       doc.addImage(img, 'JPEG', 0, 0, a4W, a4H);
-      addOverlays(doc, data, a4W, a4H, 'AI SURVEY MAP');
+      addOverlays(doc, data, a4W, a4H, 'AI SURVEY MAP', { south: pS, west: pW, north: pN, east: pE });
     } catch (e) {
       console.error('Failed to add AI image to PDF', e);
     }
@@ -550,7 +711,9 @@ export async function exportBlockPDF(
         });
         doc.addPage();
         doc.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, a4W, a4H);
-        addOverlays(doc, data, a4W, a4H, `BLOCK ${blk.label}`);
+        addOverlays(doc, data, a4W, a4H, `BLOCK ${blk.label}`, blkBB);
+        // Locator inset (bottom-right): whole HLB with this block highlighted.
+        drawLocatorInset(doc, data, blkPts, a4W, a4H);
       }
 
       // Satellite reference for this block
@@ -567,7 +730,7 @@ export async function exportBlockPDF(
         const c = document.createElement('canvas');
         renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true, focusBounds: blkBB });
         doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
-        addOverlays(doc, data, a4W, a4H, `SATELLITE — Block ${blk.label}`);
+        addOverlays(doc, data, a4W, a4H, `SATELLITE — Block ${blk.label}`, blkBB);
       }
     }
   } else {
@@ -579,24 +742,190 @@ export async function exportBlockPDF(
     const c = document.createElement('canvas');
     renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true });
     doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
-    addOverlays(doc, data, a4W, a4H, 'SATELLITE REFERENCE');
+    addOverlays(doc, data, a4W, a4H, 'SATELLITE REFERENCE', { south: pS, west: pW, north: pN, east: pE });
   }
+
+  // ─── ENLARGED-INSET PAGES for extremely congested clusters (ORGI §16) ───
+  // Each very dense cluster gets its own full-page enlarged, schematic blow-up so
+  // every house number is legible. A marker on the main map references "Inset N".
+  await addClusterInsetPages(doc, data, orient, a4W, a4H, pw, ph, onProgress, () => ++page, totalPages);
 
   doc.save(`HLB_${data.hlbNumber || '0000'}_Naksha_2027.pdf`);
 }
 
-function addOverlays(doc: jsPDF, data: MapData, w: number, h: number, subtitle: string) {
+// Detect extremely dense clusters (in lat/lng space) and render one enlarged page each.
+async function addClusterInsetPages(
+  doc: jsPDF, data: MapData, _orient: 'landscape' | 'portrait',
+  a4W: number, a4H: number, _pw: number, _ph: number,
+  onProgress: (m: string) => void, nextPage: () => number, _total: number
+) {
+  const houses = (data.symbols || []).filter(s => isHouseType(s.symbol_type));
+  if (houses.length < 12) return;
+  const bb = getBbox(data.boundaryPins.length >= 3 ? data.boundaryPins : houses);
+  const span = Math.max(bb.north - bb.south, bb.east - bb.west) || 0.01;
+  // Cluster radius ~3% of the block span; only blow up groups of >= 12.
+  const radius = span * 0.03;
+  const ptsLL = houses.map(h => ({ x: h.lng, y: h.lat }));
+  const clusters = clusterByProximity(ptsLL, radius, 12);
+  const dense = clusters.filter(c => c.length >= 12);
+  if (!dense.length) return;
+
+  dense.forEach((cl, idx) => {
+    onProgress(`Page ${nextPage()} — Inset ${idx + 1} (dense cluster)`);
+    const members = cl.map(ci => houses[ci]).sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9));
+    const cbb = getBbox(members.map(m => ({ lat: m.lat, lng: m.lng })));
+    doc.addPage();
+    const cols = Math.ceil(Math.sqrt(members.length));
+    const margin = 24, top = 22;
+    const usableW = a4W - margin * 2, usableH = a4H - top - 20;
+    const cell = Math.min(usableW / cols, usableH / Math.ceil(members.length / cols));
+    const box = Math.min(cell * 0.6, 16);
+    members.forEach((m, k) => {
+      const r = Math.floor(k / cols), c = k % cols;
+      const cx = margin + c * cell + cell / 2;
+      const cy = top + r * cell + cell / 2;
+      const isKutcha = m.symbol_type === 'kutcha_house';
+      doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4);
+      if (isKutcha) {
+        doc.triangle(cx, cy - box / 2, cx - box / 2, cy + box / 2, cx + box / 2, cy + box / 2, 'S');
+      } else {
+        doc.rect(cx - box / 2, cy - box / 2, box, box, 'S');
+      }
+      if (m.number != null) {
+        doc.setFontSize(7); doc.setTextColor(0, 0, 0);
+        doc.text(String(m.number), cx, cy + (isKutcha ? box * 0.18 : 0) + 1, { align: 'center' });
+      }
+    });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
+    doc.text(`ENLARGED INSET ${idx + 1} — Congested Cluster`, a4W / 2, 12, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+    doc.text(`${members.length} houses • not to scale • around ${cbb.south.toFixed(5)}, ${cbb.west.toFixed(5)}`, a4W / 2, 17, { align: 'center' });
+    drawSignatureFooter(doc, data, a4W, a4H);
+  });
+}
+
+function addOverlays(
+  doc: jsPDF, data: MapData, w: number, h: number, subtitle: string,
+  bbox?: { south: number; west: number; north: number; east: number }
+) {
+  drawNorthArrow(doc, w - 12, 16);
+  drawTitleBlock(doc, data, w, subtitle);
+  if (bbox) drawScaleBar(doc, bbox, 8, h - 11, w);
+  drawSignatureFooter(doc, data, w, h);
+}
+
+// ─── SHEET FURNITURE (Census 2027 layout-map compliance, Phase 2) ────────────
+
+function drawTitleBlock(doc: jsPDF, data: MapData, w: number, subtitle: string) {
+  // Top white band with HLB + page subtitle (centered) and full location particulars (left).
   doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, w, 11, 'F');
-  doc.setFontSize(11);
+  doc.rect(0, 0, w, 13, 'F');
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.2); doc.line(0, 13, w, 13);
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5);
+  doc.text(`CENSUS 2027 — LAYOUT MAP (NAZARI NAKSHA)`, w / 2, 5, { align: 'center' });
+  doc.setFontSize(8.5);
+  doc.text(`HLB No: ${data.hlbNumber || '—'}  •  ${subtitle}`, w / 2, 10, { align: 'center' });
+
+  // Location particulars, top-left, small.
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
+  const loc1 = [
+    data.state && `State: ${data.state}`,
+    data.district && `Dist: ${data.district}`,
+    data.tehsil && `Tehsil: ${data.tehsil}`,
+  ].filter(Boolean).join('   ');
+  const loc2 = [
+    data.townVillage && `Town/Village: ${data.townVillage}`,
+    data.wardNo && `Ward: ${data.wardNo}`,
+    data.ebNo && `EB(2011): ${data.ebNo}`,
+  ].filter(Boolean).join('   ');
+  if (loc1) doc.text(loc1, 3, 4);
+  if (loc2) doc.text(loc2, 3, 7.5);
+}
+
+function drawNorthArrow(doc: jsPDF, cx: number, cy: number) {
+  // Simple filled north arrow with an "N".
+  doc.setDrawColor(0, 0, 0); doc.setFillColor(0, 0, 0); doc.setLineWidth(0.3);
+  doc.triangle(cx, cy - 5, cx - 2.4, cy + 3, cx + 2.4, cy + 3, 'F');
+  doc.setFillColor(255, 255, 255);
+  doc.triangle(cx, cy - 1.5, cx - 1.4, cy + 3, cx + 1.4, cy + 3, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(6); doc.setTextColor(0, 0, 0);
+  doc.text('N', cx, cy - 6, { align: 'center' });
+}
+
+function drawScaleBar(
+  doc: jsPDF,
+  bbox: { south: number; west: number; north: number; east: number },
+  x: number, y: number, pageW: number
+) {
+  // Meters across the page width → choose a "nice" round bar length.
+  const midLat = (bbox.south + bbox.north) / 2;
+  const mPerDegLng = 111320 * Math.cos((midLat * Math.PI) / 180);
+  const widthMeters = (bbox.east - bbox.west) * mPerDegLng;
+  if (!isFinite(widthMeters) || widthMeters <= 0) return;
+  const mmPerMeter = pageW / widthMeters;
+  const nice = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000];
+  let barM = nice[0];
+  for (const n of nice) { if (n * mmPerMeter <= pageW * 0.25) barM = n; }
+  const barMM = barM * mmPerMeter;
+
+  doc.setFillColor(255, 255, 255); doc.rect(x - 1, y - 1, barMM + 12, 7, 'F');
+  doc.setDrawColor(0, 0, 0); doc.setFillColor(0, 0, 0); doc.setLineWidth(0.3);
+  // Alternating black/white halves
+  doc.rect(x, y + 1.5, barMM / 2, 1.6, 'F');
+  doc.rect(x + barMM / 2, y + 1.5, barMM / 2, 1.6, 'S');
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(5.5); doc.setTextColor(0, 0, 0);
+  doc.text('0', x, y + 1); doc.text(`${barM} m`, x + barMM, y + 1, { align: 'center' });
+  doc.text('(approx — map not to scale)', x, y + 6);
+}
+
+// Locator inset (bottom-right): the whole HLB boundary as a thumbnail with the
+// current block outlined, so each block page shows where it sits in the HLB.
+function drawLocatorInset(doc: jsPDF, data: MapData, blockPts: Coordinate[], w: number, _h: number) {
+  if (!data.boundaryPins || data.boundaryPins.length < 3) return;
+  const bb = getBbox(data.boundaryPins);
+  const sw = 34, sh = 26; // inset size mm
+  const ox = w - sw - 4, oy = 16; // top-right under the north arrow
+  const pad = 2;
+  doc.setFillColor(255, 255, 255); doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3);
+  doc.rect(ox, oy, sw, sh, 'FD');
+  doc.setFontSize(5); doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'bold');
+  doc.text('LOCATION', ox + sw / 2, oy + 3, { align: 'center' });
+
+  const rLng = (bb.east - bb.west) || 1e-6, rLat = (bb.north - bb.south) || 1e-6;
+  const iw = sw - pad * 2, ih = sh - pad * 2 - 3;
+  const px = (lng: number) => ox + pad + ((lng - bb.west) / rLng) * iw;
+  const py = (lat: number) => oy + 3 + pad + ((bb.north - lat) / rLat) * ih;
+
+  // HLB outline
+  doc.setDrawColor(120, 120, 120); doc.setLineWidth(0.3);
+  doc.lines(
+    data.boundaryPins.slice(1).map((p, i) => [px(p.lng) - px(data.boundaryPins[i].lng), py(p.lat) - py(data.boundaryPins[i].lat)]),
+    px(data.boundaryPins[0].lng), py(data.boundaryPins[0].lat), [1, 1], 'S', true
+  );
+  // Current block fill
+  if (blockPts.length >= 3) {
+    doc.setFillColor(192, 57, 43); doc.setDrawColor(192, 57, 43); doc.setLineWidth(0.2);
+    doc.lines(
+      blockPts.slice(1).map((p, i) => [px(p.lng) - px(blockPts[i].lng), py(p.lat) - py(blockPts[i].lat)]),
+      px(blockPts[0].lng), py(blockPts[0].lat), [1, 1], 'F', true
+    );
+  }
+}
+
+function drawSignatureFooter(doc: jsPDF, data: MapData, w: number, h: number) {
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, h - 9, w, 9, 'F');
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.2); doc.line(0, h - 9, w, h - 9);
+  doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
+
+  const dateStr = new Date().toLocaleDateString('en-IN');
+  // Enumerator (left), Supervisor (center), date + official mark (right).
+  doc.text(`Enumerator: ${data.enumeratorName || '________________'}   Sign: ____________`, 3, h - 3.5);
+  doc.text(`Supervisor: ${data.supervisorName || '________________'}   Sign: ____________`, w / 2, h - 3.5, { align: 'center' });
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0);
-  doc.text(`HLB No: ${data.hlbNumber} — ${subtitle}`, w / 2, 7.5, { align: 'center' });
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, h - 8, w, 8, 'F');
-  doc.setFontSize(6.5);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`${data.enumeratorName || ''} | ${data.district}, ${data.state} | ${new Date().toLocaleDateString('en-IN')}`, w / 2, h - 2.5, { align: 'center' });
+  doc.text(`FOR OFFICIAL USE — ${dateStr}`, w - 3, h - 3.5, { align: 'right' });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -618,27 +947,35 @@ export async function generateOfficialRegister(session: SurveySession, symbols: 
   const tableData = symbols
     .filter(s => s.number)
     .sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
-    .map(s => [
-      s.number,
-      s.symbol_type.replace('_', ' ').toUpperCase(),
-      s.col_4_use_type === 1 ? 'Residence' : s.col_4_use_type === 2 ? 'Res+Shop' : s.col_4_use_type ? 'Other' : '-',
-      s.col_10_head_name || s.head_of_household || '-',
-      s.col_9_family_count || '-',
-      s.col_11_total_rooms || '-',
-      s.col_12_ownership === 1 ? 'Owned' : s.col_12_ownership === 2 ? 'Rented' : '-',
-      s.col_18_water_source ? 'Recorded' : '-',
-      s.col_20_latrine ? 'Recorded' : '-',
-      s.col_25_cooking_fuel ? 'Recorded' : '-',
-      `${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}`
-    ]);
+    .map(s => {
+      const pk = s.symbol_type === 'kutcha_house' ? 'Kutcha' : 'Pucca';
+      const res = isNonResidential(s as PlacedSymbol) ? 'Non-Res' : 'Res';
+      const ch = (s as PlacedSymbol).census_house_count;
+      const chRange = ch && ch > 1 && s.number != null ? `${s.number}(1)-${s.number}(${ch})` : String(s.number);
+      return [
+        s.number,
+        chRange,
+        pk,
+        res,
+        s.col_4_use_type === 1 ? 'Residence' : s.col_4_use_type === 2 ? 'Res+Shop' : s.col_4_use_type ? 'Other' : '-',
+        s.col_10_head_name || s.head_of_household || '-',
+        s.col_9_family_count || '-',
+        s.col_11_total_rooms || '-',
+        s.col_12_ownership === 1 ? 'Owned' : s.col_12_ownership === 2 ? 'Rented' : '-',
+        s.col_18_water_source ? 'Recorded' : '-',
+        s.col_20_latrine ? 'Recorded' : '-',
+        s.col_25_cooking_fuel ? 'Recorded' : '-',
+        `${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}`
+      ];
+    });
 
   autoTable(doc, {
     startY: 35,
-    head: [['Bldg No', 'Type', 'Use', 'Head of Household', 'Families', 'Rooms', 'Ownership', 'Water', 'Latrine', 'Fuel', 'GPS Coordinates']],
+    head: [['Bldg No', 'Census House No', 'P/K', 'R/NR', 'Use', 'Head of Household', 'Families', 'Rooms', 'Ownership', 'Water', 'Latrine', 'Fuel', 'GPS Coordinates']],
     body: tableData,
     theme: 'grid',
     headStyles: { fillColor: [40, 40, 40], textColor: 255 },
-    styles: { fontSize: 8, cellPadding: 2 },
+    styles: { fontSize: 7, cellPadding: 1.5 },
     alternateRowStyles: { fillColor: [245, 245, 245] },
   });
 

@@ -115,7 +115,24 @@ Files: `src/lib/symbols.ts` (canvas), and the Leaflet small-SVG for on-screen pa
   `is_residential` boolean to `PlacedSymbol`/`SurveySymbol` and deriving pucca/kutcha from the wall/roof
   material columns where present, so a single building can be pucca+nonres (hatched square).
 
-### Phase 2 — Title block, legend, north arrow, scale bar, signatures
+### Phase 2 — Title block, legend, north arrow, scale bar, signatures ✅ DONE (2026-05-30)
+File: `src/lib/pdf-export.ts`, `src/types/index.ts`, `src/screens/OnboardingScreen.tsx`,
+`src/screens/PreviewScreen.tsx`, `src/App.tsx`, the user_profiles migration.
+Implemented:
+- Rewrote `addOverlays` into proper sheet furniture: `drawTitleBlock` (CENSUS 2027 banner + HLB +
+  page subtitle + full location particulars top-left), `drawNorthArrow` (vector, top-right),
+  `drawScaleBar` (computed from each page's geographic bbox, "nice" round length, top-left of footer),
+  `drawSignatureFooter` (Enumerator + Supervisor sign lines + FOR OFFICIAL USE + date).
+- Every page (overview, AI, block, satellite) now passes its bbox so the scale bar is per-page-correct.
+- Added `tehsil/townVillage/wardNo/ebNo/supervisorName/sheetSize` to `MapData`; added matching
+  columns to the `user_profiles` migration (idempotent `add column if not exists`).
+- Onboarding step 3 now collects Tehsil/Town-Village/Ward/EB/Supervisor; `App.tsx` seeds these from
+  the profile into every new/loaded project (saved data still wins).
+- **Phase 2-c A4/A3 toggle**: `exportBlockPDF` honours `data.sheetSize`; PreviewScreen has an A4/A3
+  switch (A4 default). Legend box already lives inside the map canvas (`renderMapToCanvas`).
+- Fixed jsPDF single-arg color-setter type errors (use 3-arg numeric form). tsc clean, 31 tests pass.
+
+(original notes below)
 File: `src/lib/pdf-export.ts`.
 - Add a reusable `drawSheetFurniture(doc, data, {scaleMetersPerPx, bbox})` that renders:
   title block, north arrow (SVG/vector), scale bar (computed from the page's geographic extent),
@@ -125,9 +142,28 @@ File: `src/lib/pdf-export.ts`.
 - `MapData` already has `district`/`state`; add `tehsil`, `townVillage`, `wardNo`, `ebNo`,
   `supervisorName` (collected in onboarding/SMS-parse or a new "map details" form).
 
-### Phase 3 — Numbering-direction arrows + census-house sub-numbers
-- Use the existing serpentine order to draw small arrows on the clean map where consecutive numbered
-  buildings change heading beyond a threshold (the "number jumps" case).
+### Phase 3 — Numbering-direction arrows + census-house sub-numbers ✅ DONE (2026-05-30)
+- Added direction arrows on the clean map: arrowheads drawn along the serpentine path at the
+  start and wherever heading changes > ~50° (the "number jumps" case). `src/lib/pdf-export.ts`.
+- Census-house sub-numbers `N(1)…N(k)` below the building box were implemented in Phase 1
+  (`drawSymbolOnCanvas` via `census_house_count`).
+
+### Phase 4 — Boundary styling + neighbour labels + locator inset ✅ DONE (2026-05-30)
+- HLB boundary changed from solid red to dashed (12/6) with faint fill; numbered corner pins kept.
+- Added `MapData.neighbours {north,south,east,west}`; names drawn just outside each bbox edge.
+- Added `drawLocatorInset` — top-right thumbnail of the whole HLB with the current block filled,
+  drawn on each per-block clean page.
+
+### Phase 5 — Register/AHL alignment ✅ DONE (2026-05-30)
+- `generateOfficialRegister` now includes Census-House-No (`N(1)-N(k)`), P/K (Pucca/Kutcha), and
+  R/NR (residential/non-residential via `isNonResidential`) columns alongside the existing
+  use/head/families/rooms/ownership/water/latrine/fuel/GPS columns. Canonical census column names
+  used throughout.
+
+---
+(original phase notes retained below)
+
+### Phase 3 (orig) — Numbering-direction arrows + census-house sub-numbers
 - Render census-house sub-numbers `N(1)…N(k)` beneath the building box when a building has >1 census
   house; keep apartment unit handling but switch the label convention to match spec.
 

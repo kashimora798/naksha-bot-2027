@@ -58,6 +58,59 @@ export function polygonArea(coords: Coordinate[]): number {
   return Math.abs(area) / 2;
 }
 
+// ─── Dense-cluster schematic spread (layout-map is not-to-scale, ORGI §1/§13) ──
+// Pure helpers operating in canvas-pixel space so they're unit-testable.
+
+export interface XYPoint { x: number; y: number; }
+
+/**
+ * Single-link proximity clustering: groups point indices whose pairwise gap is
+ * below `radius`. Returns clusters (arrays of indices) of size >= minSize; points
+ * not in any such cluster are returned as singletons.
+ */
+export function clusterByProximity(pts: XYPoint[], radius: number, minSize = 4): number[][] {
+  const n = pts.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (a: number): number => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+  const union = (a: number, b: number) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+  const r2 = radius * radius;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+    if (dx * dx + dy * dy <= r2) union(i, j);
+  }
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) { const root = find(i); if (!groups.has(root)) groups.set(root, []); groups.get(root)!.push(i); }
+  const out: number[][] = [];
+  for (const g of groups.values()) {
+    if (g.length >= minSize) out.push(g);
+    else for (const idx of g) out.push([idx]); // emit small groups as singletons
+  }
+  return out;
+}
+
+/**
+ * Lay `count` items out on a near-square grid centered on (cx,cy), in row order
+ * (left→right, top→bottom) so numbering reads naturally. Returns canvas points.
+ */
+export function gridBlockOffsets(count: number, cx: number, cy: number, cell: number): XYPoint[] {
+  if (count <= 0) return [];
+  const cols = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / cols);
+  const w = (cols - 1) * cell, h = (rows - 1) * cell;
+  const x0 = cx - w / 2, y0 = cy - h / 2;
+  const pts: XYPoint[] = [];
+  for (let i = 0; i < count; i++) {
+    const r = Math.floor(i / cols), c = i % cols;
+    pts.push({ x: x0 + c * cell, y: y0 + r * cell });
+  }
+  return pts;
+}
+
+export function centroidXY(pts: XYPoint[]): XYPoint {
+  if (!pts.length) return { x: 0, y: 0 };
+  return { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
+}
+
 export function bearingBetween(a: Coordinate, b: Coordinate): number {
   const lat1 = (a.lat * Math.PI) / 180, lat2 = (b.lat * Math.PI) / 180, dLng = ((b.lng - a.lng) * Math.PI) / 180;
   const y = Math.sin(dLng) * Math.cos(lat2); const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);

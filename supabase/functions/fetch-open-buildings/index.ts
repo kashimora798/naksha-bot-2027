@@ -48,7 +48,7 @@ function bboxQuadkeys(n: number, s: number, e: number, w: number, zoom = 9): str
 // ── Microsoft Global Building Footprints ────────────────────────────────────
 // Microsoft tiles at z9 only (~80 km per tile). Dense metro tiles are 125-178 MB
 // compressed, so we stream-decompress line-by-line and filter to the boundary
-// polygon as we go (peak memory = one chunk, not the whole tile). Tiles >50 MB
+// polygon as we go (peak memory = one chunk, not the whole tile). Tiles >200 MB
 // compressed are skipped as a safety valve for Supabase CPU/wall-clock limits.
 let msIndexCache: Map<string, { url: string; sizeMB: number }> | null = null;
 async function fetchMicrosoftIndex(): Promise<Map<string, { url: string; sizeMB: number }>> {
@@ -79,7 +79,7 @@ async function fetchMicrosoft(n: number, s: number, e: number, w: number, poly: 
     for (const qk of bboxQuadkeys(n, s, e, w, 9)) {
       const entry = index.get(qk);
       if (!entry) { errors++; continue; }
-      if (entry.sizeMB > 50) { skipped++; continue; } // safety cap for dense metros
+      if (entry.sizeMB > 200) { skipped++; continue; } // safety cap (largest India tile is 177.8 MB)
       try {
         const r = await fetch(entry.url);
         if (!r.ok) { errors++; continue; }
@@ -146,7 +146,13 @@ async function fetchOSM(n: number, s: number, e: number, w: number, poly: any, t
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+    const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': 'NakshaBot-Census-HLB/1.0 (India Census 2027)',
+        'Accept': 'application/json'
+      }
+    });
     if (!r.ok) return { source: 'osm', out, meta: { ok: false, reason: `http ${r.status}` } };
     const d = await r.json();
     for (const el of (d.elements || [])) {

@@ -22,6 +22,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [panY, setPanY] = useState(0);
   const [mapImg, setMapImg] = useState('');
   const [orient, setOrient] = useState<'landscape' | 'portrait'>(mapData.orientation || 'portrait');
+  const [sheetSize, setSheetSize] = useState<'a4' | 'a3'>(mapData.sheetSize || 'a4');
   const [showSidebar, setShowSidebar] = useState(false);
 
   // Tab system
@@ -173,7 +174,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     setExportProgress('Rendering map...');
     try {
       await new Promise(r => setTimeout(r, 100)); // yield for UI update
-      const exportData = { ...mapData };
+      const exportData = { ...mapData, sheetSize };
       if (aiChunks && aiChunks.length > 0) {
         exportData.aiMapChunks = aiChunks;
       } else if (aiImg) {
@@ -411,6 +412,15 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   <button onClick={() => { setOrient('landscape'); resetView(); }} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${orient === 'landscape' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>📄 Landscape</button>
                   <button onClick={() => { setOrient('portrait'); resetView(); }} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${orient === 'portrait' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>📄 Portrait</button>
                 </div>
+              </div>
+
+              <div>
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Sheet Size</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => setSheetSize('a4')} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${sheetSize === 'a4' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>A4</button>
+                  <button onClick={() => setSheetSize('a3')} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${sheetSize === 'a3' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>A3</button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-2">A3 is the official preference for layout maps; A4 prints on common printers.</p>
               </div>
 
               <div>

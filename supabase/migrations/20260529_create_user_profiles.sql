@@ -11,11 +11,24 @@ create table if not exists public.user_profiles (
   hlb_lat double precision,
   hlb_lng double precision,
   hlb_address text,
+  -- Census layout-map title-block location particulars (Phase 2)
+  tehsil text,
+  town_village text,
+  ward_no text,
+  eb_no text,
+  supervisor_name text,
   is_mobile_verified boolean default false,
   onboarding_completed boolean default false,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+-- For projects where the table already exists, add the new columns idempotently.
+alter table public.user_profiles add column if not exists tehsil text;
+alter table public.user_profiles add column if not exists town_village text;
+alter table public.user_profiles add column if not exists ward_no text;
+alter table public.user_profiles add column if not exists eb_no text;
+alter table public.user_profiles add column if not exists supervisor_name text;
 
 -- Enable Row Level Security
 alter table public.user_profiles enable row level security;

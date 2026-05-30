@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { idbStore, SurveySession } from '../lib/idb';
 import type { MapData } from '../types';
+import ProfileScreen from './ProfileScreen';
 
 export interface Project {
   id: string;
@@ -22,12 +23,14 @@ interface Props {
   onLiveSurvey?: (initialData?: Partial<MapData>) => void;
   onResumeLiveSurvey?: (sessionId: string) => void;
   onDemoMap?: () => void;
+  onProfileUpdated?: (profile: any) => void;
 }
 
-export default function DashboardScreen({ user, userProfile, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap }: Props) {
+export default function DashboardScreen({ user, userProfile, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap, onProfileUpdated }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
   const [liveSessions, setLiveSessions] = useState<SurveySession[]>([]);
   const [showDemoModal, setShowDemoModal] = useState(false);
 
@@ -137,12 +140,20 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               <p className="text-xs sm:text-sm text-gray-600 truncate">Welcome back, {user?.user_metadata?.full_name || user?.email || 'Surveyor'}</p>
             </div>
           </div>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="flex-shrink-0 px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
-          >
-            Sign Out
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setShowProfile(true)}
+              className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors flex items-center gap-1.5"
+            >
+              <span>👤</span><span className="hidden sm:inline">Profile</span>
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              Sign Out
+            </button>
+          </div>
         </header>
 
         {error && (
@@ -320,6 +331,15 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             </div>
           </div>
         </div>
+      )}
+
+      {showProfile && (
+        <ProfileScreen
+          user={user}
+          userProfile={userProfile}
+          onClose={() => setShowProfile(false)}
+          onSaved={(prof) => { onProfileUpdated?.(prof); }}
+        />
       )}
 
       {showFeedback && (

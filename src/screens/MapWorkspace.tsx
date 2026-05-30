@@ -55,6 +55,7 @@ export default function MapWorkspace({
   const [cross, setCross] = useState<Coordinate>(center);
   const [ready, setReady] = useState(false);
   const [rdLoad, setRdLoad] = useState(false); const [rdErr, setRdErr] = useState('');
+  const [bldgMsg, setBldgMsg] = useState('');
   const [revMode, setRevMode] = useState(false); const [revIdx, setRevIdx] = useState(0);
   const [selSym, setSelSym] = useState<SymbolType | null>(null);
   const [placing, setPlacing] = useState(false);
@@ -315,9 +316,16 @@ export default function MapWorkspace({
     symbols.forEach(s => addMk(s));
   }, [ready, symbols]);
   useEffect(() => { if(tileRef.current) tileRef.current.setOpacity(showSat?1:0); }, [showSat]);
-  useEffect(() => { 
+  useEffect(() => {
     if(step===4&&boundaryClosed&&roads.length===0) {
-      loadRd(); 
+      loadRd();
+    }
+  }, [step]);
+  // Auto-detect buildings once when entering the symbols step, if none placed yet.
+  const bldgTried = useRef(false);
+  useEffect(() => {
+    if (step === 5 && boundaryClosed && symbols.length === 0 && !bldgTried.current) {
+      bldgTried.current = true;
       fetchBuildingsForBlock();
     }
   }, [step]);
@@ -373,38 +381,53 @@ export default function MapWorkspace({
 
   async function fetchBuildingsForBlock() {
     if (boundaryPins.length < 3) return;
+    setBldgMsg('🏠 Detecting buildings…');
     try {
       const bb = getBbox(boundaryPins);
-      const res = await supabase.functions.invoke('fetch-buildings', {
-        body: { north: bb.north, south: bb.south, east: bb.east, west: bb.west }
-      });
-      
-      if (res.data?.buildings) {
-        // Filter out non-residential buildings
-        const residential = res.data.buildings.filter((b: any) => 
-          b.area_sqm > 15 &&    // too small = shed or outbuilding
-          b.area_sqm < 800 &&   // too large = factory or institution
-          pointInPolygon({ lat: b.lat, lng: b.lng }, boundaryPins)
-        );
-        
-        const newSymbols = residential.map((b: any) => ({
-          id: `building-${crypto.randomUUID()}`,
-          symbol_type: 'pucca_house' as SymbolType,
-          lat: b.lat,
-          lng: b.lng,
-          number: null,
-          auto_detected: true,
-          confidence: 'ai_detected'
-        }));
-        
-        console.log(`🏢 [Microsoft Buildings] Fetched ${res.data.buildings.length} total, filtered down to ${newSymbols.length} residential/valid buildings within boundary.`);
-        
-        if (newSymbols.length > 0) {
-           onUpdateSymbols([...symbols, ...newSymbols]);
+      const res = await supabase.functions.invoke('fetch-open-buildings', {
+        body: {
+          north: bb.north,
+          south: bb.south,
+          east: bb.east,
+          west: bb.west,
+          boundary: boundaryPins.map(p => ({ lat: p.lat, lng: p.lng, lon: p.lng }))
         }
+      });
+
+      if (res.error) {
+        setBldgMsg('⚠️ Building detection failed (network). Place houses manually.');
+        console.error('fetch-open-buildings error:', res.error);
+        return;
+      }
+
+      const all = res.data?.buildings || [];
+      const src = res.data?.sources;
+      // Edge function now filters to the boundary polygon, so we only drop sub-5 m² noise
+      const valid = all.filter((b: any) => b.area_sqm == null || b.area_sqm > 5);
+
+      const newSymbols: PlacedSymbol[] = valid.map((b: any) => ({
+        id: `building-${crypto.randomUUID()}`,
+        symbol_type: 'pucca_house' as SymbolType,
+        lat: b.lat, lng: b.lng,
+        number: null,
+        placed_at: new Date().toISOString(),
+        auto_detected: true,
+      }));
+
+      const srcTxt = src
+        ? ` (MS ${src.microsoft?.count ?? 0} · OSM ${src.osm?.count ?? 0} · Google ${src.google?.count ?? 0})`
+        : '';
+      console.log(`🏢 [Open Buildings] ${all.length} fetched${srcTxt}, ${newSymbols.length} valid after noise filter.`, src);
+
+      if (newSymbols.length > 0) {
+        onUpdateSymbols([...symbols, ...newSymbols]);
+        setBldgMsg(`✅ Detected ${newSymbols.length} buildings${srcTxt}. Tap any to edit; numbering happens in the next step.`);
+      } else {
+        setBldgMsg(`No buildings found here${srcTxt}. This area may be unmapped — place houses manually or use Live Survey.`);
       }
     } catch (err) {
-      console.error('Failed to fetch Microsoft buildings:', err);
+      setBldgMsg('⚠️ Building detection failed. Place houses manually.');
+      console.error('Failed to fetch open buildings:', err);
     }
   }
 
@@ -450,13 +473,26 @@ export default function MapWorkspace({
           const resLandcover = await supabase.functions.invoke('fetch-landcover', {
             body: { north: bb.north, south: bb.south, east: bb.east, west: bb.west }
           });
-          if (resLandcover.data?.landuseAreas) {
-             const newAreas = resLandcover.data.landuseAreas.filter((l: any) => pointInPolygon({ lat: l.points[0][1], lng: l.points[0][0] }, boundaryPins));
-             console.log(`🌍 [Google Dynamic World] Fetched landcover data. Extracted ${newAreas.length} valid landuse polygons inside boundary.`);
-             finalLanduseAreas = [...finalLanduseAreas, ...newAreas.map((l: any) => ({
-               ...l,
-               points: l.points.map((p: any) => ({ lat: p[1], lng: p[0] }))
-             }))];
+          // The edge function returns GeoJSON { features: [...] }; older code expected
+          // `landuseAreas`. Accept either shape so the fallback actually works.
+          const lc = resLandcover.data;
+          const rawAreas: any[] = lc?.landuseAreas
+            ? lc.landuseAreas.map((l: any) => ({ type: l.type, points: l.points }))
+            : (lc?.features || []).map((f: any) => ({
+                type: f.properties?.label || f.properties?.type || 'farmland',
+                // GeoJSON Polygon: coordinates[0] is the outer ring of [lng,lat] pairs.
+                points: (f.geometry?.coordinates?.[0] || []),
+              }));
+          const newAreas = rawAreas.filter((l) =>
+            Array.isArray(l.points) && l.points.length >= 3 &&
+            pointInPolygon({ lat: l.points[0][1], lng: l.points[0][0] }, boundaryPins)
+          );
+          if (newAreas.length) {
+            console.log(`🌍 [Dynamic World] ${newAreas.length} landuse polygons inside boundary.`);
+            finalLanduseAreas = [...finalLanduseAreas, ...newAreas.map((l) => ({
+              type: l.type,
+              points: l.points.map((p: any) => ({ lat: p[1], lng: p[0] }))
+            }))];
           }
         } catch (err) {
           console.error("Failed to fetch Google Dynamic World landcover:", err);
@@ -604,6 +640,20 @@ export default function MapWorkspace({
   function pSymFull(){
     return <div className="z-[1002] pointer-events-auto bg-white rounded-t-2xl shadow-[0_-2px_12px_rgba(0,0,0,0.12)]">
       <SymbolDrawer selectedType={selSym} onSelect={selSymbol} placedCount={symbols.length} onToggle={() => setPanelOpen(!panelOpen)} />
+
+      {bldgMsg && (
+        <div className="px-4 pt-2 pb-1">
+          <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+            <p className="flex-1 text-xs font-semibold text-blue-800">{bldgMsg}</p>
+            <button onClick={() => setBldgMsg('')} className="text-blue-400 font-black text-sm leading-none" aria-label="Dismiss">×</button>
+          </div>
+        </div>
+      )}
+      {panelOpen && (
+        <div className="px-4 pt-2">
+          <button onClick={fetchBuildingsForBlock} className="w-full py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">🏠 Auto-Detect Buildings</button>
+        </div>
+      )}
       
       {!panelOpen && selSym === 'apartment' && (
         <div className="px-4 pb-3 flex justify-center">

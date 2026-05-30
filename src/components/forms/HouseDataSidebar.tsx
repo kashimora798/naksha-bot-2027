@@ -27,7 +27,7 @@ export const HouseDataSidebar: React.FC<HouseDataSidebarProps> = ({ house, onClo
     const totalFields = 17; // Approximate key fields to track
     
     const sch1Complete = !!(formData.col_4_use_type && formData.col_6_wall_material && formData.col_7_roof_material && formData.col_8_condition && formData.col_9_family_count);
-    const schAComplete = !!(formData.col_18_water_source && formData.col_19_electricity !== undefined && formData.col_20_latrine && formData.col_23_cooking_fuel);
+    const schAComplete = !!(formData.col_18_water_source && formData.col_19_electricity !== undefined && formData.col_20_latrine && formData.col_25_cooking_fuel);
     
     // Just a basic heuristic
     if (formData.col_4_use_type) filledFields++;
@@ -42,9 +42,9 @@ export const HouseDataSidebar: React.FC<HouseDataSidebarProps> = ({ house, onClo
     if (formData.col_18_water_source) filledFields++;
     if (formData.col_19_electricity !== undefined) filledFields++;
     if (formData.col_20_latrine) filledFields++;
-    if (formData.col_21_waste_water) filledFields++;
+    if (formData.col_21_latrine_type) filledFields++;
     if (formData.col_22_bathroom) filledFields++;
-    if (formData.col_23_cooking_fuel) filledFields++;
+    if (formData.col_25_cooking_fuel) filledFields++;
     if (formData.col_24_kitchen) filledFields++;
     if (formData.col_34_mobile_number) filledFields++;
     if (formData.asset_mobile || formData.asset_tv || formData.asset_bicycle) filledFields++;

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { idbStore } from '../lib/idb';
-import { SurveySession } from '../types';
+import type { SurveySession } from '../lib/idb';
 
 export default function SessionsDashboard() {
   const navigate = useNavigate();
@@ -13,7 +13,7 @@ export default function SessionsDashboard() {
     const fetchSessions = async () => {
       try {
         const data = await idbStore.getAllSessions();
-        setSessions(data.sort((a, b) => b.created_at - a.created_at));
+        setSessions(data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       } catch (err) {
         console.error('Failed to load sessions:', err);
       } finally {
@@ -36,8 +36,8 @@ export default function SessionsDashboard() {
   };
 
   const filteredSessions = sessions.filter(s => {
-    if (filter === 'ACTIVE') return s.state !== 'COMPLETED';
-    if (filter === 'COMPLETED') return s.state === 'COMPLETED';
+    if (filter === 'ACTIVE') return s.state !== 'completed';
+    if (filter === 'COMPLETED') return s.state === 'completed';
     return true;
   });
 
@@ -103,7 +103,7 @@ export default function SessionsDashboard() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-black text-lg text-gray-800">{session.hlb_number || 'Draft Session'}</span>
-                      {session.state === 'COMPLETED' ? (
+                      {session.state === 'completed' ? (
                         <span className="bg-green-100 text-green-700 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Completed</span>
                       ) : (
                         <span className="bg-blue-100 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Active</span>
@@ -151,7 +151,7 @@ export default function SessionsDashboard() {
                   >
                     View Register & Map
                   </button>
-                  {session.state !== 'COMPLETED' && (
+                  {session.state !== 'completed' && (
                     <button 
                       onClick={() => navigate(`/live-survey?session=${session.session_id}`)}
                       className="flex-1 bg-[var(--color-saffron)] text-white font-bold text-sm py-3 rounded-xl shadow-md hover:bg-orange-600 active:scale-95 transition-all"

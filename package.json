@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node prerender.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc --noEmit && vite build && node prerender.js",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -36,6 +39,7 @@
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
     "vite": "7.3.2",
-    "vite-plugin-prerender": "^1.0.8"
+    "vite-plugin-prerender": "^1.0.8",
+    "vitest": "^4.1.7"
   }
 }

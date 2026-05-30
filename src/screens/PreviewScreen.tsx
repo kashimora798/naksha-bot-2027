@@ -46,7 +46,14 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [feedbackUseful, setFeedbackUseful] = useState<string | null>(null);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(true);
+  const [showFeedback, setShowFeedback] = useState(false);
+
+  useEffect(() => {
+    if (!localStorage.getItem('naksha_preview_feedback')) {
+      setShowFeedback(true);
+      localStorage.setItem('naksha_preview_feedback', 'true');
+    }
+  }, []);
 
   const isDrag = useRef(false);
   const lastP = useRef({ x: 0, y: 0 });

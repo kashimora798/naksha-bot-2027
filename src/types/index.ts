@@ -7,8 +7,12 @@ export type SymbolType =
 
 export interface PlacedSymbol {
   id: string; symbol_type: SymbolType; lat: number; lng: number;
-  number: number | string | null; placed_at: string; auto_detected?: boolean;
+  number: number | null; placed_at: string; auto_detected?: boolean;
   unit_count?: number; label?: string;
+  /** Census layout-map: false = wholly non-residential (shape is hatched). Default true. */
+  is_residential?: boolean;
+  /** Number of census houses within this building (for N(1)..N(k) sub-numbering). */
+  census_house_count?: number;
   // ===== SCHEDULE 1 =====
   col_4_use_type?: number;
   col_5_occupation?: string;
@@ -17,18 +21,20 @@ export interface PlacedSymbol {
   col_8_condition?: number;
   col_9_family_count?: number;
   col_10_head_name?: string;
+  /** Alias kept in sync with col_10_head_name by the data form. */
+  head_of_household?: string;
   col_11_total_rooms?: number;
   col_12_ownership?: number;
-  
+
   // ===== SCHEDULE A =====
   col_18_water_source?: number;
   col_18a_water_location?: number;
   col_19_electricity?: boolean;
-  col_20_latrine?: number;
-  col_21_waste_water?: number;
+  col_20_latrine?: number;       // Col 20: access to latrine
+  col_21_latrine_type?: number;  // Col 21: type of latrine
   col_22_bathroom?: number;
-  col_23_cooking_fuel?: number;
-  col_24_kitchen?: number;
+  col_24_kitchen?: number;       // Col 24: kitchen availability
+  col_25_cooking_fuel?: number;  // Col 25: main cooking fuel
   
   // Assets
   asset_radio?: boolean;
@@ -111,6 +117,8 @@ export interface MapData {
   paymentStatus?: string;
   exportCount?: number;
   autoExport?: boolean;
+  locationName?: string;
+  gridConfig?: { enabled: boolean; columns: number; rows: number };
 }
 
 export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; isHouse: boolean }[] = [
@@ -135,6 +143,34 @@ export function getUnitCount(s: PlacedSymbol): number {
   if (s.symbol_type === 'apartment' && s.unit_count && s.unit_count > 1) return s.unit_count;
   return 1;
 }
+
+// ─── Census layout-map symbology helpers ───────────────────────────────
+// Spec (ORGI Annexure-4 §viii): Pucca building = SQUARE, Kutcha = TRIANGLE,
+// wholly non-residential = the same shape but HATCHED.
+export type BuildingShape = 'square' | 'triangle';
+
+/** Shape per census rule: pucca/apartment → square, kutcha → triangle. */
+export function buildingShape(s: PlacedSymbol): BuildingShape {
+  return s.symbol_type === 'kutcha_house' ? 'triangle' : 'square';
+}
+
+/**
+ * Whether the building is wholly non-residential (→ hatched shape).
+ * Precedence: explicit `is_residential` flag, else census col_4_use_type
+ * (1=Residence, 2=Res+Shop are residential/partly), else the legacy
+ * `non_residential` symbol type.
+ */
+export function isNonResidential(s: PlacedSymbol): boolean {
+  if (s.is_residential !== undefined) return s.is_residential === false;
+  if (s.col_4_use_type !== undefined) return ![1, 2].includes(s.col_4_use_type);
+  return s.symbol_type === 'non_residential';
+}
+
+/** True if this symbol type is a building (gets a square/triangle box), not a landmark icon. */
+export function isBuildingSymbol(t: SymbolType): boolean {
+  return t === 'pucca_house' || t === 'kutcha_house' || t === 'apartment' || t === 'non_residential';
+}
+
 export function polyCenter(pts: Coordinate[]): Coordinate {
   return { lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length, lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length };
 }

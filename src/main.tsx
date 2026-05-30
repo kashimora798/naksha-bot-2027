@@ -16,7 +16,7 @@ if (!window.crypto.randomUUID) {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
-    });
+    }) as `${string}-${string}-${string}-${string}-${string}`;
   };
 }
 // Fix for default marker icons in Leaflet with Vite
@@ -57,7 +57,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/live-dashboard" element={<SessionsDashboard />} />
           <Route path="/live-session/:id" element={<SessionDetailScreen />} />
           <Route path="/live-prep" element={<LiveSurveyPrep />} />
-          <Route path="/live-survey" element={<LiveSurveyScreen />} />
+          <Route path="/live-survey" element={<LiveSurveyScreen onExit={() => {}} />} />
           
           <Route path="/how-it-works" element={<HowItWorksPage />} />
           <Route path="/faq" element={<FaqPage />} />

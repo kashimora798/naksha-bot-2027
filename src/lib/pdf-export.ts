@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature, SurveySession, SurveySymbol, SurveyPoint, RoadSegment } from '../types';
+import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature } from '../types';
+import type { SurveySession, SurveySymbol, SurveyPoint, RoadSegment } from './idb';
 import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter, isHouseType } from '../types';
 import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon } from './geo';
 import { drawSymbolOnCanvas } from './symbols';
@@ -273,7 +274,7 @@ export function renderMapToCanvas(
     }
 
     for (const { x, y, sym } of snappedSymbols) {
-      drawSymbolOnCanvas(ctx, sym.symbol_type, x, y, symSz, sym.number, getUnitCount(sym));
+      drawSymbolOnCanvas(ctx, sym, x, y, symSz);
     }
   }
 
@@ -307,7 +308,7 @@ export function renderMapToCanvas(
       let ly = lY + 2;
       usedTypes.forEach(t => {
         const d = SYMBOL_DEFS.find(dd => dd.type === t);
-        drawSymbolOnCanvas(ctx, t, lX + 8, ly, 9, null, 1);
+        drawSymbolOnCanvas(ctx, { symbol_type: t }, lX + 8, ly, 9);
         ctx.fillStyle = '#000'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         ctx.fillText(d?.labelHi || '', lX + 20, ly);
         ly += 15;
@@ -616,7 +617,7 @@ export async function generateOfficialRegister(session: SurveySession, symbols: 
   
   const tableData = symbols
     .filter(s => s.number)
-    .sort((a, b) => parseInt(a.number as string || '0') - parseInt(b.number as string || '0'))
+    .sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
     .map(s => [
       s.number,
       s.symbol_type.replace('_', ' ').toUpperCase(),
@@ -627,7 +628,7 @@ export async function generateOfficialRegister(session: SurveySession, symbols: 
       s.col_12_ownership === 1 ? 'Owned' : s.col_12_ownership === 2 ? 'Rented' : '-',
       s.col_18_water_source ? 'Recorded' : '-',
       s.col_20_latrine ? 'Recorded' : '-',
-      s.col_23_cooking_fuel ? 'Recorded' : '-',
+      s.col_25_cooking_fuel ? 'Recorded' : '-',
       `${s.lat.toFixed(6)}, ${s.lng.toFixed(6)}`
     ]);
 
@@ -656,6 +657,20 @@ export async function generateLiveExportPdf(
     blocks: [],
     hlbNumber: session.hlb_number,
     locationName: session.location_name,
+    center: { lat: 0, lng: 0 },
+    district: '',
+    state: '',
+    enumeratorName: '',
+    chargeOfficer: '',
+    boundaryClosed: true,
+    roadsConfirmed: true,
+    numberingComplete: true,
+    orientation: 'landscape',
+    farmlandBlocks: [],
+    waterBodies: [],
+    forests: [],
+    landmarks: [],
+    areaStats: null,
     boundaryPins: session.polygon_geojson ? (() => {
       try {
          const geo = JSON.parse(session.polygon_geojson);

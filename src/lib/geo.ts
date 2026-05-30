@@ -31,6 +31,24 @@ export function lineIntersectsPolygon(line: Coordinate[], polygon: Coordinate[])
   return false;
 }
 
+export function isPolygonSelfIntersecting(polygon: Coordinate[]): boolean {
+  if (polygon.length < 4) return false;
+  // Check each edge against all non-adjacent edges
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    // Check against all edges except adjacent ones
+    for (let j = i + 2; j < polygon.length; j++) {
+      // Skip the edge that shares a vertex with the current edge
+      if (j === polygon.length - 1 && i === 0) continue;
+      const c = polygon[j];
+      const d = polygon[(j + 1) % polygon.length];
+      if (segIntersect(a, b, c, d)) return true;
+    }
+  }
+  return false;
+}
+
 export function polygonArea(coords: Coordinate[]): number {
   if (coords.length < 3) return 0;
   const avgLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;

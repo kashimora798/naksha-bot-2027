@@ -124,6 +124,8 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
 
   // ── Survey state ─────────────────────────────────────────────
   const [gpsAccuracy, setGpsAccuracy] = useState(0);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsWarning, setGpsWarning] = useState<string | null>(null);
   const [gpsBearing, setGpsBearing] = useState(0);
   const [stats, setStats] = useState({ distance: 0, duration: 0, houses: 0 });
   const [roadType, setRoadType] = useState('residential');
@@ -223,7 +225,21 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
     }
 
     engineRef.current.on('stateChanged', () => {});
+    engineRef.current.on('gpsError', (err: GeolocationPositionError) => {
+      const msg = err?.code === 1 ? 'Location permission denied. Enable GPS access for this site in your browser settings.'
+                : err?.code === 2 ? 'GPS signal unavailable. Move to an open area and try again.'
+                : err?.code === 3 ? 'GPS is taking longer than usual to get a fix. Still trying…'
+                : 'GPS error. Check that location is enabled.';
+      setGpsError(msg);
+    });
+    engineRef.current.on('accuracyWarning', (data: { accuracy: number; message: string }) => {
+      setGpsWarning(data.message);
+    });
     engineRef.current.on('positionUpdate', (data: any) => {
+      // A fresh fix arrived — clear any prior GPS error
+      setGpsError(null);
+      // Clear the degraded-accuracy warning once a good fix (<=10m) arrives
+      if (data.accuracy <= 10) setGpsWarning(null);
       // Always update marker + basic info (fires on EVERY GPS fix)
       setGpsAccuracy(data.accuracy);
       setOutOfBounds(!data.insideBoundary);
@@ -269,7 +285,10 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
       setReturnDialog(true);
     });
     return () => {
-      if (engineRef.current?.watchId) navigator.geolocation.clearWatch(engineRef.current.watchId);
+      // Clean up engine resources when component unmounts or activePolygon changes
+      if (engineRef.current) {
+        engineRef.current.destroy();
+      }
     };
   }, [activePolygon]);
 
@@ -1299,27 +1318,39 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
         </div>
       )}
 
-      {/* OUT OF BOUNDS */}
-      {outOfBounds && phase === 'RECORDING' && (
-        <div className="absolute top-[100px] left-4 right-4 bg-white rounded-xl border-l-4 border-red-500 p-3 shadow-xl z-[2000] flex items-center gap-3">
-          <span className="text-xl">⚠️</span>
-          <p className="text-sm font-bold text-gray-800">आप boundary के बाहर हैं<br /><span className="text-xs font-normal text-gray-500">You are outside your survey block</span></p>
-        </div>
-      )}
-
-      {/* VEHICLE WARNING */}
-      {vehicleWarning && (
-        <div className="absolute top-[100px] left-0 right-0 bg-amber-400 text-amber-900 p-3 z-[2000] flex items-center justify-center gap-2 font-bold text-sm">
-          🚗 Vehicle detected — survey paused
-        </div>
-      )}
-
-      {/* OSM SNAP TOAST */}
-      {osmToast && (
-        <div className="absolute top-[105px] left-1/2 -translate-x-1/2 bg-[rgba(0,0,0,0.8)] text-white text-xs font-bold py-2 px-4 rounded-full z-[2000] shadow-lg whitespace-nowrap" style={{ animation: 'fadeIn 0.3s ease' }}>
-          {osmToast}
-        </div>
-      )}
+      {/* NOTIFICATION RAIL — stacks banners vertically so they never overlap */}
+      <div className="absolute top-[60px] left-4 right-4 z-[2100] flex flex-col gap-2 pointer-events-none">
+        {gpsError && (
+          <div className="pointer-events-auto bg-white rounded-xl border-l-4 border-red-500 p-3 shadow-xl flex items-start gap-3">
+            <span className="text-xl">📡</span>
+            <p className="flex-1 text-sm font-bold text-gray-800">{gpsError}</p>
+            <button onClick={() => setGpsError(null)} className="text-gray-400 font-black text-lg leading-none px-1" aria-label="Dismiss">×</button>
+          </div>
+        )}
+        {gpsWarning && !gpsError && (
+          <div className="pointer-events-auto bg-white rounded-xl border-l-4 border-amber-500 p-3 shadow-xl flex items-start gap-3">
+            <span className="text-xl">⚠️</span>
+            <p className="flex-1 text-sm font-bold text-gray-800">{gpsWarning}</p>
+            <button onClick={() => setGpsWarning(null)} className="text-gray-400 font-black text-lg leading-none px-1" aria-label="Dismiss">×</button>
+          </div>
+        )}
+        {outOfBounds && phase === 'RECORDING' && (
+          <div className="pointer-events-auto bg-white rounded-xl border-l-4 border-red-500 p-3 shadow-xl flex items-center gap-3">
+            <span className="text-xl">⚠️</span>
+            <p className="text-sm font-bold text-gray-800">आप boundary के बाहर हैं<br /><span className="text-xs font-normal text-gray-500">You are outside your survey block</span></p>
+          </div>
+        )}
+        {vehicleWarning && (
+          <div className="pointer-events-auto bg-amber-400 text-amber-900 rounded-xl p-3 shadow-xl flex items-center justify-center gap-2 font-bold text-sm">
+            🚗 Vehicle detected — survey paused
+          </div>
+        )}
+        {osmToast && (
+          <div className="pointer-events-auto self-center bg-[rgba(0,0,0,0.8)] text-white text-xs font-bold py-2 px-4 rounded-full shadow-lg whitespace-nowrap" style={{ animation: 'fadeIn 0.3s ease' }}>
+            {osmToast}
+          </div>
+        )}
+      </div>
 
       {/* MAP */}
       <div className="flex-1 relative">

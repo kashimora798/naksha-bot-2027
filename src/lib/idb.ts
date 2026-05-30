@@ -114,10 +114,13 @@ export const idbStore = {
 
   async updateSessionState(session_id: string, state: SurveySession['state'], extra?: Partial<SurveySession>) {
     const db = await getDB();
-    const existing = await db.get('survey_sessions', session_id);
+    // Use a transaction to ensure atomic read-modify-write
+    const tx = db.transaction('survey_sessions', 'readwrite');
+    const existing = await tx.store.get(session_id);
     if (existing) {
-      await db.put('survey_sessions', { ...existing, state, ...extra });
+      await tx.store.put({ ...existing, state, ...extra });
     }
+    await tx.done;
   },
 
   async addPoint(point: SurveyPoint) {

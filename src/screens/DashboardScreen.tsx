@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { idbStore, SurveySession } from '../lib/idb';
 import type { MapData } from '../types';
-import LocationSelectModal from '../components/LocationSelectModal';
 
 export interface Project {
   id: string;
@@ -31,7 +30,6 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [error, setError] = useState<string | null>(null);
   const [liveSessions, setLiveSessions] = useState<SurveySession[]>([]);
   const [showDemoModal, setShowDemoModal] = useState(false);
-  const [locationModalType, setLocationModalType] = useState<'map' | 'live' | null>(null);
 
   // Feedback State
   const [showFeedback, setShowFeedback] = useState(false);
@@ -42,6 +40,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   useEffect(() => {
     if (!localStorage.getItem('naksha_demo_done')) {
       setShowDemoModal(true);
+      localStorage.setItem('naksha_demo_done', 'true');
     }
   }, []);
 
@@ -62,6 +61,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
         // Show feedback if they have maps and haven't seen it yet
         if (visibleProjects.length > 0 && !localStorage.getItem('naksha_dashboard_feedback')) {
           setShowFeedback(true);
+          localStorage.setItem('naksha_dashboard_feedback', 'true');
         }
       } catch (err: any) {
         console.error('Error fetching projects:', err);
@@ -104,12 +104,6 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const pendingSessions = liveSessions.filter(s => s.state === 'paused');
   const completedSessions = liveSessions.filter(s => s.state === 'completed');
 
-  const handleLocationSelect = (data?: Partial<MapData>) => {
-    if (locationModalType === 'map') onNewProject(data);
-    if (locationModalType === 'live') onLiveSurvey?.(data);
-    setLocationModalType(null);
-  };
-
   const submitFeedback = async () => {
     setFeedbackLoading(true);
     try {
@@ -135,17 +129,17 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   return (
     <div className="min-h-screen flex flex-col p-6 font-noto-sans bg-transparent">
       <div className="max-w-4xl w-full mx-auto">
-        <header className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="NakshaBot Logo" className="w-12 h-12 object-contain" />
-            <div>
-              <h1 className="text-3xl font-bold font-public-sans text-[var(--color-charcoal)]">NakshaBot</h1>
-              <p className="text-sm text-gray-600">Welcome back, {user?.user_metadata?.full_name || user?.email || 'Surveyor'}</p>
+        <header className="flex items-center justify-between mb-8 gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <img src="/logo.png" alt="NakshaBot Logo" className="w-10 h-10 sm:w-12 sm:h-12 object-contain flex-shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold font-public-sans text-[var(--color-charcoal)] truncate">NakshaBot</h1>
+              <p className="text-xs sm:text-sm text-gray-600 truncate">Welcome back, {user?.user_metadata?.full_name || user?.email || 'Surveyor'}</p>
             </div>
           </div>
           <button
             onClick={() => supabase.auth.signOut()}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+            className="flex-shrink-0 px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
           >
             Sign Out
           </button>
@@ -161,7 +155,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold font-public-sans text-[var(--color-charcoal)]">🗺️ Live Surveys</h2>
               <button
-                onClick={() => setLocationModalType('live')}
+                onClick={() => onLiveSurvey?.(undefined)}
                 className="px-4 py-2 bg-[var(--color-saffron)] text-white rounded-xl font-bold text-sm shadow active:scale-95 transition-all min-h-[44px]"
               >
                 + New Survey
@@ -224,26 +218,26 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
         )}
 
         {/* ── Regular Maps Section ── */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <h2 className="text-xl font-bold font-public-sans text-[var(--color-charcoal)]">Your Maps</h2>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 sm:flex gap-2">
             {liveSessions.length === 0 && (
               <button
-                onClick={() => setLocationModalType('live')}
-                className="px-5 py-2.5 bg-white border border-[var(--color-saffron)] text-[var(--color-saffron)] rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-orange-50 transition-colors min-h-[52px]"
+                onClick={() => onLiveSurvey?.(undefined)}
+                className="px-4 py-2.5 bg-white border border-[var(--color-saffron)] text-[var(--color-saffron)] rounded-xl font-bold text-sm shadow-[var(--shadow-warm-1)] hover:bg-orange-50 transition-colors min-h-[52px]"
               >
                 🚶‍♂️ Live Survey
               </button>
             )}
             <button
               onClick={onDemoMap}
-              className="px-5 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]"
+              className="px-4 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]"
             >
               🎓 Try Demo
             </button>
             <button
-              onClick={() => setLocationModalType('map')}
-              className="px-5 py-2.5 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]"
+              onClick={() => onNewProject(undefined)}
+              className="col-span-2 sm:col-span-1 px-4 py-2.5 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold text-sm shadow-[var(--shadow-warm-1)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]"
             >
               + Create New Map
             </button>
@@ -257,8 +251,8 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <h3 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)] mb-2">No maps yet</h3>
             <p className="text-sm text-gray-600 max-w-sm mx-auto mb-6">Start by creating a new map or using Live Survey mode.</p>
             <div className="flex gap-3 justify-center">
-              <button onClick={() => setLocationModalType('live')} className="px-6 py-3 bg-white border border-[var(--color-saffron)] text-[var(--color-saffron)] rounded-xl font-bold shadow hover:bg-orange-50 transition-colors min-h-[52px]">🚶‍♂️ Live Survey</button>
-              <button onClick={() => setLocationModalType('map')} className="px-6 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
+              <button onClick={() => onLiveSurvey?.(undefined)} className="px-6 py-3 bg-white border border-[var(--color-saffron)] text-[var(--color-saffron)] rounded-xl font-bold shadow hover:bg-orange-50 transition-colors min-h-[52px]">🚶‍♂️ Live Survey</button>
+              <button onClick={() => onNewProject(undefined)} className="px-6 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
             </div>
           </div>
         ) : (
@@ -326,31 +320,6 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             </div>
           </div>
         </div>
-      )}
-
-      {locationModalType && (
-        <LocationSelectModal
-          type={locationModalType}
-          userProfile={userProfile}
-          onClose={() => setLocationModalType(null)}
-          onSelectSaved={() => handleLocationSelect({
-            hlbNumber: userProfile.hlb_number,
-            center: { lat: userProfile.hlb_lat, lng: userProfile.hlb_lng }
-          })}
-          onSelectDemoKanpur={() => handleLocationSelect({
-            hlbNumber: '0455',
-            center: { lat: 26.4499, lng: 80.3319 },
-            district: 'Kanpur',
-            state: 'Uttar Pradesh'
-          })}
-          onSelectDemoLucknow={() => handleLocationSelect({
-            hlbNumber: '1102',
-            center: { lat: 26.8467, lng: 80.9462 },
-            district: 'Lucknow',
-            state: 'Uttar Pradesh'
-          })}
-          onSelectNew={() => handleLocationSelect(undefined)}
-        />
       )}
 
       {showFeedback && (

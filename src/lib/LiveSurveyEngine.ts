@@ -16,6 +16,13 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 export type SurveyState = 'SETUP' | 'PREPARING' | 'READY' | 'RECORDING' | 'PAUSED' | 'REVIEWING' | 'COMPLETED';
 
+/** Map the engine's fine-grained state to the 3-value persisted session state. */
+function toPersistedState(s: SurveyState): 'active' | 'completed' | 'paused' {
+  if (s === 'COMPLETED') return 'completed';
+  if (s === 'PAUSED') return 'paused';
+  return 'active';
+}
+
 export class LiveSurveyEngine {
   blockPolygon: any;
   supabase: any;
@@ -64,7 +71,11 @@ export class LiveSurveyEngine {
   async loadSessionData() {
     const session = await this.idb.getSession(this.sessionId);
     if (session) {
-      this.state = session.state === 'active' ? 'PAUSED' : (session.state as SurveyState);
+      // Persisted state is the 3-value enum; resume into the matching engine state.
+      // An 'active' session that was interrupted resumes PAUSED so the user explicitly restarts recording.
+      this.state = session.state === 'completed' ? 'COMPLETED'
+                 : session.state === 'paused' ? 'PAUSED'
+                 : 'PAUSED';
       this.startTime = session.startTime || Date.now();
       if (session.polygon_geojson) {
         try { this.blockPolygon = JSON.parse(session.polygon_geojson); } catch(e){}
@@ -89,10 +100,39 @@ export class LiveSurveyEngine {
     this.listeners[event].push(callback);
   }
 
+  off(event: string, callback?: Function) {
+    if (!this.listeners[event]) return;
+    if (callback) {
+      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+    } else {
+      delete this.listeners[event];
+    }
+  }
+
   emit(event: string, data?: any) {
     if (this.listeners[event]) {
       this.listeners[event].forEach(cb => cb(data));
     }
+  }
+
+  destroy() {
+    // Clean up GPS watcher
+    if (this.watchId !== null) {
+      navigator.geolocation.clearWatch(this.watchId);
+      this.watchId = null;
+    }
+    // Clean up snap interval
+    if (this.snapInterval) {
+      clearInterval(this.snapInterval);
+      this.snapInterval = null;
+    }
+    // Release wake lock
+    if (this.wakeLock) {
+      this.wakeLock.release().catch(() => {});
+      this.wakeLock = null;
+    }
+    // Clear all listeners
+    this.listeners = {};
   }
 
   async startSurvey() {
@@ -112,8 +152,10 @@ export class LiveSurveyEngine {
       err => this.handleGPSError(err),
       {
         enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 5000
+        // Allow a fix up to 2s old so a brief signal dip doesn't fire a TIMEOUT,
+        // and give low-end field devices longer to acquire under tree cover.
+        maximumAge: 2000,
+        timeout: 15000
       }
     );
     
@@ -288,7 +330,12 @@ export class LiveSurveyEngine {
     }
 
     const canRecord = this.state === 'RECORDING' && this.returnMode !== 'follow_back';
-    const passesQuality = raw.accuracy <= 50;
+    const passesQuality = raw.accuracy <= 20; // Tightened from 50m to 20m for survey-grade accuracy
+
+    // Warn if accuracy is degraded but still acceptable
+    if (raw.accuracy > 10 && raw.accuracy <= 20) {
+      this.emit('accuracyWarning', { accuracy: raw.accuracy, message: 'GPS accuracy is reduced. Move to open area for better signal.' });
+    }
 
     if (canRecord && passesQuality && (movementType === 'walking' || movementType === 'fast_walk' || movementType === 'unknown')) {
       let addToPath = true;
@@ -598,7 +645,7 @@ export class LiveSurveyEngine {
     // Re-assign sequential building numbers
     let currentNumber = 1;
     for (const h of houses) {
-      h.number = currentNumber.toString();
+      h.number = currentNumber;
       currentNumber++;
     }
   }
@@ -654,7 +701,7 @@ export class LiveSurveyEngine {
     if (toSave.length > 0) {
       await this.idb.addPoints(toSave);
     }
-    await this.idb.updateSessionState(this.sessionId, this.state, {
+    await this.idb.updateSessionState(this.sessionId, toPersistedState(this.state), {
        houses_count: this.symbols.filter(s => ['pucca_house', 'kutcha_house'].includes(s.symbol_type as string)).length,
        distance_m: Math.round(this.calculateTotalDistance()),
        polygon_geojson: this.blockPolygon ? JSON.stringify(this.blockPolygon) : undefined,

@@ -1,4 +1,5 @@
-import type { SymbolType } from '../types';
+import type { SymbolType, PlacedSymbol } from '../types';
+import { buildingShape, isNonResidential, isBuildingSymbol, getUnitCount } from '../types';
 
 export function getSymbolSVG(type: SymbolType): string {
   const s = 32;
@@ -45,15 +46,20 @@ export function getSmallSymbolSVG(type: SymbolType, highlight?: boolean, num?: s
 
   switch (type) {
     case 'pucca_house':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="12" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(13)}</svg>`;
+      // Spec: Pucca = square
+      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(13)}</svg>`;
     case 'kutcha_house':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="8" stroke="${color}" stroke-width="1.8" fill="none"/><polyline points="3,11 12,3 21,11" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(15)}</svg>`;
+      // Spec: Kutcha = triangle (closed path strokes reliably across renderers)
+      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><path d="M12 3 L21 20 L3 20 Z" stroke="${color}" stroke-width="1.8" fill="none" stroke-linejoin="round"/>${drawNum(16)}</svg>`;
     case 'apartment':
+      // Apartment is pucca → square, with floor lines to distinguish in the palette
       return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="4" y="2" width="16" height="20" stroke="${color}" stroke-width="1.8" fill="none"/><line x1="4" y1="9" x2="20" y2="9" stroke="${color}" stroke-width="1"/><line x1="4" y1="16" x2="20" y2="16" stroke="${color}" stroke-width="1"/><line x1="12" y1="2" x2="12" y2="22" stroke="${color}" stroke-width="1"/>${drawNum(12)}</svg>`;
     case 'farmland':
       return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" stroke="${color}" stroke-width="1.8" fill="none"/><line x1="2" y1="9" x2="22" y2="9" stroke="${color}" stroke-width="1" stroke-dasharray="3,2"/><line x1="2" y1="14" x2="22" y2="14" stroke="${color}" stroke-width="1" stroke-dasharray="3,2"/><line x1="2" y1="19" x2="22" y2="19" stroke="${color}" stroke-width="1" stroke-dasharray="3,2"/></svg>`;
     case 'non_residential':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="12" stroke="${color}" stroke-width="1.8" fill="none"/><line x1="3" y1="11" x2="21" y2="11" stroke="${color}" stroke-width="1"/><line x1="3" y1="15" x2="21" y2="15" stroke="${color}" stroke-width="1"/>${drawNum(13)}</svg>`;
+      // Spec: wholly non-residential pucca = hatched square. Explicit diagonal lines
+      // (clipped to the square) are more robust across webviews than an SVG <pattern>.
+      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><defs><clipPath id="cp${highlight?'b':'k'}"><rect x="4" y="4" width="16" height="16"/></clipPath></defs><g clip-path="url(#cp${highlight?'b':'k'})"><line x1="4" y1="12" x2="12" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="4" y1="20" x2="20" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="8" y1="20" x2="20" y2="8" stroke="${color}" stroke-width="0.9"/><line x1="16" y1="20" x2="20" y2="16" stroke="${color}" stroke-width="0.9"/></g><rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(13)}</svg>`;
     case 'mosque':
       return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="5" y="14" width="14" height="7" stroke="${color}" stroke-width="1.8" fill="none"/><path d="M5,14 Q5,5 12,3 Q19,5 19,14" stroke="${color}" stroke-width="1.8" fill="none"/></svg>`;
     case 'temple':
@@ -76,63 +82,98 @@ export function getSmallSymbolSVG(type: SymbolType, highlight?: boolean, num?: s
 }
 
 export function drawSymbolOnCanvas(
-  ctx: CanvasRenderingContext2D, type: SymbolType, x: number, y: number, size: number,
-  num?: number | null, unitCount: number = 1
+  ctx: CanvasRenderingContext2D,
+  sym: Pick<PlacedSymbol, 'symbol_type'> & Partial<PlacedSymbol>,
+  x: number, y: number, size: number
 ) {
+  const type = sym.symbol_type;
   ctx.strokeStyle = '#000000'; ctx.lineWidth = 1.5; ctx.fillStyle = '#000000';
   const w = size, h = size * 0.7;
 
-  // Render number inside house
+  // Building number written INSIDE the box (spec). For an apartment we still show
+  // the unit range; census-house sub-numbers (N(1)..N(k)) are drawn BELOW the box.
   const drawNum = (nx: number, ny: number) => {
-    if (num !== null && num !== undefined) {
-      const lbl = unitCount > 1 ? `${num}-${num + unitCount - 1}` : String(num);
-      ctx.font = `bold ${Math.max(12, size * 0.65)}px sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      
-      // White halo for readability over roads
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 4;
-      ctx.lineJoin = 'round';
-      ctx.strokeText(lbl, nx, ny);
-      
-      // Black text
+    const num = sym.number;
+    if (num === null || num === undefined) return;
+    const units = getUnitCount(sym as PlacedSymbol);
+    const lbl = units > 1 ? `${num}-${num + units - 1}` : String(num);
+    ctx.font = `bold ${Math.max(11, size * 0.6)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // White halo for readability over roads
+    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4; ctx.lineJoin = 'round';
+    ctx.strokeText(lbl, nx, ny);
+    ctx.fillStyle = '#000000'; ctx.fillText(lbl, nx, ny);
+    ctx.strokeStyle = '#000000'; ctx.lineWidth = 1.5;
+  };
+
+  // Census-house sub-numbers below the box, e.g. "5(1)-5(4)" (spec Annexure-4 §xii).
+  const drawCensusHouses = (cy: number) => {
+    const n = sym.census_house_count ?? 0;
+    const num = sym.number;
+    if (n > 1 && num !== null && num !== undefined) {
+      const lbl = `${num}(1)-${num}(${n})`;
+      ctx.font = `${Math.max(7, size * 0.34)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       ctx.fillStyle = '#000000';
-      ctx.fillText(lbl, nx, ny);
-      
-      // Restore stroke properties for the next shapes
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1.5;
+      ctx.fillText(lbl, x, cy);
     }
   };
 
-  switch (type) {
-    case 'pucca_house':
-      ctx.strokeRect(x - w / 2, y - h / 2, w, h);
-      drawNum(x, y);
-      break;
-    case 'kutcha_house':
-      ctx.strokeRect(x - w / 2, y - h / 6, w, h * 0.7);
-      ctx.beginPath(); ctx.moveTo(x - w / 2, y - h / 6); ctx.lineTo(x, y - h / 2); ctx.lineTo(x + w / 2, y - h / 6); ctx.stroke();
-      drawNum(x, y + h * 0.18);
-      break;
-    case 'apartment': {
-      const ah = size * 1.1, aw = size * 0.8;
-      ctx.strokeRect(x - aw / 2, y - ah / 2, aw, ah);
-      // Floor lines
-      const floors = 3;
-      for (let i = 1; i < floors; i++) {
-        const fy = y - ah / 2 + (ah * i) / floors;
-        ctx.beginPath(); ctx.moveTo(x - aw / 2, fy); ctx.lineTo(x + aw / 2, fy); ctx.stroke();
+  // ─── BUILDINGS: spec-compliant square (pucca) / triangle (kutcha), hatched if non-residential ───
+  if (isBuildingSymbol(type)) {
+    const shape = buildingShape(sym as PlacedSymbol);
+    const hatched = isNonResidential(sym as PlacedSymbol);
+
+    // Build the path for the shape, then optionally hatch-fill it.
+    const buildPath = () => {
+      ctx.beginPath();
+      if (shape === 'triangle') {
+        // Equilateral-ish triangle centered on (x,y)
+        ctx.moveTo(x, y - size / 2);
+        ctx.lineTo(x + size / 2, y + size / 2);
+        ctx.lineTo(x - size / 2, y + size / 2);
+        ctx.closePath();
+      } else {
+        // True square
+        ctx.rect(x - size / 2, y - size / 2, size, size);
       }
-      // Vertical divider
-      ctx.beginPath(); ctx.moveTo(x, y - ah / 2); ctx.lineTo(x, y + ah / 2); ctx.stroke();
-      drawNum(x, y);
-      break;
+    };
+
+    // Hatching: diagonal lines clipped to the shape.
+    if (hatched) {
+      ctx.save();
+      buildPath();
+      ctx.clip();
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 0.8;
+      const step = Math.max(2.5, size / 5);
+      for (let d = -size; d <= size; d += step) {
+        ctx.beginPath();
+        ctx.moveTo(x - size / 2 + d, y - size / 2);
+        ctx.lineTo(x - size / 2 + d + size, y + size / 2);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
+
+    // Outline
+    ctx.strokeStyle = '#000000'; ctx.lineWidth = 1.5;
+    buildPath();
+    ctx.stroke();
+
+    // Number inside (nudge down a touch for a triangle so it sits in the body)
+    drawNum(x, shape === 'triangle' ? y + size * 0.12 : y);
+    // Census-house sub-numbers below the box
+    drawCensusHouses(y + size / 2 + 2);
+    ctx.setLineDash([]); ctx.textAlign = 'left';
+    return;
+  }
+
+  // ─── LANDMARKS & FEATURES (unchanged icons) ───
+  switch (type) {
     case 'farmland': {
       const fw = size * 1.2, fh = size * 0.9;
       ctx.strokeRect(x - fw / 2, y - fh / 2, fw, fh);
-      // Crop row lines
       ctx.setLineDash([3, 2]);
       for (let i = 1; i <= 3; i++) {
         const ly = y - fh / 2 + (fh * i) / 4;
@@ -141,14 +182,6 @@ export function drawSymbolOnCanvas(
       ctx.setLineDash([]);
       break;
     }
-    case 'non_residential':
-      ctx.strokeRect(x - w / 2, y - h / 2, w, h);
-      for (let i = 1; i <= 3; i++) {
-        const ly = y - h / 2 + (h * i) / 4;
-        ctx.beginPath(); ctx.moveTo(x - w / 2, ly); ctx.lineTo(x + w / 2, ly); ctx.stroke();
-      }
-      drawNum(x, y);
-      break;
     case 'mosque':
       ctx.strokeRect(x - w / 2.5, y, w / 1.25, h * 0.6);
       ctx.beginPath(); ctx.arc(x, y, w / 3, Math.PI, 0); ctx.stroke();

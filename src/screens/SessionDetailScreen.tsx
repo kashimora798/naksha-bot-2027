@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { idbStore } from '../lib/idb';
-import { SurveySession, SurveySymbol, SurveyPoint, RoadSegment } from '../types';
+import type { SurveySession, SurveySymbol, SurveyPoint, RoadSegment } from '../lib/idb';
 import L from 'leaflet';
 import { generateOfficialRegister, generateLiveExportPdf } from '../lib/pdf-export';
 
@@ -120,7 +120,7 @@ export default function SessionDetailScreen() {
 
         {activeTab === 'HOUSES' && (
           <div className="p-4 flex flex-col gap-3">
-            {symbols.filter(s => s.number).sort((a,b) => parseInt(a.number || '0') - parseInt(b.number || '0')).map(sym => (
+            {symbols.filter(s => s.number).sort((a,b) => (a.number ?? 0) - (b.number ?? 0)).map(sym => (
               <div key={sym.symbol_id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-black text-xl flex-shrink-0">
                   {sym.number}

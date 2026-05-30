@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import type { MapData, RoadFeature, PlacedSymbol, Coordinate } from './types';
+import { isHouseType } from './types';
 import AppHeader from './components/AppHeader';
 import SMSParseScreen from './screens/SMSParseScreen';
 import MapWorkspace from './screens/MapWorkspace';
@@ -11,6 +12,7 @@ import LiveSurveyScreen from './screens/LiveSurveyScreen';
 import SessionsDashboard from './screens/SessionsDashboard';
 import SessionDetailScreen from './screens/SessionDetailScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const DEFAULT_MAP_DATA: MapData = {
   hlbNumber: '', center: { lat: 26.4499, lng: 80.3319 },
@@ -60,7 +62,8 @@ export default function App() {
         // Fetch latest from DB
         supabase.from('projects').select('*').eq('id', savedProjectId).single().then(({data}) => {
           if (data) {
-            setMapData(prev => ({ ...prev, ...data.data, projectId: data.id, paymentStatus: data.payment_status }));
+            // Replace entirely with DB data (don't merge with stale localStorage)
+            setMapData({ ...data.data, projectId: data.id, paymentStatus: data.payment_status });
           }
         });
       } else if (savedStep && Number(savedStep) > 0) {
@@ -124,8 +127,10 @@ export default function App() {
              
              const roadFeatures = segments.filter(seg => seg.points.length >= 2).map(seg => ({
                 id: seg.segment_id,
-                type: seg.type as any,
-                points: seg.points
+                coords: seg.points,
+                highway: seg.road_type || 'residential',
+                confirmed: true,
+                source: 'user' as const,
              }));
 
              setMapData({
@@ -291,29 +296,46 @@ export default function App() {
   }
 
   if (!isSignedIn) {
-    return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
-      {step === 0 && <DashboardScreen 
-        user={session?.user} 
-        userProfile={userProfile}
-        onLoadProject={(id, d) => { setProjectId(id); setMapData(prev => ({...prev, ...d, projectId: id, paymentStatus: (d as any).payment_status})); setStep(3); }} 
-        onNewProject={(initialData) => { setMapData({ ...DEFAULT_MAP_DATA, ...initialData }); setProjectId(null); setStep(initialData?.hlbNumber ? 3 : 1); }} 
-        onLiveSurvey={(initialData) => { 
-          if (initialData) {
-            update({ ...initialData });
-          }
-          setStep(10); 
-        }}
-        onResumeLiveSurvey={(id) => { setResumeSessionId(id); setStep(10); }}
-        onDemoMap={() => { setMapData(DEFAULT_MAP_DATA); setProjectId(null); setIsDemoMode(true); setStep(2); }}
-      />}
-      
-      {step === 1 && <SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); setStep(3); }} onBack={() => setStep(0)} isDemoMode={isDemoMode} />}
-      
-      {step === 10 && <LiveSurveyScreen onExit={() => { setStep(0); setResumeSessionId(null); }} resumeSessionId={resumeSessionId || undefined} />}
-    </div>;
+    // Signed-out users can still use demo maps (steps 2-7) and live survey (step 10).
+    // Only the dashboard (0), SMS (1) and live survey (10) have dedicated signed-out
+    // screens; steps 2-7 fall through to the shared map shell below so navigation
+    // never lands on a blank screen.
+    if (step === 0) {
+      return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
+        <DashboardScreen
+          user={session?.user}
+          userProfile={userProfile}
+          onLoadProject={(id, d) => { setProjectId(id); setMapData(prev => ({...prev, ...d, projectId: id, paymentStatus: (d as any).payment_status})); setStep(3); }}
+          onNewProject={(initialData) => { setMapData({ ...DEFAULT_MAP_DATA, ...initialData }); setProjectId(null); setStep(initialData?.hlbNumber ? 3 : 1); }}
+          onLiveSurvey={(initialData) => {
+            if (initialData) {
+              update({ ...initialData });
+            }
+            setStep(10);
+          }}
+          onResumeLiveSurvey={(id) => { setResumeSessionId(id); setStep(10); }}
+          onDemoMap={() => { setMapData(DEFAULT_MAP_DATA); setProjectId(null); setIsDemoMode(true); setStep(2); }}
+        />
+      </div>;
+    }
+
+    if (step === 1) {
+      return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
+        <SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); setStep(3); }} onBack={() => setStep(0)} isDemoMode={isDemoMode} />
+      </div>;
+    }
+
+    if (step === 10) {
+      return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
+        <ErrorBoundary>
+          <LiveSurveyScreen onExit={() => { setStep(0); setResumeSessionId(null); }} resumeSessionId={resumeSessionId || undefined} />
+        </ErrorBoundary>
+      </div>;
+    }
+    // steps 2-7 fall through to the shared map shell below
   }
 
-  if (step === 0) {
+  if (isSignedIn && step === 0) {
     const needsOnboarding = !userProfile || !userProfile.onboarding_completed;
     
     if (needsOnboarding) {
@@ -341,7 +363,7 @@ export default function App() {
           setProjectId(null);
           setIsDemoMode(false);
           isInitialLoad.current = true;
-          setStep(initialData?.hlbNumber ? 3 : 1); // Skip SMS if we already have HLB
+          setStep(initialData?.hlbNumber ? 3 : 2); // Step 2 = SMS screen in the map shell
         }}
         onLiveSurvey={(initialData) => {
           if (initialData) {
@@ -374,6 +396,7 @@ export default function App() {
         />
       )}
       <div className="flex-1 relative overflow-hidden min-h-0">
+        <ErrorBoundary>
         {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); setStep(3); }} onBack={() => setStep(0)} isDemoMode={isDemoMode} /></div>}
         {inMap && <MapWorkspace
           step={step} center={mapData.center} boundaryPins={mapData.boundaryPins} boundaryClosed={mapData.boundaryClosed}
@@ -381,7 +404,10 @@ export default function App() {
           waterBodies={mapData.waterBodies} forests={mapData.forests} landuseAreas={mapData.landuseAreas} landmarks={mapData.landmarks} areaStats={mapData.areaStats}
           onUpdateBoundary={(p: Coordinate[], c: boolean) => update({ boundaryPins: p, boundaryClosed: c })}
           onUpdateRoads={(r: RoadFeature[]) => update({ roads: r })}
-          onUpdateSymbols={(s: PlacedSymbol[]) => update({ symbols: s, numberingComplete: s.filter(x => x.number !== null).length > 0 })}
+          onUpdateSymbols={(s: PlacedSymbol[]) => {
+            const houses = s.filter(x => isHouseType(x.symbol_type));
+            update({ symbols: s, numberingComplete: houses.length > 0 && houses.every(x => x.number !== null) });
+          }}
           onUpdateBlocks={b => update({ blocks: b })}
           onUpdateFarmland={f => update({ farmlandBlocks: f })}
           onUpdateWater={w => update({ waterBodies: w })}
@@ -403,6 +429,12 @@ export default function App() {
               onExitToDashboard={() => { forceSave(); setStep(0); setProjectId(null); setIsDemoMode(false); }}
             />
           </div>
+        )}
+        </ErrorBoundary>
+        {step === 10 && (
+          <ErrorBoundary>
+            <LiveSurveyScreen onExit={() => { setStep(0); setResumeSessionId(null); }} resumeSessionId={resumeSessionId || undefined} />
+          </ErrorBoundary>
         )}
       </div>
     </div>

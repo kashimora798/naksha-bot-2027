@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, PlacedSymbol, RoadFeature, SymbolType, Block, FarmlandBlock, WaterBody, ForestArea, Landmark, AreaStats, MapData } from '../types';
 import { SYMBOL_DEFS, isHouseType, isPakkaRoad, getUnitCount, polyCenter } from '../types';
-import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, buildComprehensiveQuery, processOverpassData } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, buildComprehensiveQuery, processOverpassData, isPolygonSelfIntersecting } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { declutterSymbols, buildRotationMap } from '../lib/declutter';
 import SymbolDrawer from '../components/SymbolDrawer';
@@ -119,6 +119,11 @@ export default function MapWorkspace({
       return;
     }
     if (step === 5 && placing && selSym) {
+      // Validate coordinates before creating symbol
+      if (typeof coord.lat !== 'number' || typeof coord.lng !== 'number' || isNaN(coord.lat) || isNaN(coord.lng)) {
+        console.error('Invalid coordinates for symbol placement:', coord);
+        return;
+      }
       const sym: PlacedSymbol = { id: crypto.randomUUID(), symbol_type: selSym, lat: coord.lat, lng: coord.lng, number: null, placed_at: new Date().toISOString(), unit_count: selSym==='apartment'?aptUnits:undefined };
       addMk(sym); onUpdateSymbols([...symbols, sym]); try { navigator.vibrate?.(40); } catch {}
     } else if (step === 5 && drawMode !== 'none') {
@@ -295,7 +300,20 @@ export default function MapWorkspace({
   useEffect(() => { if(ready)renderLanduse(); }, [ready, renderLanduse]);
   useEffect(() => { if(ready)renderFrms(); }, [ready, renderFrms]);
   useEffect(() => { if(ready)renderSrp(); }, [ready,renderSrp]);
-  useEffect(() => { if(ready) symbols.forEach(s => addMk(s)); }, [ready]);
+  useEffect(() => {
+    if(!ready) return;
+    // Sync markers: add new ones, remove deleted ones
+    const currentIds = new Set(symbols.map(s => s.id));
+    // Remove markers for deleted symbols
+    for (const [id, marker] of mks.current.entries()) {
+      if (!currentIds.has(id)) {
+        marker.remove();
+        mks.current.delete(id);
+      }
+    }
+    // Add markers for new symbols
+    symbols.forEach(s => addMk(s));
+  }, [ready, symbols]);
   useEffect(() => { if(tileRef.current) tileRef.current.setOpacity(showSat?1:0); }, [showSat]);
   useEffect(() => { 
     if(step===4&&boundaryClosed&&roads.length===0) {
@@ -333,6 +351,9 @@ export default function MapWorkspace({
       const d = await r.json();
       const cl = clipRoadsToPolygon(d.elements || [], boundaryPins);
       console.log(`🗺️ [OSM] Loaded ${cl.length} roads for bounding box.`);
+      if (cl.length === 0) {
+        setRdErr('No roads found in this area. You can draw roads manually in the next step.');
+      }
       onUpdateRoads(cl.map(c => ({
         id: crypto.randomUUID(),
         coords: c.coords,
@@ -490,7 +511,15 @@ export default function MapWorkspace({
 
   function dropPin(){onUpdateBoundary([...boundaryPins,{...cross}],false);try{navigator.vibrate?.(50);}catch{}setShowHelp(false);}
   function undoPin(){if(boundaryPins.length)onUpdateBoundary(boundaryPins.slice(0,-1),false);}
-  function closePoly(){if(boundaryPins.length<4)return;onUpdateBoundary([...boundaryPins],true);mapRef.current?.fitBounds(L.latLngBounds(boundaryPins.map(p=>L.latLng(p.lat,p.lng))),{padding:[40,40]});}
+  function closePoly(){
+    if(boundaryPins.length<4)return;
+    if(isPolygonSelfIntersecting(boundaryPins)){
+      alert('⚠️ Boundary cannot cross itself (self-intersecting polygon). Please redraw without overlapping lines.');
+      return;
+    }
+    onUpdateBoundary([...boundaryPins],true);
+    mapRef.current?.fitBounds(L.latLngBounds(boundaryPins.map(p=>L.latLng(p.lat,p.lng))),{padding:[40,40]});
+  }
   function confirmAll(){onUpdateRoads(roads.map(r=>({...r,confirmed:true})));}
   function confirmOne(){if(revIdx>=roads.length)return;const u=[...roads];u[revIdx]={...u[revIdx],confirmed:true};onUpdateRoads(u);setRevIdx(revIdx<roads.length-1?revIdx+1:revIdx);if(revIdx>=roads.length-1)setRevMode(false);}
   function deleteOne(){const u=roads.filter((_,i)=>i!==revIdx);onUpdateRoads(u);if(revIdx>=u.length)setRevMode(false);else setRevIdx(Math.min(revIdx,u.length-1));}
@@ -507,7 +536,17 @@ export default function MapWorkspace({
   function cancelDraw(){setDrawMode('none');setPolyPts([]);setPanelOpen(true);drwGrp.current.clearLayers();}
   function autoNum(){const o=getSerpentineOrder(symbols,blocks.length>0?blocks:undefined);const u=symbols.map(s=>({...s}));let n=1;for(const id of o){const s=u.find(x=>x.id===id);if(!s)continue;s.number=n;n+=getUnitCount(s);}onUpdateSymbols(u);setNextNum(n);numHist.current=o;setTimeout(()=>u.forEach(s=>refreshMk(s)),10);}
   function clearNum(){const u=symbols.map(s=>({...s,number:null}));onUpdateSymbols(u);setNextNum(1);numHist.current=[];setSugId(null);setTimeout(()=>u.forEach(s=>refreshMk(s)),10);}
-  function undoNum(){if(!numHist.current.length)return;const id=numHist.current.pop()!;const u=symbols.map(s=>s.id===id?{...s,number:null}:s);refreshMk(u.find(s=>s.id===id)!);setNextNum(n=>n-getUnitCount(u.find(s=>s.id===id)!));onUpdateSymbols(u);setTimeout(()=>u.forEach(s=>refreshMk(s)),10);}
+  function undoNum(){
+    if(!numHist.current.length)return;
+    const id=numHist.current.pop()!;
+    const sym = symbols.find(s=>s.id===id);
+    if(!sym)return; // Symbol was deleted, skip undo
+    const u=symbols.map(s=>s.id===id?{...s,number:null}:s);
+    refreshMk(u.find(s=>s.id===id)!);
+    setNextNum(n=>n-getUnitCount(sym));
+    onUpdateSymbols(u);
+    setTimeout(()=>u.forEach(s=>refreshMk(s)),10);
+  }
 
   // ═══════════ PANELS ═════════════════════════════════════
   function P({children}:{children:React.ReactNode}){return <div className="bg-[var(--color-warm-paper)] rounded-t-[24px] shadow-[var(--shadow-warm-2)] max-h-[50vh] overflow-auto font-noto-sans z-[1002] pointer-events-auto"><div onClick={() => setPanelOpen(!panelOpen)} className="flex justify-center pt-3 pb-2 cursor-pointer"><div className="w-12 h-1.5 rounded-full bg-gray-300"/></div>{panelOpen && <div className="px-4 pb-4">{children}</div>}</div>;}

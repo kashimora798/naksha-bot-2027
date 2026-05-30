@@ -180,20 +180,102 @@ async function fetchOSM(n: number, s: number, e: number, w: number, poly: any, t
   }
 }
 
-// ── Google Open Buildings V3 (best-effort; never blocks the response) ────────
-// Google publishes V3 as large per-S2-cell CSVs on GCS. There is no light
-// bbox-tile endpoint, so we attempt it behind a short timeout and simply skip if
-// it isn't quickly available — the other two sources still return.
-async function fetchGoogle(_n: number, _s: number, _e: number, _w: number, _poly: any, timeoutMs = 8000) {
+// ── Google Open Buildings V3 via Earth Engine (best-effort; never blocks) ────
+// Google V3 bulk files are 3-8 GB S2 cells — unusable from an edge function. The
+// Earth Engine REST API instead runs a server-side bbox query and returns ONLY the
+// buildings inside the boundary. Requires a service-account key in the
+// GEE_SERVICE_ACCOUNT secret (full JSON). If unset, returns not_enabled so MS+OSM
+// still populate. Deno uses Web Crypto (crypto.subtle) for the RS256 JWT signature.
+function b64url(data: ArrayBuffer | string): string {
+  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function pemToPkcs8(pem: string): ArrayBuffer {
+  const body = pem.replace(/-----BEGIN PRIVATE KEY-----/, '').replace(/-----END PRIVATE KEY-----/, '').replace(/\s+/g, '');
+  const bin = atob(body);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+
+let geeTokenCache: { token: string; exp: number } | null = null;
+async function getGeeToken(sa: any): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (geeTokenCache && geeTokenCache.exp > now + 60) return geeTokenCache.token;
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const claim = b64url(JSON.stringify({
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/earthengine.readonly https://www.googleapis.com/auth/cloud-platform',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now, exp: now + 3600,
+  }));
+  const unsigned = `${header}.${claim}`;
+  const key = await crypto.subtle.importKey('pkcs8', pemToPkcs8(sa.private_key),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsigned));
+  const jwt = `${unsigned}.${b64url(sig)}`;
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=${encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')}&assertion=${jwt}`,
+  });
+  if (!r.ok) throw new Error(`token exchange ${r.status}`);
+  const j = await r.json();
+  geeTokenCache = { token: j.access_token, exp: now + (j.expires_in || 3600) };
+  return j.access_token;
+}
+
+async function fetchGoogle(n: number, s: number, e: number, w: number, poly: any, timeoutMs = 20000) {
   const out: any[] = [];
+  const raw = Deno.env.get('GEE_SERVICE_ACCOUNT');
+  if (!raw) return { source: 'google', out, meta: { ok: true, reason: 'not_enabled' } };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    // Placeholder for a future GeoParquet/PMTiles reader (DuckDB-wasm). Until that
-    // is wired, return empty without error so MS+OSM still populate.
-    return { source: 'google', out, meta: { ok: true, reason: 'not_enabled' } };
+    const sa = JSON.parse(raw);
+    const token = await getGeeToken(sa);
+    const bbox = { functionInvocationValue: { functionName: 'GeometryConstructors.Rectangle', arguments: {
+      coordinates: { constantValue: [w, s, e, n] }, geodesic: { constantValue: false }, evenOdd: { constantValue: true },
+    }}};
+    const expression = { values: { '0': { functionInvocationValue: { functionName: 'Collection.filter', arguments: {
+      collection: { functionInvocationValue: { functionName: 'Collection.loadTable', arguments: {
+        tableId: { constantValue: 'GOOGLE/Research/open-buildings/v3/polygons' },
+      }}},
+      filter: { functionInvocationValue: { functionName: 'Filter.intersects', arguments: {
+        leftField: { constantValue: '.geo' }, rightValue: bbox,
+      }}},
+    }}}}, result: '0' };
+    const r = await fetch(`https://earthengine.googleapis.com/v1/projects/${sa.project_id}/value:compute`, {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expression }),
+    });
+    if (!r.ok) {
+      const body = await r.text();
+      return { source: 'google', out, meta: { ok: false, reason: `ee ${r.status}: ${body.slice(0, 120)}` } };
+    }
+    const data = await r.json();
+    const feats = data.result?.features || data.features || [];
+    for (const f of feats) {
+      if (!f.geometry) continue;
+      const c = f.properties?.longitude_latitude?.coordinates;
+      const lat = c ? c[1] : undefined, lng = c ? c[0] : undefined;
+      if (lat == null || lng == null) continue;
+      // EE filters by bbox rectangle; clip to the actual boundary polygon to match MS/OSM
+      try { if (!turf.booleanPointInPolygon(turf.point([lng, lat]), poly)) continue; } catch { /* keep on error */ }
+      out.push({
+        lat, lng,
+        polygon: f.geometry.type === 'Polygon' ? f.geometry : undefined,
+        area_sqm: f.properties?.area_in_meters ?? null,
+        source: 'google',
+      });
+    }
+    return { source: 'google', out, meta: { ok: true, count: out.length } };
   } catch (err) {
     const reason = (err as any)?.name === 'AbortError' ? 'timeout' : String(err);
+    console.error('Google EE:', reason);
     return { source: 'google', out, meta: { ok: false, reason } };
   } finally {
     clearTimeout(timer);

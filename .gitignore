@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Service account keys / secrets — NEVER commit
+*-service-account*.json
+exalted-legacy-*.json
+gee-key*.json
+*.key
+.env
+.env.*

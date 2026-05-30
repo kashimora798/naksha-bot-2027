@@ -46,10 +46,13 @@ function bboxQuadkeys(n: number, s: number, e: number, w: number, zoom = 9): str
 }
 
 // ── Microsoft Global Building Footprints ────────────────────────────────────
-// Microsoft tiles at z9 only (~80 km per tile). Dense metro tiles are 125-178 MB
-// compressed, so we stream-decompress line-by-line and filter to the boundary
-// polygon as we go (peak memory = one chunk, not the whole tile). Tiles >200 MB
-// compressed are skipped as a safety valve for Supabase CPU/wall-clock limits.
+// Microsoft tiles at z9 only (~80 km per tile). We stream-decompress line-by-line
+// and filter to the boundary polygon as we go (peak memory = one chunk, not the
+// whole tile). Tiles >35 MB compressed are skipped: a 125 MB Delhi tile is memory-
+// safe but takes ~63s to parse 1.2M features (measured), which exceeds the Supabase
+// wall-clock + client invoke timeouts. So MS is the FAST source for sparse RURAL
+// areas (small tiles) where OSM is weak; in dense metros the big tile is skipped and
+// OSM — which is well-mapped there — carries the result.
 let msIndexCache: Map<string, { url: string; sizeMB: number }> | null = null;
 async function fetchMicrosoftIndex(): Promise<Map<string, { url: string; sizeMB: number }>> {
   if (msIndexCache) return msIndexCache;
@@ -79,7 +82,7 @@ async function fetchMicrosoft(n: number, s: number, e: number, w: number, poly: 
     for (const qk of bboxQuadkeys(n, s, e, w, 9)) {
       const entry = index.get(qk);
       if (!entry) { errors++; continue; }
-      if (entry.sizeMB > 200) { skipped++; continue; } // safety cap (largest India tile is 177.8 MB)
+      if (entry.sizeMB > 35) { skipped++; continue; } // keep MS fast (<10s); dense metro tiles fall to OSM
       try {
         const r = await fetch(entry.url);
         if (!r.ok) { errors++; continue; }

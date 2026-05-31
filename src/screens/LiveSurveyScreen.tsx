@@ -126,6 +126,8 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
   const [gpsAccuracy, setGpsAccuracy] = useState(0);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [gpsWarning, setGpsWarning] = useState<string | null>(null);
+  const [speedWarning, setSpeedWarning] = useState<string | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [gpsBearing, setGpsBearing] = useState(0);
   const [stats, setStats] = useState({ distance: 0, duration: 0, houses: 0 });
   const [roadType, setRoadType] = useState('residential');
@@ -263,6 +265,14 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
       }
     });
     engineRef.current.on('vehicleDetected', () => setVehicleWarning(true));
+    engineRef.current.on('speedWarning', (data: { speed: number; message: string }) => {
+      setSpeedWarning(data.message);
+      setTimeout(() => setSpeedWarning(null), 5000);
+    });
+    engineRef.current.on('duplicateWarning', (data: { existing: any; message: string }) => {
+      setDuplicateWarning(data.message);
+      setTimeout(() => setDuplicateWarning(null), 5000);
+    });
     engineRef.current.on('symbolsUpdated', (syms: SurveySymbol[]) => {
       setSymbols([...syms]);
       drawSymbols(syms);
@@ -1273,6 +1283,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
           <div className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ background: gpsColor }} />
           <span className="text-xs font-jetbrains">±{Math.round(gpsAccuracy)}m</span>
           <span className="text-xs text-white/50 font-jetbrains">{Math.round(gpsBearing)}°</span>
+          {!navigator.onLine && <span className="text-xs text-red-400 font-bold">📵 Offline</span>}
           {bgFetching && <div className="w-2.5 h-2.5 border border-blue-300 border-t-transparent rounded-full animate-spin" title="Fetching map data" />}
         </div>
         <div className="flex items-center gap-3 text-xs font-semibold">
@@ -1332,6 +1343,20 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
             <span className="text-xl">⚠️</span>
             <p className="flex-1 text-sm font-bold text-gray-800">{gpsWarning}</p>
             <button onClick={() => setGpsWarning(null)} className="text-gray-400 font-black text-lg leading-none px-1" aria-label="Dismiss">×</button>
+          </div>
+        )}
+        {speedWarning && !gpsError && !gpsWarning && (
+          <div className="pointer-events-auto bg-white rounded-xl border-l-4 border-blue-500 p-3 shadow-xl flex items-start gap-3">
+            <span className="text-xl">🚗</span>
+            <p className="flex-1 text-sm font-bold text-gray-800">{speedWarning}</p>
+            <button onClick={() => setSpeedWarning(null)} className="text-gray-400 font-black text-lg leading-none px-1" aria-label="Dismiss">×</button>
+          </div>
+        )}
+        {duplicateWarning && (
+          <div className="pointer-events-auto bg-white rounded-xl border-l-4 border-red-500 p-3 shadow-xl flex items-start gap-3">
+            <span className="text-xl">⚠️</span>
+            <p className="flex-1 text-sm font-bold text-gray-800">{duplicateWarning}</p>
+            <button onClick={() => setDuplicateWarning(null)} className="text-gray-400 font-black text-lg leading-none px-1" aria-label="Dismiss">×</button>
           </div>
         )}
         {outOfBounds && phase === 'RECORDING' && (

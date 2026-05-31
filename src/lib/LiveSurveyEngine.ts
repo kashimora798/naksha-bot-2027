@@ -293,10 +293,12 @@ export class LiveSurveyEngine {
 
     const movementType = classifyMovement(raw);
 
-    // Vehicle detection
+    // Vehicle detection - warn instead of auto-pause (too many false positives from GPS glitches, bicycles, running)
     if (movementType === 'vehicle' && this.state === 'RECORDING') {
-      this.handleVehicleDetected();
-      return;
+      this.emit('speedWarning', { speed: raw.speed, message: 'High speed detected. Are you in a vehicle? Pause survey if needed.' });
+      // Don't auto-pause - let enumerator decide
+      // this.handleVehicleDetected();
+      // return;
     }
 
     // Stationary detection filter (Thick overlapping lines fix)
@@ -330,11 +332,15 @@ export class LiveSurveyEngine {
     }
 
     const canRecord = this.state === 'RECORDING' && this.returnMode !== 'follow_back';
-    const passesQuality = raw.accuracy <= 20; // Tightened from 50m to 20m for survey-grade accuracy
+    // Relaxed threshold for Indian field conditions (urban canyons, tree cover, narrow gullies)
+    // 50m is realistic for 2G/3G GPS in rural India; 20m was too strict and caused constant recording failures
+    const passesQuality = raw.accuracy <= 50;
 
     // Warn if accuracy is degraded but still acceptable
-    if (raw.accuracy > 10 && raw.accuracy <= 20) {
+    if (raw.accuracy > 30 && raw.accuracy <= 50) {
       this.emit('accuracyWarning', { accuracy: raw.accuracy, message: 'GPS accuracy is reduced. Move to open area for better signal.' });
+    } else if (raw.accuracy > 50) {
+      this.emit('accuracyWarning', { accuracy: raw.accuracy, message: 'GPS accuracy is poor. Path recording paused until signal improves.' });
     }
 
     if (canRecord && passesQuality && (movementType === 'walking' || movementType === 'fast_walk' || movementType === 'unknown')) {
@@ -552,7 +558,7 @@ export class LiveSurveyEngine {
     const bearing = this.getSmoothedBearing();
     let finalLat = currentPos.lat;
     let finalLng = currentPos.lng;
-    
+
     if (direction === 'compass' && customHeading !== undefined) {
       // Place 7 meters in the direction the phone is pointing
       const offset = turf.destination(
@@ -575,7 +581,20 @@ export class LiveSurveyEngine {
       finalLng = offset.geometry.coordinates[0];
       finalLat = offset.geometry.coordinates[1];
     }
-    
+
+    // Duplicate detection - check if house already exists within 5m
+    const nearby = this.symbols.filter(s =>
+      ['pucca_house', 'kutcha_house', 'apartment', 'non_residential'].includes(s.symbol_type) &&
+      haversineDistance(s.lat, s.lng, finalLat, finalLng) < 5
+    );
+    if (nearby.length > 0) {
+      this.emit('duplicateWarning', {
+        existing: nearby[0],
+        message: `House #${nearby[0].number || '?'} already exists within 5m. Move away or skip.`
+      });
+      return null;
+    }
+
     const symbol: SurveySymbol = {
       id: `live_${Date.now()}_${Math.random().toString(36).substr(2,5)}`,
       symbol_id: crypto.randomUUID(),

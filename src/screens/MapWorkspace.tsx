@@ -407,7 +407,7 @@ export default function MapWorkspace({
 
       const newSymbols: PlacedSymbol[] = valid.map((b: any) => ({
         id: `building-${crypto.randomUUID()}`,
-        symbol_type: 'pucca_house' as SymbolType,
+        symbol_type: (b.buildingType || 'pucca_house') as SymbolType,  // Use OSM type if available
         lat: b.lat, lng: b.lng,
         number: null,
         placed_at: new Date().toISOString(),

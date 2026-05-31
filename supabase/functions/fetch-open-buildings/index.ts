@@ -320,7 +320,8 @@ serve(async (req) => {
     // Use the actual boundary polygon if provided, otherwise fall back to bbox
     let poly: any;
     if (Array.isArray(boundary) && boundary.length >= 3) {
-      const ring = boundary.map((p: any) => [p.lng, p.lon]);
+      // GeoJSON ring order is [lng, lat]. Accept lng or lon for the x coordinate.
+      const ring = boundary.map((p: any) => [p.lng ?? p.lon, p.lat]);
       // Close the ring if not already closed
       if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) {
         ring.push(ring[0]);

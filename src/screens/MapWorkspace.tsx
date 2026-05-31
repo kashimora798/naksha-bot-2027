@@ -390,7 +390,7 @@ export default function MapWorkspace({
           south: bb.south,
           east: bb.east,
           west: bb.west,
-          boundary: boundaryPins.map(p => ({ lat: p.lat, lng: p.lng, lon: p.lng }))
+          boundary: boundaryPins.map(p => ({ lat: p.lat, lng: p.lng }))
         }
       });
 

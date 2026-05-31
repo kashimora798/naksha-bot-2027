@@ -11,25 +11,25 @@ export default function LandingScreen() {
       <Helmet>
         <title>HLB Map Maker Online | Nazri Naksha Generator - NakshaBot</title>
         <meta name="description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹20 में A4 PDF download करें। HLO ready format।" />
-        <meta name="keywords" content="HLO map maker, HLB map maker, HLO nazari naksha, free nazari naksha maker, nazari naksha online, census 2027 map maker, HLB map generator, census map maker free, नजरी नक्शा, HLO नक्शा बनाओ, जनगणना नक्शा ऑनलाइन, फ्री नजरी नक्शा मेकर, जनगणना 2027 नक्शा, HLO map maker online, HLB layout map, census enumeration block map, nazari naksha kaise banaye, HLO app nazari naksha, census map generator India, UP nazari naksha, Bihar census map, Kerala HLB map, Maharashtra census naksha, Uttarakhand census map, Rajasthan HLO map, Jharkhand HLO map, Odisha HLO map, examsetu map maker, examsetu.dev" />
-        <link rel="canonical" href="https://nakshabot.in/" />
-        <meta name="robots" content="index, follow" />
-        
+        <meta name="keywords" content="HLO map maker, HLB map maker, nazari naksha online, census 2027 map maker, नजरी नक्शा, HLO नक्शा बनाओ, जनगणना नक्शा ऑनलाइन, census enumeration block map, nazari naksha kaise banaye" />
+        <link rel="canonical" href="https://examsetu.dev/" />
+        <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+
         {/* Open Graph / Facebook */}
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://nakshabot.in/" />
+        <meta property="og:url" content="https://examsetu.dev/" />
         <meta property="og:title" content="HLB Map Maker Online | Nazri Naksha Generator - NakshaBot" />
         <meta property="og:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹20 में A4 PDF download करें। HLO ready format।" />
-        <meta property="og:image" content="https://nakshabot.in/logo.png" />
+        <meta property="og:image" content="https://examsetu.dev/logo.png" />
         <meta property="og:site_name" content="NakshaBot" />
         <meta property="og:locale" content="en_IN" />
 
         {/* Twitter */}
         <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:url" content="https://nakshabot.in/" />
+        <meta property="twitter:url" content="https://examsetu.dev/" />
         <meta property="twitter:title" content="HLB Map Maker Online | Nazri Naksha Generator - NakshaBot" />
         <meta property="twitter:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹20 में A4 PDF download करें। HLO ready format।" />
-        <meta property="twitter:image" content="https://nakshabot.in/logo.png" />
+        <meta property="twitter:image" content="https://examsetu.dev/logo.png" />
         
         {/* Schema markups */}
         <script type="application/ld+json">

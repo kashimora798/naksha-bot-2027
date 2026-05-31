@@ -117,12 +117,23 @@ async function run() {
   for (const route of routes) {
     console.log(`Prerendering route: ${route}`);
     const url = `http://localhost:${PORT}${route}`;
-    
+
     try {
       await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
-      
-      // Wait a brief extra moment for the DOM / Helmet to settle
-      await new Promise(r => setTimeout(r, 600));
+
+      // Wait for React Helmet to update the <head> — check for unique title/canonical
+      await page.waitForFunction(
+        () => {
+          const title = document.querySelector('title')?.textContent || '';
+          const canonical = document.querySelector('link[rel="canonical"]')?.href || '';
+          // Homepage is fine as-is; state pages must have their slug in canonical
+          return title.length > 10 && (canonical.includes('examsetu.dev') || canonical.includes('nakshabot.in'));
+        },
+        { timeout: 5000 }
+      ).catch(() => console.warn(`  ⚠️ Helmet may not have updated for ${route}`));
+
+      // Extra settle time for any async Helmet updates
+      await new Promise(r => setTimeout(r, 800));
 
       const html = await page.content();
       
@@ -142,18 +153,40 @@ async function run() {
     }
   }
 
-  // Generate sitemap.xml
+  // Generate sitemap.xml with correct domain and lastmod
+  const now = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   const sitemapContent = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${routes.map(route => `  <url>
-    <loc>https://nakshabot.in${route === '/' ? '' : route}</loc>
+    <loc>https://examsetu.dev${route === '/' ? '' : route}</loc>
+    <lastmod>${now}</lastmod>
     <changefreq>${route === '/' ? 'daily' : 'weekly'}</changefreq>
     <priority>${route === '/' ? '1.0' : '0.8'}</priority>
   </url>`).join('\n')}
 </urlset>`;
-  
+
   fs.writeFileSync(path.join(DIST_DIR, 'sitemap.xml'), sitemapContent);
   console.log('Successfully generated sitemap.xml');
+
+  // Generate robots.txt
+  const robotsTxt = `User-agent: *
+Allow: /
+Sitemap: https://examsetu.dev/sitemap.xml
+
+# Crawl-delay for polite bots
+Crawl-delay: 1
+
+# Block admin/auth routes
+Disallow: /app
+Disallow: /live-dashboard
+Disallow: /live-session/
+Disallow: /live-prep
+Disallow: /live-survey
+Disallow: /sign-in
+Disallow: /sign-up
+`;
+  fs.writeFileSync(path.join(DIST_DIR, 'robots.txt'), robotsTxt);
+  console.log('Successfully generated robots.txt');
 
   console.log('Finished prerendering all routes.');
   await browser.close();

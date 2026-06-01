@@ -26,6 +26,9 @@ export default function App() {
   const [session, setSession] = useState<any>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [step, setStep] = useState(0); // 0 = Dashboard
+  // Furthest step the user has reached in this project. Steps unlock once
+  // reached and stay unlocked — going back doesn't re-lock later steps.
+  const [maxStep, setMaxStep] = useState(0);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [mapData, setMapData] = useState<MapData>(DEFAULT_MAP_DATA);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -56,6 +59,7 @@ export default function App() {
   useEffect(() => {
     // Check local storage on initial load
     const savedStep = localStorage.getItem('app_step');
+    const savedMaxStep = localStorage.getItem('app_max_step');
     const savedProjectId = localStorage.getItem('app_project_id');
     const savedMapData = localStorage.getItem('app_map_data');
 
@@ -63,6 +67,7 @@ export default function App() {
     const isPaymentSuccess = params.get('payment') === 'success';
 
     if (!isPaymentSuccess) {
+      if (savedMaxStep) setMaxStep(Number(savedMaxStep));
       if (savedProjectId) {
         setProjectId(savedProjectId);
         if (savedStep) setStep(Number(savedStep));
@@ -90,6 +95,7 @@ export default function App() {
   useEffect(() => {
     if (step > 0) {
       localStorage.setItem('app_step', step.toString());
+      localStorage.setItem('app_max_step', maxStep.toString());
       if (projectId) {
         localStorage.setItem('app_project_id', projectId);
       }
@@ -101,10 +107,23 @@ export default function App() {
     } else {
       // Step 0 means Dashboard - clear local storage
       localStorage.removeItem('app_step');
+      localStorage.removeItem('app_max_step');
       localStorage.removeItem('app_project_id');
       localStorage.removeItem('app_map_data');
     }
-  }, [step, projectId, mapData]);
+  }, [step, projectId, mapData, maxStep]);
+
+  // Track the furthest step reached. Bump-only while in a project (going back
+  // never re-locks later steps), and reset to 0 when the user lands on the
+  // dashboard so a fresh project starts locked again. The first run is skipped
+  // so a restored maxStep (from localStorage on refresh) isn't clobbered before
+  // the saved step is applied.
+  const didInitMax = useRef(false);
+  useEffect(() => {
+    if (!didInitMax.current) { didInitMax.current = true; return; }
+    if (step === 0) setMaxStep(0);
+    else setMaxStep(m => Math.max(m, step));
+  }, [step]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -400,12 +419,13 @@ export default function App() {
   return (
     <div className="h-screen w-screen overflow-hidden bg-gray-50 flex flex-col relative">
       {step >= 2 && step < 8 && (
-        <AppHeader 
-          currentStep={step} 
-          setStep={setStep} 
-          saveStatus={saveStatus} 
-          onSaveAndExit={() => { forceSave(); setStep(0); setProjectId(null); setIsDemoMode(false); }} 
-          inMap={inMap} 
+        <AppHeader
+          currentStep={step}
+          maxStep={maxStep}
+          setStep={setStep}
+          saveStatus={saveStatus}
+          onSaveAndExit={() => { forceSave(); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
+          inMap={inMap}
         />
       )}
       <div className="flex-1 relative overflow-hidden min-h-0">
@@ -440,7 +460,7 @@ export default function App() {
               mapData={mapData}
               isDemoMode={isDemoMode}
               onBack={() => setStep(5)}
-              onExitToDashboard={() => { forceSave(); setStep(0); setProjectId(null); setIsDemoMode(false); }}
+              onExitToDashboard={() => { forceSave(); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
             />
           </div>
         )}

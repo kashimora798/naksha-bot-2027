@@ -13,14 +13,19 @@ const STEP_NAMES = [
 
 interface Props {
   currentStep: number;
+  maxStep?: number;
   setStep: (step: number) => void;
   saveStatus: 'saved' | 'saving' | 'error';
   onSaveAndExit: () => void;
   inMap: boolean;
 }
 
-export default function AppHeader({ currentStep, setStep, saveStatus, onSaveAndExit, inMap }: Props) {
+export default function AppHeader({ currentStep, maxStep, setStep, saveStatus, onSaveAndExit, inMap }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // A step is reachable once the user has been there at least once. Use the
+  // furthest step reached (falls back to currentStep) so going back doesn't
+  // re-lock steps the user already completed.
+  const reachable = Math.max(maxStep ?? 0, currentStep);
 
   return (
     <>
@@ -98,8 +103,9 @@ export default function AppHeader({ currentStep, setStep, saveStatus, onSaveAndE
               </div>
               {STEP_NAMES.map((name, i) => {
                 const stepNum = i + 1;
-                // Only allow jumping backward or to current step (steps 2 through 7)
-                const isClickable = stepNum >= 2 && stepNum <= currentStep;
+                // Steps 2-7 are navigable once reached. Going back never re-locks
+                // a step the user has already completed (uses furthest reached).
+                const isClickable = stepNum >= 2 && stepNum <= reachable;
                 
                 return (
                   <button

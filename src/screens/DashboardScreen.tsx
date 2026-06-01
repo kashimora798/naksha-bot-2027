@@ -98,8 +98,9 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500 font-semibold animate-pulse">Loading your maps...</p>
+      <div className="min-h-screen bg-[var(--color-warm-paper)] flex flex-col items-center justify-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-[var(--color-saffron)]/10 flex items-center justify-center animate-bounce"><span className="text-2xl">🗺️</span></div>
+        <p className="text-gray-500 font-semibold animate-pulse font-public-sans">Loading your maps…</p>
       </div>
     );
   }
@@ -130,44 +131,101 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   };
 
   return (
-    <div className="min-h-screen flex flex-col p-6 font-noto-sans bg-transparent">
-      <div className="max-w-4xl w-full mx-auto">
-        <header className="flex items-center justify-between mb-8 gap-2">
+    <div className="min-h-screen flex flex-col font-noto-sans bg-[var(--color-warm-paper)]">
+      {/* ── Sticky top bar ── */}
+      <header className="sticky top-0 z-20 bg-white/85 backdrop-blur border-b border-[var(--color-saffron)]/10">
+        <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            <img src="/logo.png" alt="NakshaBot Logo" className="w-10 h-10 sm:w-12 sm:h-12 object-contain flex-shrink-0" />
+            <img src="/logo.png" alt="NakshaBot Logo" className="w-9 h-9 sm:w-10 sm:h-10 object-contain flex-shrink-0" />
             <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold font-public-sans text-[var(--color-charcoal)] truncate">NakshaBot</h1>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Welcome back, {user?.user_metadata?.full_name || user?.email || 'Surveyor'}</p>
+              <h1 className="text-lg sm:text-xl font-bold font-public-sans text-[var(--color-charcoal)] truncate leading-tight">NakshaBot</h1>
+              <p className="text-[11px] sm:text-xs text-gray-500 truncate">Census 2027 Mapping</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setShowProfile(true)}
-              className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors flex items-center gap-1.5"
+              className="px-3 sm:px-4 py-2 bg-[var(--color-warm-paper)] border border-[var(--color-saffron)]/15 rounded-xl text-sm font-semibold text-gray-700 hover:bg-[var(--color-saffron)]/5 transition-colors flex items-center gap-1.5"
             >
               <span>👤</span><span className="hidden sm:inline">Profile</span>
             </button>
             <button
               onClick={() => supabase.auth.signOut()}
-              className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+              className="px-3 sm:px-4 py-2 border border-gray-200 rounded-xl text-sm font-semibold text-gray-500 hover:bg-gray-100 transition-colors"
             >
               Sign Out
             </button>
           </div>
-        </header>
+        </div>
+      </header>
+
+      <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 flex-1">
+        {/* ── Greeting ── */}
+        <div className="mb-5">
+          <h2 className="text-2xl sm:text-3xl font-bold font-public-sans text-[var(--color-charcoal)]">
+            {`Namaste, ${(userProfile?.full_name || user?.user_metadata?.full_name || user?.email || 'Surveyor').split(' ')[0]} 👋`}
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5">Pick up where you left off, or start something new.</p>
+        </div>
 
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 border border-red-100 text-sm">{error}</div>
         )}
 
-        {/* ── Live Maps Section ── */}
+        {/* ── Primary action cards ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+          <button
+            onClick={() => onNewProject(undefined)}
+            className="group text-left p-5 rounded-2xl bg-[var(--color-saffron-container)] text-white shadow-[var(--shadow-warm-2)] hover:brightness-105 active:scale-[0.99] transition-all"
+          >
+            <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center text-2xl mb-3">🗺️</div>
+            <p className="font-bold text-base font-public-sans">Create New Map</p>
+            <p className="text-xs text-white/80 mt-0.5">Build an HLB map from satellite imagery</p>
+          </button>
+          <button
+            onClick={() => onLiveSurvey?.(undefined)}
+            className="group text-left p-5 rounded-2xl bg-white border border-[var(--color-saffron)]/15 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
+          >
+            <div className="w-11 h-11 rounded-xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-2xl mb-3">🚶</div>
+            <p className="font-bold text-base font-public-sans text-[var(--color-charcoal)]">Live Survey</p>
+            <p className="text-xs text-gray-500 mt-0.5">Walk the area with GPS recording</p>
+          </button>
+          <button
+            onClick={onDemoMap}
+            className="group text-left p-5 rounded-2xl bg-white border border-blue-100 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
+          >
+            <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-2xl mb-3">🎓</div>
+            <p className="font-bold text-base font-public-sans text-[var(--color-charcoal)]">Take the Tour</p>
+            <p className="text-xs text-gray-500 mt-0.5">2-minute guided walkthrough</p>
+          </button>
+        </div>
+
+        {/* ── Stats strip ── */}
+        {(projects.length > 0 || liveSessions.length > 0) && (
+          <div className="grid grid-cols-3 gap-3 mb-8">
+            <div className="bg-white rounded-2xl p-4 border border-[var(--color-saffron)]/10 shadow-[var(--shadow-warm-1)] text-center">
+              <p className="text-2xl font-bold text-[var(--color-saffron)] font-public-sans">{projects.length}</p>
+              <p className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide">Maps</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 border border-amber-100 shadow-[var(--shadow-warm-1)] text-center">
+              <p className="text-2xl font-bold text-amber-600 font-public-sans">{pendingSessions.length}</p>
+              <p className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide">In Progress</p>
+            </div>
+            <div className="bg-white rounded-2xl p-4 border border-green-100 shadow-[var(--shadow-warm-1)] text-center">
+              <p className="text-2xl font-bold text-green-600 font-public-sans">{completedSessions.length}</p>
+              <p className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide">Completed</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Live Surveys Section ── */}
         {liveSessions.length > 0 && (
           <section className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold font-public-sans text-[var(--color-charcoal)]">🗺️ Live Surveys</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">🚶 Live Surveys</h2>
               <button
                 onClick={() => onLiveSurvey?.(undefined)}
-                className="px-4 py-2 bg-[var(--color-saffron)] text-white rounded-xl font-bold text-sm shadow active:scale-95 transition-all min-h-[44px]"
+                className="px-3.5 py-2 bg-[var(--color-saffron)] text-white rounded-xl font-bold text-xs shadow active:scale-95 transition-all"
               >
                 + New Survey
               </button>
@@ -179,10 +237,10 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {pendingSessions.map(session => (
                     <div key={session.session_id}
-                      className="bg-white rounded-2xl p-4 shadow-[var(--shadow-warm-1)] border border-amber-100 flex items-center gap-3 group relative overflow-hidden cursor-pointer active:bg-amber-50 transition-colors"
+                      className="bg-white rounded-2xl p-4 shadow-[var(--shadow-warm-1)] border border-amber-100 flex items-center gap-3 group relative overflow-hidden cursor-pointer hover:shadow-[var(--shadow-warm-2)] active:bg-amber-50 transition-all"
                       onClick={() => onResumeLiveSurvey?.(session.session_id)}>
                       <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-400 rounded-l-2xl" />
-                      <div className="flex-1 pl-1">
+                      <div className="flex-1 pl-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">Pending</span>
                         </div>
@@ -209,7 +267,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                     <div key={session.session_id}
                       className="bg-white rounded-2xl p-4 shadow-[var(--shadow-warm-1)] border border-green-100 flex items-center gap-3 relative overflow-hidden">
                       <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-green-500 rounded-l-2xl" />
-                      <div className="flex-1 pl-1">
+                      <div className="flex-1 pl-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Completed</span>
                         </div>
@@ -228,78 +286,55 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
           </section>
         )}
 
-        {/* ── Regular Maps Section ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-          <h2 className="text-xl font-bold font-public-sans text-[var(--color-charcoal)]">Your Maps</h2>
-          <div className="grid grid-cols-2 sm:flex gap-2">
-            {liveSessions.length === 0 && (
-              <button
-                onClick={() => onLiveSurvey?.(undefined)}
-                className="px-4 py-2.5 bg-white border border-[var(--color-saffron)] text-[var(--color-saffron)] rounded-xl font-bold text-sm shadow-[var(--shadow-warm-1)] hover:bg-orange-50 transition-colors min-h-[52px]"
-              >
-                🚶‍♂️ Live Survey
-              </button>
-            )}
-            <button
-              onClick={onDemoMap}
-              className="px-4 py-2.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]"
-            >
-              🎓 Try Demo
-            </button>
-            <button
-              onClick={() => onNewProject(undefined)}
-              className="col-span-2 sm:col-span-1 px-4 py-2.5 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold text-sm shadow-[var(--shadow-warm-1)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]"
-            >
-              + Create New Map
-            </button>
-          </div>
+        {/* ── Maps Section ── */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">Your Maps</h2>
+          {projects.length > 0 && <span className="text-xs text-gray-400 font-semibold">{projects.length} total</span>}
         </div>
 
         {projects.length === 0 ? (
-          <div className="bg-white rounded-[24px] p-12 text-center shadow-[var(--shadow-warm-1)] border border-gray-100 relative overflow-hidden">
-            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gray-200" />
-            <div className="text-5xl mb-4">🗺️</div>
+          <div className="bg-white rounded-[24px] p-10 sm:p-12 text-center shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-4xl mx-auto mb-4">🗺️</div>
             <h3 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)] mb-2">No maps yet</h3>
-            <p className="text-sm text-gray-600 max-w-sm mx-auto mb-6">Start by creating a new map or using Live Survey mode.</p>
-            <div className="flex gap-3 justify-center">
-              <button onClick={() => onLiveSurvey?.(undefined)} className="px-6 py-3 bg-white border border-[var(--color-saffron)] text-[var(--color-saffron)] rounded-xl font-bold shadow hover:bg-orange-50 transition-colors min-h-[52px]">🚶‍♂️ Live Survey</button>
-              <button onClick={() => onNewProject(undefined)} className="px-6 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
+            <p className="text-sm text-gray-600 max-w-sm mx-auto mb-6">Create your first census map, or take the 2-minute guided tour to see how it works.</p>
+            <div className="flex flex-wrap gap-3 justify-center">
+              <button onClick={onDemoMap} className="px-5 py-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]">🎓 Take the Tour</button>
+              <button onClick={() => onNewProject(undefined)} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {projects.map((project) => (
               <div
                 key={project.id}
                 onClick={() => onLoadProject(project.id, { ...project.data, paymentStatus: project.payment_status, exportCount: project.export_count })}
-                className="bg-white rounded-[24px] p-5 shadow-[var(--shadow-warm-1)] border border-gray-50 cursor-pointer hover:shadow-[var(--shadow-warm-2)] transition-all group relative overflow-hidden"
+                className="bg-white rounded-2xl p-5 shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10 cursor-pointer hover:shadow-[var(--shadow-warm-2)] hover:-translate-y-0.5 transition-all group relative overflow-hidden"
               >
                 <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[var(--color-india-green)]" />
                 <button
                   onClick={(e) => handleDeleteUI(e, project)}
-                  className="absolute top-2 right-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-all min-h-[36px]"
+                  className="absolute top-2 right-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all min-h-[36px]"
                   title="Remove from Dashboard"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
                 </button>
-                <div className="flex justify-between items-start mb-3 pr-6 pl-2">
-                  <h3 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)] group-hover:text-[var(--color-saffron)] transition-colors truncate">
-                    {project.name || 'Untitled Map'}
-                  </h3>
-                </div>
-                <div className="flex items-center gap-2 mb-3 pl-2">
-                  <span className="text-xs font-semibold bg-gray-100 text-gray-700 px-2 py-1 rounded font-jetbrains-mono">
-                    {project.data?.blocks?.length || 0} Blocks
-                  </span>
-                </div>
-                <div className="text-xs text-gray-600 space-y-1 pl-2 font-jetbrains-mono">
-                  <p>HLB: {project.data?.hlbNumber || '—'}</p>
-                  <p className="truncate">Loc: {project.data?.district || '—'}, {project.data?.state || '—'}</p>
-                  <p className="mt-3 pt-3 border-t border-gray-100 text-[10px] text-gray-400">
-                    Last edited: {new Date(project.updated_at).toLocaleDateString()}
-                  </p>
+                <div className="pl-2">
+                  <div className="flex items-start justify-between mb-3 pr-6">
+                    <h3 className="text-base font-bold font-public-sans text-[var(--color-charcoal)] group-hover:text-[var(--color-saffron)] transition-colors truncate">
+                      {project.name || 'Untitled Map'}
+                    </h3>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                    <span className="text-[11px] font-bold bg-[var(--color-india-green)]/10 text-[var(--color-india-green)] px-2 py-1 rounded-full font-jetbrains-mono">{project.data?.blocks?.length || 0} Blocks</span>
+                    <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-jetbrains-mono">HLB {project.data?.hlbNumber || '—'}</span>
+                    {project.payment_status === 'paid' && <span className="text-[11px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">✓ Paid</span>}
+                  </div>
+                  <div className="text-xs text-gray-500 space-y-1 font-jetbrains-mono">
+                    <p className="truncate">📍 {project.data?.district || '—'}, {project.data?.state || '—'}</p>
+                    <p className="text-[10px] text-gray-400 pt-2 border-t border-gray-100">Edited {new Date(project.updated_at).toLocaleDateString()}</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -310,19 +345,19 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
       {showDemoModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full animate-in fade-in zoom-in duration-300">
-            <div className="text-4xl text-center mb-4">🗺️</div>
-            <h2 className="text-xl font-black text-gray-800 text-center mb-2">Welcome to NakshaBot!</h2>
+            <div className="w-16 h-16 rounded-2xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-3xl mx-auto mb-4">🗺️</div>
+            <h2 className="text-xl font-black text-gray-800 text-center mb-2 font-[Baloo_2]">Welcome to NakshaBot!</h2>
             <p className="text-sm text-gray-600 text-center mb-6">
-              Learn how to quickly create a stunning HLO Census map in less than 2 minutes. We've set up a guided demo for you.
+              See how to build a complete HLB census map in under 2 minutes. We've set up a guided tour over the real app for you.
             </p>
             <div className="flex flex-col gap-3">
-              <button 
+              <button
                 onClick={() => { setShowDemoModal(false); onDemoMap?.(); }}
                 className="w-full bg-[var(--color-saffron)] text-white font-bold py-3 rounded-xl shadow active:scale-95 transition-all"
               >
-                Start Interactive Demo
+                🎓 Start the Tour
               </button>
-              <button 
+              <button
                 onClick={() => { localStorage.setItem('naksha_demo_done', 'true'); setShowDemoModal(false); }}
                 className="w-full bg-gray-100 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-200 active:scale-95 transition-all"
               >

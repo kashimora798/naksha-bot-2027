@@ -232,8 +232,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Don't auto-save if we're not past the setup steps
-    if (step < 3 || !isSignedIn || isInitialLoad.current) {
+    // Don't auto-save if we're not past the setup steps, or if this is the
+    // guided demo/tour — tour runs are throwaway and must never hit the DB.
+    if (step < 3 || !isSignedIn || isDemoMode || isInitialLoad.current) {
       if (step >= 3) isInitialLoad.current = false;
       return;
     }
@@ -270,10 +271,10 @@ export default function App() {
     }, 2000); // 2 second debounce
 
     return () => clearTimeout(saveTimer);
-  }, [mapData, projectId, step, isSignedIn, user?.id]);
+  }, [mapData, projectId, step, isSignedIn, user?.id, isDemoMode]);
 
   const forceSave = async () => {
-    if (!isSignedIn || !projectId) return;
+    if (!isSignedIn || !projectId || isDemoMode) return;
     try {
       const name = `HLB ${mapData.hlbNumber || 'Draft'}`;
       const dataToSave = getCleanData(mapData);
@@ -288,13 +289,13 @@ export default function App() {
 
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (projectId && isSignedIn) {
+      if (projectId && isSignedIn && !isDemoMode) {
         forceSave();
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [mapData, projectId, isSignedIn]);
+  }, [mapData, projectId, isSignedIn, isDemoMode]);
 
   // ═══════════════════════════════════════════════════════════
   // RENDERERS
@@ -437,6 +438,7 @@ export default function App() {
           <div className="h-full">
             <PreviewScreen
               mapData={mapData}
+              isDemoMode={isDemoMode}
               onBack={() => setStep(5)}
               onExitToDashboard={() => { forceSave(); setStep(0); setProjectId(null); setIsDemoMode(false); }}
             />

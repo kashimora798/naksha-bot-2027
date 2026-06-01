@@ -5,12 +5,13 @@ import { supabase } from '../lib/supabase';
 import { renderMapToCanvas, exportBlockPDF } from '../lib/pdf-export';
 import { captureSatelliteForBoundary, captureFullSatellite, generateSurveyMapFromBoundary, fetchImageAsBase64, API_BASE, generateChunkedSurveyMaps } from '../lib/survey-api';
 import { getBbox } from '../lib/geo';
+import { DEMO_AI_IMAGE_URL } from '../data/demo';
 
-interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; onUpdateMapData?: (data: Partial<MapData>) => void; }
+interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; onUpdateMapData?: (data: Partial<MapData>) => void; isDemoMode?: boolean; }
 
 type ViewTab = 'sketch' | 'satellite' | 'ai';
 
-export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUpdateMapData }: Props) {
+export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUpdateMapData, isDemoMode }: Props) {
   const [exported, setExported] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -24,6 +25,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [orient, setOrient] = useState<'landscape' | 'portrait'>(mapData.orientation || 'portrait');
   const [sheetSize, setSheetSize] = useState<'a4' | 'a3'>(mapData.sheetSize || 'a4');
   const [showSidebar, setShowSidebar] = useState(false);
+  const [tourOpen, setTourOpen] = useState(true); // demo coaching expanded by default
 
   // Tab system
   const [activeTab, setActiveTab] = useState<ViewTab>('sketch');
@@ -109,6 +111,18 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
   async function generateAI() {
     if (mapData.boundaryPins.length < 3) return;
+    // Demo/tour: use the pre-baked AI map instead of calling the AI API.
+    if (isDemoMode) {
+      setAiError('');
+      setAiLoading(true);
+      setAiProgress('Generating AI survey map…');
+      await new Promise(r => setTimeout(r, 900)); // brief, so it feels real
+      setAiImg(DEMO_AI_IMAGE_URL);
+      setAiChunks([]);
+      setAiProgress('');
+      setAiLoading(false);
+      return;
+    }
     setAiLoading(true);
     setAiError('');
     setAiProgress('Preparing satellite imagery...');
@@ -546,6 +560,47 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           </div>
         )}
       </div>
+
+      {/* Guided tour: print/export coaching (step 7). Compact + collapsible so it
+          never covers the preview or the print button on a phone. */}
+      {isDemoMode && (
+        <div className="absolute left-2 right-2 bottom-3 z-[60] pointer-events-none">
+          <div className="max-w-md mx-auto bg-white/97 backdrop-blur rounded-2xl shadow-2xl border border-orange-100 overflow-hidden pointer-events-auto">
+            <div className="flex items-center gap-2 px-3 py-2">
+              <span className="shrink-0 text-[10px] font-black text-white bg-orange-500 rounded-full w-5 h-5 flex items-center justify-center">6</span>
+              <button onClick={() => setTourOpen(o => !o)} className="flex-1 min-w-0 text-left">
+                <span className="block text-sm font-bold text-slate-800 font-[Baloo_2] leading-tight truncate">Print &amp; export your map</span>
+              </button>
+              <button onClick={() => setTourOpen(o => !o)} className="shrink-0 text-slate-400 hover:text-slate-700 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100" aria-label={tourOpen ? 'Collapse' : 'Expand'}>
+                <span className={`inline-block transition-transform ${tourOpen ? 'rotate-180' : ''}`}>⌄</span>
+              </button>
+            </div>
+            {tourOpen && (
+              <div className="px-3 pb-2 max-h-[30vh] overflow-y-auto">
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Switch between <strong>✏️ Sketch</strong>, <strong>🛰️ Satellite</strong> and <strong>🗺️ AI Map</strong> tabs (top). Open <strong>☰ settings</strong> for <strong>A4/A3</strong> + orientation. Tap <strong>🖨️</strong> (right) to download the PDF to your phone.
+                </p>
+                <p className="text-[11px] text-purple-600 bg-purple-50 rounded-lg px-2.5 py-1.5 mt-2">✨ Try the AI Map tab → “Generate AI Survey Map” for a clean, print-ready sheet.</p>
+              </div>
+            )}
+            <div className="flex gap-2 px-3 pb-3 pt-1">
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex-1 py-2 rounded-xl text-xs font-bold bg-orange-500 text-white shadow active:scale-95 transition-all disabled:opacity-60"
+              >
+                {exporting ? 'Preparing…' : '🖨️ Download PDF'}
+              </button>
+              <button
+                onClick={() => onExitToDashboard?.()}
+                className="flex-1 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white shadow active:scale-95 transition-all"
+              >
+                Finish tour →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AI Preview Modal */}
       {aiPreviewImg && (

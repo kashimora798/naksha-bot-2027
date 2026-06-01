@@ -10,6 +10,7 @@ interface Props {
 export default function OnboardingScreen({ user, onComplete }: Props) {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Profile data (initialize from localStorage if available)
   const [fullName, setFullName] = useState(() => localStorage.getItem('onb_name') || user?.user_metadata?.full_name || '');
@@ -73,6 +74,7 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
     }
 
     setLoading(true);
+    setSaveError('');
     let finalHlb = hlbNumber;
     let finalLat = parseFloat(hlbLat) || 0;
     let finalLng = parseFloat(hlbLng) || 0;
@@ -113,14 +115,17 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
       localStorage.removeItem('onb_mobile');
       onComplete(data || profileData);
     } catch (err: any) {
-      console.error(err);
-      localStorage.removeItem('onb_name');
-      localStorage.removeItem('onb_prof');
-      localStorage.removeItem('onb_mobile');
-      // If table doesn't exist, we just spoof completion to let them in
-      onComplete(profileData);
+      console.error('Onboarding save failed:', err);
+      // Surface the failure instead of silently pretending it saved — otherwise
+      // the user's details are lost without them knowing. They can retry.
+      setSaveError(
+        err?.message
+          ? `Could not save your details: ${err.message}. Please check your connection and try again.`
+          : 'Could not save your details. Please check your connection and try again.'
+      );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -213,19 +218,23 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
             <div className="animate-in fade-in slide-in-from-right-8 duration-500">
               <button onClick={() => setCurrentStep(2)} className="text-slate-400 hover:text-slate-600 font-bold text-sm mb-4">← Back</button>
               <h2 className="text-2xl font-bold font-[Baloo_2] text-slate-800 mb-2">Your Working Area</h2>
-              <p className="text-slate-500 mb-6 text-sm">Set up your default HLB so you can create maps instantly next time.</p>
-              
-              <div className="flex gap-3 mb-6">
-                <button onClick={() => setHlbMode('sms')} className={`flex-1 py-3 rounded-xl border-2 font-bold text-sm transition-all ${hlbMode === 'sms' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>💬 Paste SMS</button>
-                <button onClick={() => setHlbMode('manual')} className={`flex-1 py-3 rounded-xl border-2 font-bold text-sm transition-all ${hlbMode === 'manual' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>✍️ Enter Manually</button>
+              <p className="text-slate-500 mb-4 text-sm">Set up your default HLB so you can create maps instantly next time. <span className="text-slate-400">(Optional — you can add it later.)</span></p>
+
+              <div className="flex gap-3 mb-3">
+                <button onClick={() => setHlbMode(m => m === 'sms' ? null : 'sms')} className={`flex-1 py-3 rounded-xl border-2 font-bold text-sm transition-all ${hlbMode === 'sms' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>💬 Paste SMS</button>
+                <button onClick={() => setHlbMode(m => m === 'manual' ? null : 'manual')} className={`flex-1 py-3 rounded-xl border-2 font-bold text-sm transition-all ${hlbMode === 'manual' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>✍️ Enter Manually</button>
               </div>
+              {!hlbMode && (
+                <p className="text-xs text-slate-400 mb-6">No HLB yet? Just leave this and press <strong>Complete Setup</strong> — you can add it anytime from your Profile.</p>
+              )}
+              {hlbMode && <div className="mb-6" />}
 
               {hlbMode === 'sms' && (
                 <div className="animate-in fade-in duration-300">
-                  <textarea 
+                  <textarea
                     value={hlbSms} onChange={e => setHlbSms(e.target.value)}
                     placeholder="Paste the official SMS containing HLB and coordinates here..."
-                    className="w-full h-32 bg-slate-50 border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 resize-none text-sm" 
+                    className="w-full h-32 bg-slate-50 border border-slate-200 p-4 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 resize-none text-sm"
                   />
                 </div>
               )}
@@ -253,40 +262,47 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
                 </div>
               )}
 
-              {hlbMode && (
-                <div className="animate-in fade-in duration-300 mt-5 pt-5 border-t border-slate-100">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Layout Map Details (for your PDF title block)</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Tehsil / Taluk</label>
-                      <input type="text" value={tehsil} onChange={e => setTehsil(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="e.g. Sadar" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Town / Village</label>
-                      <input type="text" value={townVillage} onChange={e => setTownVillage(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="e.g. Bajheri" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Ward No.</label>
-                      <input type="text" value={wardNo} onChange={e => setWardNo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="e.g. 14" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">EB No. (2011)</label>
-                      <input type="text" value={ebNo} onChange={e => setEbNo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="optional" />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Supervisor Name</label>
-                      <input type="text" value={supervisorName} onChange={e => setSupervisorName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="Name of your Supervisor" />
-                    </div>
+              {/* Layout Map Details — always shown so the PDF title block is filled
+                  regardless of whether the user sets an HLB now. */}
+              <div className="mt-5 pt-5 border-t border-slate-100">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Layout Map Details (for your PDF title block)</p>
+                <p className="text-[11px] text-slate-400 mb-3">Optional — used to fill your map's title block. You can edit these later in Profile.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Tehsil / Taluk</label>
+                    <input type="text" value={tehsil} onChange={e => setTehsil(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="e.g. Sadar" />
                   </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Town / Village</label>
+                    <input type="text" value={townVillage} onChange={e => setTownVillage(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="e.g. Bajheri" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Ward No.</label>
+                    <input type="text" value={wardNo} onChange={e => setWardNo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="e.g. 14" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">EB No. (2011)</label>
+                    <input type="text" value={ebNo} onChange={e => setEbNo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="optional" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Supervisor Name</label>
+                    <input type="text" value={supervisorName} onChange={e => setSupervisorName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-1 focus:ring-orange-500 text-sm" placeholder="Name of your Supervisor" />
+                  </div>
+                </div>
+              </div>
+
+              {saveError && (
+                <div className="mt-6 bg-red-50 border border-red-200 rounded-xl p-3">
+                  <p className="text-sm text-red-600 font-semibold">{saveError}</p>
                 </div>
               )}
 
               <button
                 onClick={handleFinish}
-                disabled={loading || !hlbMode}
-                className="w-full py-4 mt-8 bg-green-600 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                disabled={loading}
+                className="w-full py-4 mt-6 bg-green-600 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {loading ? 'Saving...' : 'Complete Setup ✓'}
+                {loading ? 'Saving...' : saveError ? 'Retry & Complete Setup' : hlbMode ? 'Complete Setup ✓' : 'Skip HLB & Complete Setup ✓'}
               </button>
             </div>
           )}

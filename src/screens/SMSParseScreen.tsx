@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import type { Coordinate } from '../types';
+import { DEMO_CENTER, DEMO_HLB_NUMBER, DEMO_DISTRICT, DEMO_STATE } from '../data/demo';
 
 interface Props {
   onComplete: (hlb: string, center: Coordinate, district: string, state: string) => void;
@@ -100,20 +101,47 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode }: Props
 
       <div className="flex-1 overflow-auto px-4 py-4 space-y-4">
         {isDemoMode && (
-          <div className="bg-blue-50 border border-blue-200 rounded-[12px] p-4 mb-4">
-            <h3 className="font-bold text-blue-800 mb-2">Interactive Demo Mode</h3>
-            <p className="text-sm text-blue-700 mb-3">
-              Skip typing! Click the button below to auto-fill a demo location and start building your map immediately.
-            </p>
-            <button
-              onClick={() => handleDemoLocation(DEMO_LOCATIONS[1])}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow active:scale-95 transition-all"
-            >
-              Fill Demo Location (New Delhi)
-            </button>
-          </div>
+          <>
+            {/* Modes intro — the two ways to map. Shown only during the guided tour. */}
+            <div className="space-y-3">
+              <h3 className="text-lg font-black text-slate-800 font-[Baloo_2]">Two ways to map</h3>
+              <div className="bg-white border-2 border-orange-200 rounded-2xl p-4 flex gap-3">
+                <span className="text-2xl">🖥️</span>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-sm">Offline / Desk Mode</h4>
+                  <p className="text-xs text-slate-500">Build the map at your desk from satellite imagery — boundary, roads, buildings, numbering, print. <strong>We'll walk through this now.</strong></p>
+                </div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 flex gap-3">
+                <span className="text-2xl">🚶</span>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-sm">Live Survey Mode</h4>
+                  <p className="text-xs text-slate-500">Walk the area with GPS on — NakshaBot records houses and your path as you go. Great for fieldwork.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-[12px] p-4">
+              <h3 className="font-bold text-blue-800 mb-2">Step 1 · Find your HLB area</h3>
+              <p className="text-sm text-blue-700 mb-3">
+                In Offline mode you start from the official Census SMS — paste it and NakshaBot reads the HLB number and location automatically. For this demo, tap below to auto-fill a sample area.
+              </p>
+              <button
+                onClick={() => { setLoading(true); setTimeout(() => onComplete(DEMO_HLB_NUMBER, DEMO_CENTER, DEMO_DISTRICT, DEMO_STATE), 500); }}
+                disabled={loading}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow active:scale-95 transition-all disabled:opacity-60"
+              >
+                {loading ? 'Loading demo area…' : '📩 Auto-fill demo SMS (New Delhi)'}
+              </button>
+              <p className="text-[11px] text-blue-600/80 mt-2">
+                💡 In the real app you can also type the HLB number and coordinates by hand. Picking other locations is disabled during the tour.
+              </p>
+            </div>
+          </>
         )}
 
+        {!isDemoMode && (
+        <>
         {/* SMS Paste Area */}
         <div>
           <label className="block text-sm font-semibold text-[var(--color-charcoal)] mb-1 font-noto-sans">
@@ -257,6 +285,8 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode }: Props
             ))}
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

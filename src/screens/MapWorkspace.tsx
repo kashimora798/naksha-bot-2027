@@ -7,6 +7,7 @@ import { getSmallSymbolSVG } from '../lib/symbols';
 import { declutterSymbols, buildRotationMap } from '../lib/declutter';
 import SymbolDrawer from '../components/SymbolDrawer';
 import GuidedTour from '../components/GuidedTour';
+import { DEMO_BOUNDARY, DEMO_CENTER } from '../data/demo';
 import { supabase } from '../lib/supabase';
 
 interface Props {
@@ -316,6 +317,17 @@ export default function MapWorkspace({
     symbols.forEach(s => addMk(s));
   }, [ready, symbols]);
   useEffect(() => { if(tileRef.current) tileRef.current.setOpacity(showSat?1:0); }, [showSat]);
+  // Guided tour: auto-place the curated demo block when entering the boundary
+  // step, so the user doesn't have to draw and the next steps (roads/buildings)
+  // are guaranteed to find data. Real (non-demo) users still draw their own.
+  const demoBndPlaced = useRef(false);
+  useEffect(() => {
+    if (isDemoMode && step === 3 && !boundaryClosed && !demoBndPlaced.current) {
+      demoBndPlaced.current = true;
+      onUpdateBoundary(DEMO_BOUNDARY.map(p => ({ ...p })), true);
+      mapRef.current?.setView([DEMO_CENTER.lat, DEMO_CENTER.lng], 16);
+    }
+  }, [isDemoMode, step, boundaryClosed]);
   useEffect(() => {
     if(step===4&&boundaryClosed&&roads.length===0) {
       loadRd();
@@ -787,12 +799,41 @@ export default function MapWorkspace({
   return (
     <div className="relative w-full h-full bg-gray-900">
       {isDemoMode && (
-        <GuidedTour 
-          step={step} 
+        <GuidedTour
+          step={step}
           onSkip={() => {
             localStorage.setItem('naksha_demo_done', 'true');
             if (onDemoComplete) onDemoComplete();
-          }} 
+          }}
+          busy={(step === 4 && rdLoad) || (step === 5 && /detecting/i.test(bldgMsg))}
+          status={
+            step === 4
+              ? (rdLoad ? 'Fetching roads from OpenStreetMap…' : `${roads.length} road${roads.length === 1 ? '' : 's'} added automatically.`)
+              : step === 5
+                ? (bldgMsg || (totH > 0 ? `${totH} buildings detected.` : 'Detecting buildings…'))
+                : step === 6
+                  ? (numDone >= totH && totH > 0 ? `All ${totH} buildings numbered.` : `${numDone}/${totH} numbered`)
+                  : undefined
+          }
+          onAction={
+            step === 5
+              ? () => { if (!showBlk && !blocks.length) onUpdateBlocks(generateBlocks(boundaryPins, symbols.length)); setShowBlk(b => !b); }
+              : step === 6
+                ? autoNum
+                : undefined
+          }
+          actionLabel={step === 5 ? (showBlk ? '👁️ Hide blocks' : '🔲 Show blocks') : step === 6 ? '⚡ Auto-number all' : undefined}
+          onNext={
+            step === 6
+              ? () => { if (numDone < totH) autoNum(); onJumpToPreview(); }
+              : onStepComplete
+          }
+          nextLabel={
+            step === 3 ? 'Continue to roads →'
+              : step === 4 ? 'Continue to buildings →'
+              : step === 5 ? 'Continue to numbering →'
+              : 'Preview & print →'
+          }
         />
       )}
       <div ref={containerRef} className="absolute inset-0" />

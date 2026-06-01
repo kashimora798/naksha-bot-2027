@@ -597,7 +597,39 @@ export default function MapWorkspace({
   }
 
   // ═══════════ PANELS ═════════════════════════════════════
-  function P({children}:{children:React.ReactNode}){return <div className="bg-[var(--color-warm-paper)] rounded-t-[24px] shadow-[var(--shadow-warm-2)] max-h-[50vh] overflow-auto font-noto-sans z-[1002] pointer-events-auto"><div onClick={() => setPanelOpen(!panelOpen)} className="flex justify-center pt-3 pb-2 cursor-pointer"><div className="w-12 h-1.5 rounded-full bg-gray-300"/></div>{panelOpen && <div className="px-4 pb-4">{children}</div>}</div>;}
+  // ─── UNIFIED BOTTOM SHEET ───────────────────────────────
+  // One consistent shell for every step. Three fixed zones:
+  //  1) grabber + title + status — ALWAYS visible, tap to expand/collapse
+  //     (so the sheet can never become an unreachable dead handle),
+  //  2) scrollable body — secondary controls only (capped height),
+  //  3) pinned footer — the primary CTA, always visible regardless of scroll.
+  function Sheet({ icon, title, status, statusTone = 'default', children, footer }:{
+    icon: string; title: string; status?: string;
+    statusTone?: 'default' | 'green' | 'blue' | 'red';
+    children?: React.ReactNode; footer?: React.ReactNode;
+  }){
+    const tone = statusTone === 'green' ? 'bg-green-100 text-green-700'
+      : statusTone === 'blue' ? 'bg-blue-100 text-blue-700'
+      : statusTone === 'red' ? 'bg-red-100 text-red-700'
+      : 'bg-[var(--color-saffron)]/12 text-[var(--color-saffron)]';
+    return (
+      <div className="absolute bottom-0 left-0 right-0 z-[1002] pointer-events-auto font-noto-sans" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="bg-[var(--color-warm-paper)] rounded-t-[24px] shadow-[var(--shadow-warm-2)] border-t border-[var(--color-saffron)]/15 flex flex-col">
+          <button onClick={() => setPanelOpen(o => !o)} className="w-full pt-2 pb-2 px-4 active:bg-black/[0.02] transition-colors">
+            <div className="w-10 h-1.5 rounded-full bg-gray-300 mx-auto mb-2" />
+            <div className="flex items-center gap-2">
+              <span className="text-base leading-none">{icon}</span>
+              <span className="font-bold text-[var(--color-charcoal)] font-public-sans text-sm">{title}</span>
+              {status && <span className={`ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full ${tone}`}>{status}</span>}
+              <span className={`${status ? 'ml-1.5' : 'ml-auto'} text-gray-400 text-sm transition-transform ${panelOpen ? 'rotate-180' : ''}`}>⌄</span>
+            </div>
+          </button>
+          {panelOpen && children && <div className="px-4 pb-1 overflow-y-auto max-h-[42vh]">{children}</div>}
+          {footer && <div className="px-4 pt-2.5 pb-3">{footer}</div>}
+        </div>
+      </div>
+    );
+  }
   function Btn({children,onClick,disabled,green}:{children:React.ReactNode;onClick:()=>void;disabled?:boolean;green?:boolean}){return <button onClick={onClick} disabled={disabled} className={`w-full font-public-sans font-bold text-white rounded-full transition-all active:scale-[0.97] min-h-[52px] ${disabled?'bg-gray-300 cursor-not-allowed':green?'bg-[var(--color-india-green)] shadow-[var(--shadow-warm-1)]':'bg-[var(--color-saffron-container)] hover:bg-[var(--color-saffron)] shadow-[var(--shadow-warm-1)]'}`}>{children}</button>;}
 
   // ─── DETECTION RESULTS BANNER ───────────────────────────
@@ -645,62 +677,107 @@ export default function MapWorkspace({
     </div>;
   }
 
-  function pBnd(){if(boundaryClosed)return <P><div className="text-center py-2"><div className="text-green-600 text-2xl mb-1">✓</div><p className="text-sm font-semibold">Boundary set! ~{areaT}</p></div><Btn green onClick={onStepComplete}>Continue →</Btn></P>;return <P><p className="text-xs text-gray-500 font-mono text-center mb-2">{cross.lat.toFixed(4)}°N {cross.lng.toFixed(4)}°E</p><Btn onClick={dropPin}>📍 Drop Corner Pin</Btn><p className="text-center text-xs text-gray-500 mt-2">Pins: <strong>{boundaryPins.length}</strong>/4</p>{boundaryPins.length>0&&<button onClick={undoPin} className="w-full text-center text-sm text-gray-400 mt-1">↩</button>}{boundaryPins.length>=4&&<div className="mt-3"><Btn green onClick={closePoly}>Close →</Btn></div>}</P>;}
+  function pBnd(){
+    if(boundaryClosed) return (
+      <Sheet icon="📐" title="Boundary" status={`Set · ~${areaT}`} statusTone="green"
+        footer={<Btn green onClick={onStepComplete}>Continue to Roads →</Btn>}>
+        <div className="text-center py-3">
+          <div className="text-green-600 text-3xl mb-1">✓</div>
+          <p className="text-sm font-semibold text-[var(--color-charcoal)]">Boundary set · ~{areaT}</p>
+          <p className="text-xs text-gray-500 mt-1">Tap Continue, or reopen to adjust corners.</p>
+        </div>
+      </Sheet>
+    );
+    const ready = boundaryPins.length >= 4;
+    return (
+      <Sheet icon="📍" title="Draw Boundary" status={`${boundaryPins.length}/4 pins`}
+        footer={
+          <div className="flex gap-2">
+            <button onClick={dropPin} className="flex-1 min-h-[52px] rounded-full font-bold text-white bg-[var(--color-saffron-container)] hover:bg-[var(--color-saffron)] shadow-[var(--shadow-warm-1)] active:scale-[0.97] transition-all">📍 Drop Pin</button>
+            <button onClick={closePoly} disabled={!ready} className={`flex-1 min-h-[52px] rounded-full font-bold text-white active:scale-[0.97] transition-all ${ready ? 'bg-[var(--color-india-green)] shadow-[var(--shadow-warm-1)]' : 'bg-gray-300 cursor-not-allowed'}`}>Close →</button>
+          </div>
+        }>
+        <p className="text-xs text-gray-500 font-mono text-center mb-2">{cross.lat.toFixed(5)}°N {cross.lng.toFixed(5)}°E</p>
+        <p className="text-xs text-gray-600 text-center mb-3">Pan the map so the crosshair sits on a corner, then tap <strong>Drop Pin</strong>. Add at least 4 corners, then <strong>Close</strong>.</p>
+        {boundaryPins.length>0 && <button onClick={undoPin} className="w-full py-2.5 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 active:scale-[0.98]">↩ Undo last pin</button>}
+      </Sheet>
+    );
+  }
 
-  function pRd(){if(rdLoad)return <P><div className="flex flex-col items-center py-4 gap-3"><svg className="animate-spin h-8 w-8 text-[var(--color-saffron)]" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><p className="text-sm text-gray-600">Loading roads...</p></div></P>;if(rdErr)return <P><p className="text-sm text-red-600 text-center">{rdErr}</p><div className="flex gap-2 mt-2"><button onClick={loadRd} className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-semibold text-sm min-h-[52px]">Retry</button><button onClick={onStepComplete} className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm min-h-[52px]">Skip</button></div></P>;if(revMode&&roads.length>0){const r=roads[revIdx];return <P><p className="text-sm font-semibold mb-2">Road {revIdx+1}/{roads.length}: <span className="text-[var(--color-saffron)]">{r.highway}</span></p><div className="flex gap-2"><button onClick={confirmOne} className="flex-1 py-3 bg-[var(--color-india-green)] text-white rounded-full font-semibold text-sm min-h-[52px]">✓</button><button onClick={deleteOne} className="flex-1 py-3 bg-red-500 text-white rounded-full font-semibold text-sm min-h-[52px]">✗</button></div><button onClick={()=>setRevMode(false)} className="w-full text-center text-sm text-gray-400 mt-2 min-h-[52px]">Cancel</button></P>;}if(drwRd)return <P><p className="text-sm font-semibold mb-1">📍 Tap map to draw road ({drwPts.length} pts)</p><select value={drwType} onChange={e=>setDrwType(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2">{['residential','primary','secondary','tertiary','footway','track'].map(t=><option key={t} value={t}>{t}</option>)}</select><p className="text-xs text-gray-400 mb-2 text-center">Tap on the map to place points along the road</p><div className="flex gap-2">{drwPts.length>0&&<button onClick={undoDrwPt} className="px-3 py-2 bg-gray-200 rounded-lg text-xs font-semibold min-h-[52px]">↩ Undo</button>}{drwPts.length>=2&&<button onClick={finDrwRd} className="flex-1 py-2 bg-[var(--color-india-green)] text-white rounded-full text-sm font-bold min-h-[52px]">✓ Finish Road</button>}</div><button onClick={()=>{setDrwRd(false);setDrwPts([]);drwGrp.current.clearLayers();}} className="w-full text-center text-sm text-gray-400 mt-2 min-h-[52px]">Cancel</button></P>;return <P><p className="text-sm font-semibold mb-3">{roads.length} roads found</p><div className="flex gap-2">{roads.length>0&&<><button onClick={confirmAll} className="flex-1 py-3 bg-[var(--color-india-green)] text-white rounded-full font-semibold text-sm min-h-[52px]">✓ All</button><button onClick={()=>{setRevMode(true);setRevIdx(0);}} className="flex-1 py-3 bg-blue-500 text-white rounded-full font-semibold text-sm min-h-[52px]">Review</button></>}</div><div className="mt-3"><button onClick={()=>{setDrwRd(true);setDrwPts([]);drwGrp.current.clearLayers();}} className="w-full py-3 border-2 border-[var(--color-saffron)]/20 rounded-full text-sm text-gray-600 hover:bg-[var(--color-saffron)]/5 min-h-[52px]">✏️ Draw Road</button></div><div className="mt-3"><Btn green onClick={onStepComplete}>Roads Done →</Btn></div></P>;}
+  function pRd(){
+    const status = rdLoad ? 'Loading…' : rdErr ? 'Error' : drwRd ? `Drawing · ${drwPts.length} pts` : `${roads.length} found`;
+    // Footer adapts: while drawing a road the key actions are Cancel/Finish;
+    // otherwise the advancing CTA is "Roads Done".
+    const footer = drwRd ? (
+      <div className="flex gap-2">
+        <button onClick={()=>{setDrwRd(false);setDrwPts([]);drwGrp.current.clearLayers();}} className="px-4 min-h-[52px] rounded-full font-semibold bg-white border border-gray-200 text-gray-600">Cancel</button>
+        <button onClick={finDrwRd} disabled={drwPts.length<2} className={`flex-1 min-h-[52px] rounded-full font-bold text-white active:scale-[0.97] ${drwPts.length>=2 ? 'bg-[var(--color-india-green)] shadow-[var(--shadow-warm-1)]' : 'bg-gray-300'}`}>✓ Finish Road</button>
+      </div>
+    ) : <Btn green onClick={onStepComplete}>Roads Done →</Btn>;
+
+    let body: React.ReactNode;
+    if(rdLoad){
+      body = <div className="flex flex-col items-center py-5 gap-3"><svg className="animate-spin h-8 w-8 text-[var(--color-saffron)]" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><p className="text-sm text-gray-600">Fetching roads from OpenStreetMap…</p></div>;
+    } else if(rdErr){
+      body = <div><p className="text-sm text-red-600 text-center mb-2">{rdErr}</p><div className="flex gap-2"><button onClick={loadRd} className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-semibold text-sm min-h-[52px]">Retry</button></div></div>;
+    } else if(revMode && roads.length>0){
+      const r = roads[revIdx];
+      body = <div><p className="text-sm font-semibold mb-2 text-center">Road {revIdx+1}/{roads.length}: <span className="text-[var(--color-saffron)]">{r.highway}</span></p><div className="flex gap-2"><button onClick={confirmOne} className="flex-1 py-3 bg-[var(--color-india-green)] text-white rounded-full font-bold text-sm min-h-[52px]">✓ Keep</button><button onClick={deleteOne} className="flex-1 py-3 bg-red-500 text-white rounded-full font-bold text-sm min-h-[52px]">✗ Delete</button></div><button onClick={()=>setRevMode(false)} className="w-full text-center text-sm text-gray-400 mt-2 py-2">Done reviewing</button></div>;
+    } else if(drwRd){
+      body = <div><p className="text-xs text-gray-600 text-center mb-2">Tap along the road on the map to place points.</p><label className="block text-xs font-semibold text-gray-700 mb-1">Road type</label><select value={drwType} onChange={e=>setDrwType(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-2 bg-white">{['residential','primary','secondary','tertiary','footway','track'].map(t=><option key={t} value={t}>{t}</option>)}</select>{drwPts.length>0&&<button onClick={undoDrwPt} className="w-full py-2.5 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600">↩ Undo last point</button>}</div>;
+    } else {
+      body = <div className="space-y-2">
+        <p className="text-xs text-gray-600 text-center">{roads.length} road{roads.length===1?'':'s'} fetched. Confirm them all, review one by one, or draw a missing lane.</p>
+        {roads.length>0 && <div className="flex gap-2"><button onClick={confirmAll} className="flex-1 py-3 bg-[var(--color-india-green)] text-white rounded-full font-bold text-sm min-h-[52px]">✓ Confirm All</button><button onClick={()=>{setRevMode(true);setRevIdx(0);}} className="flex-1 py-3 bg-blue-500 text-white rounded-full font-bold text-sm min-h-[52px]">Review</button></div>}
+        <button onClick={()=>{setDrwRd(true);setDrwPts([]);drwGrp.current.clearLayers();}} className="w-full py-3 rounded-full text-sm font-semibold text-gray-600 bg-white border-2 border-[var(--color-saffron)]/20 hover:bg-[var(--color-saffron)]/5 min-h-[52px]">✏️ Draw Road Manually</button>
+      </div>;
+    }
+    return <Sheet icon="🛣️" title="Roads" status={status} footer={footer}>{body}</Sheet>;
+  }
 
   function pSymFull(){
-    return <div className="z-[1002] pointer-events-auto bg-white rounded-t-2xl shadow-[0_-2px_12px_rgba(0,0,0,0.12)]">
-      <SymbolDrawer selectedType={selSym} onSelect={selSymbol} placedCount={symbols.length} onToggle={() => setPanelOpen(!panelOpen)} />
-
-      {bldgMsg && (
-        <div className="px-4 pt-2 pb-1">
-          <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+    return (
+      <Sheet icon="🏠" title="Buildings & Symbols" status={`${totH} house${totH===1?'':'s'}`}
+        footer={
+          <div className="space-y-1.5">
+            {/* Apartment units stay reachable even while placing (sheet collapsed) */}
+            {selSym === 'apartment' && (
+              <div className="flex items-center justify-center gap-2 bg-orange-50 rounded-xl px-3 py-2 border border-orange-200">
+                <span className="text-xs font-bold text-gray-700">Units / apartment:</span>
+                <button onClick={()=>setAptUnits(u=>Math.max(1,u-1))} className="text-lg font-bold w-8 h-8 bg-white rounded shadow-sm text-gray-700">−</button>
+                <span className="text-lg font-bold text-orange-600 w-8 text-center">{aptUnits}</span>
+                <button onClick={()=>setAptUnits(u=>Math.min(30,u+1))} className="text-lg font-bold w-8 h-8 bg-white rounded shadow-sm text-gray-700">+</button>
+              </div>
+            )}
+            {placing && selSym && <button onClick={cancelPlacing} className="w-full py-2 rounded-xl text-xs font-bold bg-white border border-gray-200 text-gray-600">✕ Stop placing {SYMBOL_DEFS.find(d=>d.type===selSym)?.labelHi}</button>}
+            <Btn green disabled={totH===0} onClick={onStepComplete}>{totH>0 ? `Number ${totH} Houses →` : 'Place houses to continue'}</Btn>
+            <button onClick={onJumpToPreview} className="w-full py-1.5 text-xs text-gray-500 font-bold">Skip to Preview →</button>
+          </div>
+        }>
+        {bldgMsg && (
+          <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mb-3">
             <p className="flex-1 text-xs font-semibold text-blue-800">{bldgMsg}</p>
             <button onClick={() => setBldgMsg('')} className="text-blue-400 font-black text-sm leading-none" aria-label="Dismiss">×</button>
           </div>
-        </div>
-      )}
-      {panelOpen && (
-        <div className="px-4 pt-2">
-          <button onClick={fetchBuildingsForBlock} className="w-full py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">🏠 Auto-Detect Buildings</button>
-        </div>
-      )}
-      
-      {!panelOpen && selSym === 'apartment' && (
-        <div className="px-4 pb-3 flex justify-center">
-          <div className="flex items-center gap-2 bg-orange-50 rounded-lg px-3 py-1.5 border border-orange-200">
-            <span className="text-xs font-bold text-gray-700">Units:</span>
-            <button onClick={()=>setAptUnits(u=>Math.max(1,u-1))} className="text-lg font-bold w-8 h-8 bg-white rounded shadow-sm text-gray-700">−</button>
-            <span className="text-lg font-bold text-orange-600 w-8 text-center">{aptUnits}</span>
-            <button onClick={()=>setAptUnits(u=>Math.min(30,u+1))} className="text-lg font-bold w-8 h-8 bg-white rounded shadow-sm text-gray-700">+</button>
-          </div>
-        </div>
-      )}
+        )}
 
-      {panelOpen && (
-      <div className="px-4 pb-4 bg-white">
-        <div className="flex gap-2 mb-3">
-          <button onClick={startFarmDraw} className="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-green-50 text-green-700 border border-green-200">🌾 Farm</button>
-          <button onClick={startBlkDraw} className="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">🔲 Block</button>
-          <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">🏷️ Place</button>
+        {/* Symbol picker */}
+        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Place a symbol</p>
+        <SymbolDrawer selectedType={selSym} onSelect={selSymbol} placedCount={symbols.length} />
+
+        {/* Auto + draw tools */}
+        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mt-3 mb-1.5">Auto-detect &amp; zones</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={fetchBuildingsForBlock} className="py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">🏠 Auto-Detect Buildings</button>
+          {!hasAuto
+            ? <button onClick={autoDetectArea} className="py-2.5 rounded-xl text-xs font-bold bg-purple-500 text-white">✨ Auto-Detect Area</button>
+            : <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="py-2.5 rounded-xl text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">🏷️ Place Name</button>}
+          <button onClick={startFarmDraw} className="py-2.5 rounded-xl text-xs font-semibold bg-green-50 text-green-700 border border-green-200">🌾 Draw Farm</button>
+          <button onClick={startBlkDraw} className="py-2.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">🔲 Draw Block</button>
+          {hasAuto && <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="py-2.5 rounded-xl text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200 col-span-2">🏷️ Place Name</button>}
         </div>
-        
-        <div className="flex gap-2 items-center">
-          {!hasAuto && <button onClick={autoDetectArea} className="flex-1 py-3 rounded-full text-sm font-bold bg-purple-500 text-white shadow-sm hover:bg-purple-600">✨ Auto-Detect</button>}
-          {totH>0&&<button onClick={onStepComplete} className="flex-1 py-3 bg-blue-500 text-white rounded-full font-bold text-sm shadow-sm">Number ({totH}) →</button>}
-        </div>
-        <button onClick={() => {
-          if (isDemoMode) {
-            setShowDemoCompleteModal(true);
-            localStorage.setItem('naksha_demo_done', 'true');
-          } else {
-            onJumpToPreview();
-          }
-        }} className="w-full py-2 mt-2 text-xs text-gray-500 font-bold">Preview →</button>
-      </div>
-      )}
-    </div>;
+      </Sheet>
+    );
   }
 
   function rightSidebar() {
@@ -715,44 +792,53 @@ export default function MapWorkspace({
             <h2 className="font-bold text-gray-800">Map Data & Zones</h2>
             <button onClick={() => setShowSidebar(false)} className="text-gray-500 hover:bg-gray-200 w-8 h-8 flex items-center justify-center rounded-full">✕</button>
           </div>
-          <div className="p-4 overflow-auto flex-1 space-y-4">
-            
-            {/* Landmarks Checklist */}
-            {landmarks.length > 0 && (
-              <div className="bg-[var(--color-warm-paper)] rounded-[16px] p-3 border border-[var(--color-saffron)]/20 shadow-sm">
-                <h4 className="text-xs font-bold text-[var(--color-charcoal)] mb-2 font-public-sans">📍 Selected Places for PDF:</h4>
-                {landmarks.map(lm => (
-                  <label key={lm.id} className="flex items-center gap-2 mb-1">
-                    <input type="checkbox" checked={lm.selectedForPdf !== false} onChange={(e) => { const u = landmarks.map(l => l.id === lm.id ? { ...l, selectedForPdf: e.target.checked } : l); onUpdateLandmarks(u); }} className="rounded text-[var(--color-saffron)] w-4 h-4" />
-                    <span className="text-xs text-[var(--color-charcoal)] truncate font-noto-sans">{lm.name}</span>
-                  </label>
-                ))}
+          <div className="p-4 overflow-auto flex-1 space-y-5">
+
+            {/* View controls */}
+            <div>
+              <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">View</h4>
+              <div className="flex gap-2">
+                {areaStats&&<button onClick={()=>setShowStats(s=>!s)} className="flex-1 py-3 rounded-xl text-sm font-semibold bg-[var(--color-warm-paper)] text-gray-700 border border-[var(--color-saffron)]/20 min-h-[48px]">📊 Stats</button>}
+                {symbols.length>15&&<button onClick={()=>{if(!showBlk&&!blocks.length)onUpdateBlocks(generateBlocks(boundaryPins,symbols.length));setShowBlk(!showBlk);}} className={`flex-1 py-3 rounded-xl text-sm font-semibold min-h-[48px] ${showBlk?'bg-blue-100 text-blue-700 border border-blue-300':'bg-gray-100 text-gray-600 border border-gray-200'}`}>{showBlk?'Hide Blocks':'Show Blocks'}</button>}
               </div>
-            )}
+              {!areaStats && symbols.length<=15 && <p className="text-xs text-gray-400">Stats and block grouping appear once you have area data and enough houses.</p>}
+            </div>
 
             {/* Drawn Zones Management */}
             {(blocks.length > 0 || farmlandBlocks.length > 0) && (
-              <div className="bg-[var(--color-warm-paper)] rounded-[16px] p-3 border border-[var(--color-saffron)]/20 shadow-sm">
-                <h4 className="text-xs font-bold text-[var(--color-charcoal)] mb-2 font-public-sans">🗺️ Drawn Zones:</h4>
-                {blocks.map(b => (
-                  <div key={b.id} className="flex items-center justify-between mb-1.5 bg-white px-2 py-1.5 rounded-lg border border-gray-100 shadow-sm">
-                    <span className="text-xs font-bold text-blue-700 truncate font-noto-sans">🔲 Block {b.label}</span>
-                    <button onClick={() => onUpdateBlocks(blocks.filter(x => x.id !== b.id))} className="text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded text-[10px] font-bold">Delete</button>
-                  </div>
-                ))}
-                {farmlandBlocks.map(f => (
-                  <div key={f.id} className="flex items-center justify-between mb-1.5 bg-white px-2 py-1.5 rounded-lg border border-gray-100 shadow-sm">
-                    <span className="text-xs font-bold text-green-700 truncate font-noto-sans">🌾 Farm {f.label}</span>
-                    <button onClick={() => onUpdateFarmland(farmlandBlocks.filter(x => x.id !== f.id))} className="text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded text-[10px] font-bold">Delete</button>
-                  </div>
-                ))}
+              <div>
+                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Drawn zones</h4>
+                <div className="space-y-1.5">
+                  {blocks.map(b => (
+                    <div key={b.id} className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-gray-100 shadow-sm">
+                      <span className="text-xs font-bold text-blue-700 truncate font-noto-sans">🔲 Block {b.label}</span>
+                      <button onClick={() => onUpdateBlocks(blocks.filter(x => x.id !== b.id))} className="text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded text-[10px] font-bold">Delete</button>
+                    </div>
+                  ))}
+                  {farmlandBlocks.map(f => (
+                    <div key={f.id} className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-gray-100 shadow-sm">
+                      <span className="text-xs font-bold text-green-700 truncate font-noto-sans">🌾 Farm {f.label}</span>
+                      <button onClick={() => onUpdateFarmland(farmlandBlocks.filter(x => x.id !== f.id))} className="text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded text-[10px] font-bold">Delete</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
-            <div className="flex gap-2 mb-2">
-              {areaStats&&<button onClick={()=>setShowStats(s=>!s)} className="flex-1 py-3 rounded-xl text-sm font-semibold bg-[var(--color-warm-paper)] text-gray-700 border border-[var(--color-saffron)]/20 min-h-[52px]">📊 Stats</button>}
-              {symbols.length>15&&<button onClick={()=>{if(!showBlk&&!blocks.length)onUpdateBlocks(generateBlocks(boundaryPins,symbols.length));setShowBlk(!showBlk);}} className={`flex-1 py-3 rounded-xl text-sm font-semibold min-h-[52px] ${showBlk?'bg-blue-100 text-blue-700 border border-blue-300':'bg-gray-100 text-gray-600 border border-gray-200'}`}>{showBlk?'Hide Blk':'Show Blk'}</button>}
-            </div>
+            {/* Landmarks Checklist */}
+            {landmarks.length > 0 && (
+              <div>
+                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Places for PDF</h4>
+                <div className="bg-[var(--color-warm-paper)] rounded-[16px] p-3 border border-[var(--color-saffron)]/20">
+                  {landmarks.map(lm => (
+                    <label key={lm.id} className="flex items-center gap-2 mb-1">
+                      <input type="checkbox" checked={lm.selectedForPdf !== false} onChange={(e) => { const u = landmarks.map(l => l.id === lm.id ? { ...l, selectedForPdf: e.target.checked } : l); onUpdateLandmarks(u); }} className="rounded text-[var(--color-saffron)] w-4 h-4" />
+                      <span className="text-xs text-[var(--color-charcoal)] truncate font-noto-sans">{lm.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
           </div>
         </div>
@@ -760,28 +846,42 @@ export default function MapWorkspace({
     );
   }
 
-  function pNumFull(){const done=numDone===totH&&totH>0;return <P>
-    {serpPath.length>1&&<div className="flex items-center justify-between mb-2 bg-red-50 rounded-lg px-3 py-2"><span className="text-xs font-bold text-red-700">🐍</span><button onClick={()=>setShowGuide(g=>!g)} className={`px-3 py-1 rounded-full text-xs font-semibold ${showGuide?'bg-red-500 text-white':'bg-gray-200 text-gray-600'}`}>{showGuide?'ON':'OFF'}</button></div>}
-    <div className="flex items-center justify-between mb-2 bg-yellow-50 rounded-lg px-3 py-2"><span className="text-xs font-bold text-yellow-800">✏️ Edit</span><button onClick={()=>setEditMode(e=>!e)} className={`px-3 py-1 rounded-full text-xs font-semibold ${editMode?'bg-yellow-500 text-white':'bg-gray-200 text-gray-600'}`}>{editMode?'ON':'OFF'}</button></div>
-    {done?<div className="text-center py-1"><div className="text-green-500 text-xl">✓</div><p className="text-sm font-semibold text-green-700">{totH} houses ({totU})!</p></div>:<><p className="text-sm font-semibold"><span className="text-blue-600">{numDone}</span>/{totH}</p><p className="text-xs text-gray-400">{editMode?'Tap to clear':'Tap to number'}</p></>}
-    <div className="flex gap-2 mt-2 mb-2">{!done&&<button onClick={autoNum} className="flex-1 py-2 bg-purple-500 text-white rounded-lg text-xs font-bold">⚡ Auto</button>}<button onClick={clearNum} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg text-xs font-bold">🗑</button></div>
-    {numHist.current.length>0&&<button onClick={undoNum} className="w-full text-sm text-gray-500 py-1">↩ {numHist.current.length}</button>}
-    {done?<div className="mt-2"><Btn green onClick={() => {
-      if (isDemoMode) {
-        setShowDemoCompleteModal(true);
-        localStorage.setItem('naksha_demo_done', 'true');
-      } else {
-        onStepComplete();
-      }
-    }}>Preview →</Btn></div>:totH>0?<button onClick={() => {
-      if (isDemoMode) {
-        setShowDemoCompleteModal(true);
-        localStorage.setItem('naksha_demo_done', 'true');
-      } else {
-        onJumpToPreview();
-      }
-    }} className="w-full text-sm text-gray-400 mt-2">Skip →</button>:null}
-  </P>;}
+  function pNumFull(){
+    const done = numDone===totH && totH>0;
+    return (
+      <Sheet icon="🔢" title="Numbering" status={`${numDone}/${totH}`} statusTone={done ? 'green' : 'default'}
+        footer={
+          <div className="space-y-1.5">
+            {done
+              ? <Btn green onClick={onStepComplete}>Preview &amp; Generate PDF →</Btn>
+              : <Btn onClick={autoNum}>⚡ Auto-Number All Houses</Btn>}
+            {!done && <button onClick={onJumpToPreview} className="w-full py-1.5 text-xs text-gray-500 font-bold">Skip to Preview →</button>}
+          </div>
+        }>
+        {done
+          ? <div className="text-center py-2"><div className="text-green-500 text-2xl">✓</div><p className="text-sm font-semibold text-green-700">{totH} houses numbered ({totU} units)</p></div>
+          : <p className="text-xs text-gray-600 text-center mb-3"><span className="font-bold text-blue-600">{numDone}</span> of {totH} numbered. {editMode ? 'Tap a house on the map to clear its number.' : 'Tap a house to number it, or use Auto-Number below.'}</p>}
+
+        <div className="space-y-2">
+          {serpPath.length>1 && (
+            <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2 border border-gray-100">
+              <span className="text-xs font-bold text-red-700">🐍 Serpentine guide</span>
+              <button onClick={()=>setShowGuide(g=>!g)} className={`px-3 py-1 rounded-full text-xs font-bold ${showGuide?'bg-red-500 text-white':'bg-gray-200 text-gray-600'}`}>{showGuide?'ON':'OFF'}</button>
+            </div>
+          )}
+          <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2 border border-gray-100">
+            <span className="text-xs font-bold text-yellow-700">✏️ Edit mode {editMode && <span className="text-gray-400 font-normal">· tap to clear</span>}</span>
+            <button onClick={()=>setEditMode(e=>!e)} className={`px-3 py-1 rounded-full text-xs font-bold ${editMode?'bg-yellow-500 text-white':'bg-gray-200 text-gray-600'}`}>{editMode?'ON':'OFF'}</button>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={autoNum} className="flex-1 py-2.5 bg-purple-500 text-white rounded-xl text-xs font-bold">⚡ Auto</button>
+            <button onClick={clearNum} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl text-xs font-bold">🗑 Clear</button>
+            {numHist.current.length>0 && <button onClick={undoNum} className="px-4 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-xs font-bold">↩ {numHist.current.length}</button>}
+          </div>
+        </div>
+      </Sheet>
+    );
+  }
 
   // ─── COLLAPSED BAR ──────────────────────────────────────
   function collapsedBar(){
@@ -843,33 +943,31 @@ export default function MapWorkspace({
           <line x1="32" y1="4" x2="32" y2="56" stroke="#CC0000" strokeWidth="2.5"/><line x1="4" y1="32" x2="56" y2="32" stroke="#CC0000" strokeWidth="2.5"/><circle cx="32" cy="32" r="5.5" stroke="#CC0000" strokeWidth="2.5" fill="none"/><circle cx="32" cy="32" r="2" fill="#CC0000"/>
         </svg>
       </div>
-      <div className="absolute top-2 left-2 bg-black/60 text-white px-2 py-1 rounded-lg text-xs font-mono z-[1001] pointer-events-none">{cross.lat.toFixed(4)}°N {cross.lng.toFixed(4)}°E</div>
-      <div className="absolute top-2 right-2 flex flex-col gap-1 z-[1001]">
-        <button onClick={()=>mapRef.current?.zoomIn()} className="bg-white/90 backdrop-blur w-9 h-9 rounded-lg flex items-center justify-center text-lg font-bold">+</button>
-        <button onClick={()=>mapRef.current?.zoomOut()} className="bg-white/90 backdrop-blur w-9 h-9 rounded-lg flex items-center justify-center text-lg font-bold">−</button>
-        <button onClick={()=>setShowSat(s=>!s)} className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs shadow ${showSat?'bg-white/90':'bg-blue-500 text-white'}`}>{showSat?'🗺️':'🛰️'}</button>
-        {step>=5&&<button onClick={()=>setShowSidebar(true)} className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shadow bg-white/90 font-bold text-gray-700">☰</button>}
+      {/* Top-right control column — uniform sizing, single Layers/Data entry */}
+      <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-[1001]">
+        <button onClick={()=>mapRef.current?.zoomIn()} className="bg-white/95 backdrop-blur w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg font-bold text-gray-700 active:scale-95">+</button>
+        <button onClick={()=>mapRef.current?.zoomOut()} className="bg-white/95 backdrop-blur w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg font-bold text-gray-700 active:scale-95">−</button>
+        <button onClick={()=>setShowSat(s=>!s)} className={`w-10 h-10 rounded-xl shadow flex items-center justify-center text-base active:scale-95 ${showSat?'bg-white/95 text-gray-700':'bg-blue-500 text-white'}`}>{showSat?'🗺️':'🛰️'}</button>
+        {step>=3&&<button onClick={()=>setShowSidebar(true)} className="w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg bg-white/95 font-bold text-gray-700 active:scale-95" title="Layers & data">☰</button>}
       </div>
-      <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[var(--color-saffron-container)] text-white px-4 py-2 rounded-full text-xs font-bold z-[1001] pointer-events-none shadow-[var(--shadow-warm-1)] font-public-sans tracking-wide">HLB {hlbNumber}</div>
+      <div className="absolute top-2 left-2 bg-[var(--color-saffron-container)] text-white px-3.5 py-1.5 rounded-full text-xs font-bold z-[1001] pointer-events-none shadow-[var(--shadow-warm-1)] font-public-sans tracking-wide">HLB {hlbNumber}</div>
 
       {statsPanel()}
 
-      {showHelp&&step===3&&!boundaryClosed&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-black/80 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none max-w-[280px] text-center">Pan map, tap "Drop Pin" at each corner</div>}
+      {/* Active-interaction hints only (kept small; static guidance lives in the sheet) */}
       {step===4&&drwRd&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-blue-600/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">✏️ Tap on map to trace road • {drwPts.length} points</div>}
       {step===5&&drawMode!=='none'&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-green-600/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">Tap map to drop corners • {polyPts.length} placed</div>}
       {step===5&&placing&&selSym&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-orange-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">Tap map to place {SYMBOL_DEFS.find(d=>d.type===selSym)?.labelHi}</div>}
       {step===6&&showGuide&&serpPath.length>1&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-red-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">🐍 Follow red path</div>}
       {step===6&&editMode&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-yellow-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg">✏️ EDIT</div>}
-      
 
-
-      {/* Bottom Panel */}
-      <div className="absolute bottom-0 left-0 right-0 z-[1002] pointer-events-none" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        {step===3&&pBnd()}{step===4&&pRd()}{step===5&&drawMode==='none'&&!autoBanner&&pSymFull()}{step===6&&pNumFull()}
-      </div>
+      {/* Bottom Sheet (each panel is self-positioned at the bottom) */}
+      {step===3&&pBnd()}
+      {step===4&&pRd()}
+      {step===5&&drawMode==='none'&&!autoBanner&&pSymFull()}
+      {step===6&&pNumFull()}
 
       {step===5&&drawMode!=='none'&&!autoBanner&&collapsedBar()}
-      {step===6&&!panelOpen&&<div className="absolute left-1/2 -translate-x-1/2 z-[1002] pointer-events-auto" style={{ bottom: 'calc(12px + env(safe-area-inset-bottom))' }}><button onClick={()=>setPanelOpen(true)} className="bg-white/95 backdrop-blur rounded-full shadow-lg px-5 py-3 flex items-center gap-3 text-sm font-semibold text-gray-700"><span>{numDone}/{totH}</span><span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full" onClick={e=>{e.stopPropagation();autoNum();}}>⚡</span><span className="text-xs bg-gray-200 px-2 py-1 rounded-full">📂</span></button></div>}
 
       {detectionBanner()}
       {rightSidebar()}

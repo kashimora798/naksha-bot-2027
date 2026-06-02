@@ -186,30 +186,54 @@ export default function App() {
       });
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (isPaymentSuccess && paymentProjectId) {
-      // Cashfree redirected back here. Confirm the payment SERVER-SIDE (Cashfree
-      // Get-Order) instead of trusting the URL, writing from the client (the DB
-      // trigger forbids it → 403), or waiting on webhook timing. We await the
-      // session first because the page just reloaded and auth must be restored,
-      // then always land on the preview/download screen — never the home page.
+      // Cashfree redirected back here. We MUST wait for the auth session to fully
+      // restore after the full-page redirect before calling any Supabase function
+      // or RLS-protected query. Using onAuthStateChange guarantees we have a valid
+      // session, unlike getSession() which may return null during hydration.
       (async () => {
-        await supabase.auth.getSession();
+        // Step 1: Wait for a valid auth session (up to 15 seconds)
+        let authSession: any = null;
+        const { data: { session: immediateSession } } = await supabase.auth.getSession();
+        if (immediateSession?.access_token) {
+          authSession = immediateSession;
+        } else {
+          // Session not ready yet — wait for onAuthStateChange to fire
+          authSession = await new Promise<any>((resolve) => {
+            const timeout = setTimeout(() => resolve(null), 15000);
+            const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_evt, sess) => {
+              if (sess?.access_token) {
+                clearTimeout(timeout);
+                authSub.unsubscribe();
+                resolve(sess);
+              }
+            });
+          });
+        }
+
+        if (!authSession) {
+          console.error('Auth session not available after payment redirect');
+          alert('Session expired — please sign in again to access your download.');
+          setStep(0);
+          return;
+        }
+
+        // Step 2: Verify payment server-side (with retries)
         try {
           for (let attempt = 0; attempt < 4; attempt++) {
             const { data, error } = await supabase.functions.invoke('verify-payment', {
               body: { projectId: paymentProjectId },
             });
             if (!error && data?.paid) break;
-            await new Promise(r => setTimeout(r, 1500)); // Cashfree may still be settling
+            await new Promise(r => setTimeout(r, 2000)); // 2s between retries
           }
         } catch (e) { console.error('verify-payment failed', e); }
 
-        // Retry the load — right after the redirect the auth session can still be
-        // settling, and a 0-row read would otherwise bounce the user to home.
+        // Step 3: Load the project (with retries, 2s apart)
         let data: any = null;
-        for (let i = 0; i < 5 && !data; i++) {
+        for (let i = 0; i < 6 && !data; i++) {
           const r = await supabase.from('projects').select('*').eq('id', paymentProjectId).maybeSingle();
           data = r.data;
-          if (!data) await new Promise(res => setTimeout(res, 1000));
+          if (!data) await new Promise(res => setTimeout(res, 2000));
         }
         if (data) {
           setProjectId(data.id);
@@ -220,10 +244,13 @@ export default function App() {
             paymentStatus: data.payment_status,
             exportCount: data.export_count,
           });
-          setJustPaid(data.payment_status === 'paid'); // show the celebration screen
+          setJustPaid(data.payment_status === 'paid');
           setStep(7); // Always land on the preview/download screen.
         } else {
-          setStep(0); // Genuinely couldn't load — fall back to dashboard.
+          // Genuinely couldn't load — show error but try to stay useful
+          console.error('Could not load project after payment');
+          alert('Payment verified! But we could not load your map. Please go to Dashboard and open your project.');
+          setStep(0);
         }
       })();
       window.history.replaceState({}, document.title, window.location.pathname);

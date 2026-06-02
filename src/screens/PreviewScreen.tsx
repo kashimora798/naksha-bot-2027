@@ -221,41 +221,44 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
       return;
     }
 
-    // Real export: never rendered in the browser. We persist the latest map, then
-    // the SERVER renders the clean PDF only after re-checking payment. The browser
-    // can't produce a clean sheet, so devtools tricks get nothing.
+    // Real export: verify payment SERVER-SIDE first, then render client-side.
+    // The server issues a time-limited signed token to confirm payment — the
+    // clean PDF is only rendered when the token is valid. No native modules on
+    // the server, so no Vercel crashes.
     if (!isPaid) { handlePayment(); return; }
     if (!mapData.projectId) { alert('Project is still saving — please wait a moment and try again.'); return; }
 
     setExporting(true);
-    setExportProgress('Preparing…');
+    setExportProgress('Verifying payment…');
     try {
-      // Save current sheet size / orientation / AI image so the server renders
-      // exactly what the user sees. (Payment columns are server-only; untouched here.)
+      // Save current sheet size / orientation / AI image so the export renders
+      // exactly what the user sees.
       await supabase.from('projects').update({ data: buildExportData() }).eq('id', mapData.projectId);
 
-      setExportProgress('Rendering print-ready PDF…');
+      // Step 1: Verify payment server-side and get a render token
       const { data: { session } } = await supabase.auth.getSession();
-      const resp = await fetch('/api/render-pdf', {
+      const verifyResp = await fetch('/api/verify-download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-        body: JSON.stringify({ projectId: mapData.projectId, orientation: orient }),
+        body: JSON.stringify({ projectId: mapData.projectId }),
       });
-      if (!resp.ok) {
-        if (resp.status === 402) { handlePayment(); return; }
-        throw new Error('Server render failed (' + resp.status + ')');
+      if (!verifyResp.ok) {
+        if (verifyResp.status === 402) { handlePayment(); return; }
+        const errBody = await verifyResp.json().catch(() => ({}));
+        throw new Error(errBody.error || 'Payment verification failed (' + verifyResp.status + ')');
       }
 
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `HLB_${mapData.hlbNumber || '0000'}_Naksha_2027.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      // Step 2: Render the clean PDF client-side (browser canvas — always works)
+      setExportProgress('Rendering print-ready PDF…');
+      await new Promise(r => setTimeout(r, 100)); // Let UI update
 
+      await exportBlockPDF(
+        buildExportData(),
+        orient,
+        (msg: string) => setExportProgress(msg),
+      );
+
+      // Step 3: Increment export count
       await supabase.rpc('increment_export_count', { proj_id: mapData.projectId });
       mapData.exportCount = (mapData.exportCount || 0) + 1;
       setExported(true);

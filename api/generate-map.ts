@@ -3,10 +3,9 @@
 //   • regen limits — server-enforced (paid map = 5 regens; +₹25 = 5 more)
 //   • caching — the result is stored in Supabase Storage + image_generations, so
 //     the AI API is never hit again for an image the user already has
-//   • lossless compression — the result is re-encoded to lossless WebP (~3.5× smaller
-//     than PNG, zero quality loss) so the 1GB Supabase free tier lasts far longer
+//   • lossless compression — removed server-side @napi-rs/canvas compilation dependency.
+//     Now directly proxies and stores the generated image to avoid native C++ crashes on Vercel.
 import { createClient } from '@supabase/supabase-js';
-import { createCanvas, loadImage } from '@napi-rs/canvas';
 
 export const config = { maxDuration: 60 };
 
@@ -60,16 +59,23 @@ export default async function handler(req: any, res: any) {
     const aiData = await aiResp.json();
     if (!aiData?.success || !aiData?.imageUrl) { res.status(502).json({ error: 'AI returned no image' }); return; }
 
-    // 2) Re-encode to LOSSLESS WebP (zero quality loss, ~3.5× smaller than PNG).
-    const img = await loadImage(aiData.imageUrl);
-    const canvas = createCanvas(img.width, img.height);
-    canvas.getContext('2d').drawImage(img, 0, 0);
-    const webp = canvas.toBuffer('image/webp', { lossless: true } as any);
+    // 2) Download image buffer directly (avoid @napi-rs/canvas runtime dependency).
+    const imgResp = await fetch(aiData.imageUrl);
+    if (!imgResp.ok) { res.status(502).json({ error: 'Failed to fetch generated image from URL' }); return; }
+    
+    const arrayBuffer = await imgResp.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // Determine content type and extension
+    const contentType = imgResp.headers.get('content-type') || 'image/jpeg';
+    let ext = 'jpg';
+    if (contentType.includes('webp')) ext = 'webp';
+    else if (contentType.includes('png')) ext = 'png';
 
     // 3) Store in Supabase Storage (public bucket "ai-maps").
     const ts = Date.now();
-    const path = `${userId}/${projectId}/${ts}.webp`;
-    const up = await admin.storage.from(BUCKET).upload(path, webp, { contentType: 'image/webp', upsert: true });
+    const path = `${userId}/${projectId}/${ts}.${ext}`;
+    const up = await admin.storage.from(BUCKET).upload(path, buffer, { contentType, upsert: true });
     if (up.error) { console.error('storage upload', up.error); res.status(500).json({ error: 'Storage upload failed' }); return; }
     const publicUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 
@@ -87,7 +93,7 @@ export default async function handler(req: any, res: any) {
       url: publicUrl,
       used: used ?? (project.regen_used + 1),
       allowance: project.regen_allowance,
-      bytes: webp.length,
+      bytes: buffer.length,
     });
   } catch (err: any) {
     console.error('generate-map error:', err?.stack || err);

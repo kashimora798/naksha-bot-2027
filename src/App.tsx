@@ -33,6 +33,7 @@ export default function App() {
   const [mapData, setMapData] = useState<MapData>(DEFAULT_MAP_DATA);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [justPaid, setJustPaid] = useState(false); // show the thank-you screen once after a successful payment
   const [userProfile, setUserProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
@@ -219,6 +220,7 @@ export default function App() {
             paymentStatus: data.payment_status,
             exportCount: data.export_count,
           });
+          setJustPaid(data.payment_status === 'paid'); // show the celebration screen
           setStep(7); // Always land on the preview/download screen.
         } else {
           setStep(0); // Genuinely couldn't load — fall back to dashboard.
@@ -480,8 +482,9 @@ export default function App() {
             <PreviewScreen
               mapData={mapData}
               isDemoMode={isDemoMode}
+              justPaid={justPaid}
               onBack={() => setStep(5)}
-              onExitToDashboard={() => { forceSave(); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
+              onExitToDashboard={() => { forceSave(); setJustPaid(false); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
             />
           </div>
         )}

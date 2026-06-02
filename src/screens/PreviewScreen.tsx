@@ -7,15 +7,16 @@ import { captureSatelliteForBoundary, captureFullSatellite, generateSurveyMapFro
 import { getBbox } from '../lib/geo';
 import { DEMO_AI_IMAGE_URL } from '../data/demo';
 
-interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; onUpdateMapData?: (data: Partial<MapData>) => void; isDemoMode?: boolean; }
+interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; onUpdateMapData?: (data: Partial<MapData>) => void; isDemoMode?: boolean; justPaid?: boolean; }
 
 type ViewTab = 'sketch' | 'satellite' | 'ai';
 
-export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUpdateMapData, isDemoMode }: Props) {
+export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUpdateMapData, isDemoMode, justPaid }: Props) {
   const [exported, setExported] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [paying, setPaying] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showCelebrate, setShowCelebrate] = useState(!!justPaid); // thank-you screen after payment
   const [exportProgress, setExportProgress] = useState('');
   const [aiOpacity, setAiOpacity] = useState(1);
   const [zoom, setZoom] = useState(1);
@@ -689,8 +690,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
       {/* ── PAYWALL: shown when an unpaid user taps Print/Download ── */}
       {showPaywall && (
-        <div className="fixed inset-0 z-[4000] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => !paying && setShowPaywall(false)}>
-          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[4000] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-3" onClick={() => !paying && setShowPaywall(false)}>
+          <div className="w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="bg-gradient-to-br from-emerald-600 to-green-600 px-6 pt-6 pb-5 text-white text-center">
               <div className="text-4xl mb-1">🗺️</div>
               <h3 className="text-xl font-black font-[Baloo_2]">आपका नक्शा तैयार है!</h3>
@@ -729,6 +730,33 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
               <button onClick={() => setShowPaywall(false)} disabled={paying} className="w-full mt-1 py-2 text-xs text-slate-400 font-semibold">Maybe later</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── THANK-YOU / CELEBRATION: after a successful payment ── */}
+      {showCelebrate && (
+        <div className="fixed inset-0 z-[4500] bg-gradient-to-b from-emerald-600 to-green-700 flex flex-col items-center justify-center p-6 text-center text-white overflow-y-auto">
+          <div className="text-7xl mb-3 animate-bounce">🎉</div>
+          <h2 className="text-3xl font-black font-[Baloo_2] mb-1">Payment Successful!</h2>
+          <p className="text-base text-white/90 mb-1">धन्यवाद! आपका नक्शा अनलॉक हो गया है</p>
+          <p className="text-sm text-white/80 mb-6">HLB {mapData.hlbNumber || '—'} · ✨ 5 AI generations included</p>
+
+          <div className="w-full max-w-xs space-y-3">
+            <button
+              onClick={() => { setShowCelebrate(false); handleExport(); }}
+              disabled={exporting}
+              className="w-full py-4 rounded-2xl bg-white text-green-700 font-black text-base shadow-xl active:scale-[0.98] transition-all disabled:opacity-70"
+            >
+              {exporting ? 'Preparing…' : '⬇️ Download your PDF'}
+            </button>
+            <button
+              onClick={() => setShowCelebrate(false)}
+              className="w-full py-3 rounded-2xl bg-white/15 text-white font-bold border border-white/30 active:scale-[0.98] transition-all"
+            >
+              View / edit the map first
+            </button>
+          </div>
+          <p className="text-[11px] text-white/70 mt-6 max-w-xs">You can re-download this map any time — it stays in the “Paid” section of your dashboard.</p>
         </div>
       )}
     </div>

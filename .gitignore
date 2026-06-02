@@ -30,3 +30,5 @@ gee-key*.json
 *.key
 .env
 .env.*
+
+.vercel

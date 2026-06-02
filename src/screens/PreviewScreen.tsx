@@ -15,6 +15,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [exported, setExported] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
   const [exportProgress, setExportProgress] = useState('');
   const [aiOpacity, setAiOpacity] = useState(1);
   const [zoom, setZoom] = useState(1);
@@ -62,13 +63,22 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const lastP = useRef({ x: 0, y: 0 });
   const frameRef = useRef<HTMLDivElement>(null);
 
-  // Render sketch map
+  // Whether this map is unlocked. Drives preview quality and whether the print
+  // button exports or opens payment. Demo/tour is always unlocked (it never saves
+  // and is for learning). The PDF download is ALSO re-checked server-side, so
+  // flipping this in devtools gets you nothing.
+  const isPaid = isDemoMode || mapData.paymentStatus === 'paid';
+
+  // Render sketch map. Unpaid previews are deliberately low-res + watermarked so a
+  // screenshot can't be used as a real print; the clean sheet comes only after payment.
   useEffect(() => {
     const c = document.createElement('canvas');
     const isL = orient === 'landscape';
-    renderMapToCanvas(c, { ...mapData, orientation: orient }, isL ? 2000 : 1400, isL ? 1400 : 2000, { watermark: true });
-    setMapImg(c.toDataURL('image/jpeg', 0.9));
-  }, [mapData, orient]);
+    const long = isPaid ? 2000 : 700;
+    const short = isPaid ? 1400 : 490;
+    renderMapToCanvas(c, { ...mapData, orientation: orient }, isL ? long : short, isL ? short : long, { watermark: true });
+    setMapImg(c.toDataURL('image/jpeg', isPaid ? 0.9 : 0.7));
+  }, [mapData, orient, isPaid]);
 
   useEffect(() => { if (mapImg) { setZoom(1); setRotate(0); setPanX(0); setPanY(0); } }, [mapImg]);
 
@@ -182,27 +192,71 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     }
   }, [mapData.autoExport, mapData.paymentStatus, exported, exporting]);
 
+  function buildExportData() {
+    const exportData = { ...mapData, sheetSize, orientation: orient };
+    if (aiChunks && aiChunks.length > 0) {
+      exportData.aiMapChunks = aiChunks;
+    } else if (aiImg) {
+      exportData.surveyMapBase64 = aiImg;
+    }
+    return exportData;
+  }
+
   async function handleExport() {
+    // Demo/tour: render locally (no payment, no server) so the walkthrough works offline.
+    if (isDemoMode) {
+      setExporting(true);
+      setExportProgress('Rendering map...');
+      try {
+        await new Promise(r => setTimeout(r, 100));
+        await exportBlockPDF(buildExportData(), orient, (msg: string) => setExportProgress(msg));
+        setExported(true);
+      } catch (err) {
+        console.error(err);
+        alert('Export failed — please try again.');
+      }
+      setExporting(false);
+      setExportProgress('');
+      return;
+    }
+
+    // Real export: never rendered in the browser. We persist the latest map, then
+    // the SERVER renders the clean PDF only after re-checking payment. The browser
+    // can't produce a clean sheet, so devtools tricks get nothing.
+    if (!isPaid) { handlePayment(); return; }
+    if (!mapData.projectId) { alert('Project is still saving — please wait a moment and try again.'); return; }
 
     setExporting(true);
-    setExportProgress('Rendering map...');
+    setExportProgress('Preparing…');
     try {
-      await new Promise(r => setTimeout(r, 100)); // yield for UI update
-      const exportData = { ...mapData, sheetSize };
-      if (aiChunks && aiChunks.length > 0) {
-        exportData.aiMapChunks = aiChunks;
-      } else if (aiImg) {
-        exportData.surveyMapBase64 = aiImg;
-      }
-      await exportBlockPDF(exportData, orient, (msg: string) => setExportProgress(msg));
-      
-      // Increment export count
-      if (mapData.projectId) {
-        await supabase.rpc('increment_export_count', { proj_id: mapData.projectId });
-        // Update local state optimisticly
-        mapData.exportCount = (mapData.exportCount || 0) + 1;
+      // Save current sheet size / orientation / AI image so the server renders
+      // exactly what the user sees. (Payment columns are server-only; untouched here.)
+      await supabase.from('projects').update({ data: buildExportData() }).eq('id', mapData.projectId);
+
+      setExportProgress('Rendering print-ready PDF…');
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch('/api/render-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ projectId: mapData.projectId, orientation: orient }),
+      });
+      if (!resp.ok) {
+        if (resp.status === 402) { handlePayment(); return; }
+        throw new Error('Server render failed (' + resp.status + ')');
       }
 
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `HLB_${mapData.hlbNumber || '0000'}_Naksha_2027.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      await supabase.rpc('increment_export_count', { proj_id: mapData.projectId });
+      mapData.exportCount = (mapData.exportCount || 0) + 1;
       setExported(true);
     } catch (err) {
       console.error(err);
@@ -224,7 +278,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
       if (error) throw error;
       if (data && data.paymentSessionId) {
         const cashfree = await load({
-          mode: "sandbox" // change to production when live
+          mode: (import.meta.env.VITE_CASHFREE_MODE === 'production' ? 'production' : 'sandbox'),
         });
         if (cashfree) {
             cashfree.checkout({
@@ -265,7 +319,6 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const aspect = orient === 'landscape' ? 297 / 210 : 210 / 297;
   const totalPages = hasBlocks ? blocks.length * 2 + 1 : 2;
   const displayImg = getDisplayImage();
-  const isPaid = true;
   const isLimitReached = false;
 
   // ─── SUCCESS ─────────────────────────────────────────────
@@ -402,10 +455,29 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
            <button onClick={() => setZoom(z => Math.min(5, z + 0.2))} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors">+</button>
            <button onClick={() => setZoom(z => Math.max(0.3, z - 0.2))} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors">−</button>
            <button onClick={resetView} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors mt-1 text-xs">Reset</button>
-           <button onClick={handleExport} disabled={exporting || isLimitReached} className={`w-10 h-10 rounded-full shadow-lg font-bold flex items-center justify-center mt-3 transition-colors ${exporting ? 'bg-gray-400 text-white' : isLimitReached ? 'bg-red-400 text-white' : 'bg-orange-500 text-white'}`}>
-              {exporting ? '⏳' : '🖨️'}
+           <button
+             onClick={() => isPaid ? handleExport() : setShowPaywall(true)}
+             disabled={exporting || paying || isLimitReached}
+             title={isPaid ? 'Download print-ready PDF' : 'Unlock the print (₹25)'}
+             className={`w-10 h-10 rounded-full shadow-lg font-bold flex items-center justify-center mt-3 transition-colors ${exporting || paying ? 'bg-gray-400 text-white' : isLimitReached ? 'bg-red-400 text-white' : isPaid ? 'bg-orange-500 text-white' : 'bg-emerald-600 text-white'}`}>
+              {exporting || paying ? '⏳' : isPaid ? '🖨️' : '🔒'}
            </button>
         </div>
+
+        {/* Prominent bottom CTA (hidden during the demo tour, which has its own bar) */}
+        {!isDemoMode && !exporting && (
+          <div className="absolute left-0 right-0 bottom-4 z-[55] flex justify-center px-4 pointer-events-none">
+            <button
+              onClick={() => isPaid ? handleExport() : setShowPaywall(true)}
+              disabled={paying}
+              className={`pointer-events-auto w-full max-w-md py-4 rounded-2xl font-black text-base shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${isPaid ? 'bg-orange-500 text-white' : 'bg-gradient-to-r from-emerald-600 to-green-600 text-white'}`}
+            >
+              {isPaid
+                ? <>🖨️ Print / Download PDF</>
+                : <>🔓 Unlock Print &amp; PDF — <span className="opacity-90">₹25</span></>}
+            </button>
+          </div>
+        )}
 
         {/* Sidebar Overlay */}
         {showSidebar && <div className="fixed inset-0 bg-black/50 z-[100] transition-opacity" onClick={() => setShowSidebar(false)} />}
@@ -611,6 +683,51 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           <div className="flex gap-4">
             <button onClick={() => { aiPreviewResolve?.(false); setAiPreviewImg(null); setAiPreviewResolve(null); setAiLoading(false); setAiProgress(''); setAiError('Generation cancelled by user.'); }} className="px-6 py-3 rounded-full bg-gray-600 text-white font-bold hover:bg-gray-700">Cancel</button>
             <button onClick={() => { aiPreviewResolve?.(true); setAiPreviewImg(null); setAiPreviewResolve(null); }} className="px-6 py-3 rounded-full bg-purple-500 text-white font-bold hover:bg-purple-600 shadow-lg">Confirm & Send to AI ✨</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── PAYWALL: shown when an unpaid user taps Print/Download ── */}
+      {showPaywall && (
+        <div className="fixed inset-0 z-[4000] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-3" onClick={() => !paying && setShowPaywall(false)}>
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-gradient-to-br from-emerald-600 to-green-600 px-6 pt-6 pb-5 text-white text-center">
+              <div className="text-4xl mb-1">🗺️</div>
+              <h3 className="text-xl font-black font-[Baloo_2]">आपका नक्शा तैयार है!</h3>
+              <p className="text-sm text-white/90">Unlock the print-ready PDF for this HLB</p>
+              <div className="mt-3 flex items-end justify-center gap-2">
+                <span className="text-white/70 line-through text-lg">₹50</span>
+                <span className="text-5xl font-black leading-none">₹25</span>
+                <span className="text-white/90 text-sm mb-1">one-time</span>
+              </div>
+            </div>
+
+            <div className="px-6 py-5 space-y-2.5 text-sm">
+              {[
+                ['☕', <>Less than <b>two cups of chai</b></>],
+                ['🖨️', <>Cyber cafés charge <b>₹50–100</b> to draw this by hand</>],
+                ['♾️', <>Re-download &amp; reprint this map <b>unlimited times</b></>],
+                ['✨', <><b>5 AI</b> survey-map generations included</>],
+                ['📄', <>Official Census-2027 format, A4/A3, high-res</>],
+              ].map(([icon, text], i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className="text-lg leading-tight">{icon as any}</span>
+                  <span className="text-slate-700 leading-snug">{text as any}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="px-6 pb-6 pt-1">
+              <button
+                onClick={() => { setShowPaywall(false); handlePayment(); }}
+                disabled={paying}
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-black text-base shadow-lg active:scale-[0.98] transition-all disabled:opacity-60"
+              >
+                {paying ? 'Opening payment…' : 'Get it now → Pay ₹25'}
+              </button>
+              <p className="text-center text-[11px] text-slate-400 mt-3">🔒 Secure UPI / card payment via Cashfree</p>
+              <button onClick={() => setShowPaywall(false)} disabled={paying} className="w-full mt-1 py-2 text-xs text-slate-400 font-semibold">Maybe later</button>
+            </div>
           </div>
         </div>
       )}

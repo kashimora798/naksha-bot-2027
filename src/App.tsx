@@ -185,24 +185,45 @@ export default function App() {
       });
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (isPaymentSuccess && paymentProjectId) {
-      // 1. Force update the DB locally so they don't have to wait for the webhook
-      supabase.from('projects').update({ payment_status: 'paid' }).eq('id', paymentProjectId).then(() => {
-        // 2. Fetch the project
-        supabase.from('projects').select('*').eq('id', paymentProjectId).single().then(({data}) => {
-          if (data) {
-             setProjectId(data.id);
-             setMapData({ 
-               ...DEFAULT_MAP_DATA, 
-               ...data.data, 
-               projectId: data.id, 
-               paymentStatus: 'paid', 
-               exportCount: data.export_count, 
-               autoExport: true 
-             });
-             setStep(7); // Jump straight to preview screen
+      // Cashfree redirected back here. Confirm the payment SERVER-SIDE (Cashfree
+      // Get-Order) instead of trusting the URL, writing from the client (the DB
+      // trigger forbids it → 403), or waiting on webhook timing. We await the
+      // session first because the page just reloaded and auth must be restored,
+      // then always land on the preview/download screen — never the home page.
+      (async () => {
+        await supabase.auth.getSession();
+        try {
+          for (let attempt = 0; attempt < 4; attempt++) {
+            const { data, error } = await supabase.functions.invoke('verify-payment', {
+              body: { projectId: paymentProjectId },
+            });
+            if (!error && data?.paid) break;
+            await new Promise(r => setTimeout(r, 1500)); // Cashfree may still be settling
           }
-        });
-      });
+        } catch (e) { console.error('verify-payment failed', e); }
+
+        // Retry the load — right after the redirect the auth session can still be
+        // settling, and a 0-row read would otherwise bounce the user to home.
+        let data: any = null;
+        for (let i = 0; i < 5 && !data; i++) {
+          const r = await supabase.from('projects').select('*').eq('id', paymentProjectId).maybeSingle();
+          data = r.data;
+          if (!data) await new Promise(res => setTimeout(res, 1000));
+        }
+        if (data) {
+          setProjectId(data.id);
+          setMapData({
+            ...DEFAULT_MAP_DATA,
+            ...data.data,
+            projectId: data.id,
+            paymentStatus: data.payment_status,
+            exportCount: data.export_count,
+          });
+          setStep(7); // Always land on the preview/download screen.
+        } else {
+          setStep(0); // Genuinely couldn't load — fall back to dashboard.
+        }
+      })();
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (isPaymentSuccess) {
       alert('Payment successful! Your export is now unlocked.');

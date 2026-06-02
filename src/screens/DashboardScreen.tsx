@@ -302,44 +302,62 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               <button onClick={() => onNewProject(undefined)} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
             </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((project) => (
-              <div
-                key={project.id}
-                onClick={() => onLoadProject(project.id, { ...project.data, paymentStatus: project.payment_status, exportCount: project.export_count })}
-                className="bg-white rounded-2xl p-5 shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10 cursor-pointer hover:shadow-[var(--shadow-warm-2)] hover:-translate-y-0.5 transition-all group relative overflow-hidden"
+        ) : (() => {
+          const renderCard = (project: any) => (
+            <div
+              key={project.id}
+              onClick={() => onLoadProject(project.id, { ...project.data, paymentStatus: project.payment_status, exportCount: project.export_count })}
+              className="bg-white rounded-2xl p-5 shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10 cursor-pointer hover:shadow-[var(--shadow-warm-2)] hover:-translate-y-0.5 transition-all group relative overflow-hidden"
+            >
+              <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${project.payment_status === 'paid' ? 'bg-green-500' : 'bg-[var(--color-india-green)]'}`} />
+              <button
+                onClick={(e) => handleDeleteUI(e, project)}
+                className="absolute top-2 right-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all min-h-[36px]"
+                title="Remove from Dashboard"
               >
-                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-[var(--color-india-green)]" />
-                <button
-                  onClick={(e) => handleDeleteUI(e, project)}
-                  className="absolute top-2 right-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all min-h-[36px]"
-                  title="Remove from Dashboard"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-                <div className="pl-2">
-                  <div className="flex items-start justify-between mb-3 pr-6">
-                    <h3 className="text-base font-bold font-public-sans text-[var(--color-charcoal)] group-hover:text-[var(--color-saffron)] transition-colors truncate">
-                      {project.name || 'Untitled Map'}
-                    </h3>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5 mb-3">
-                    <span className="text-[11px] font-bold bg-[var(--color-india-green)]/10 text-[var(--color-india-green)] px-2 py-1 rounded-full font-jetbrains-mono">{project.data?.blocks?.length || 0} Blocks</span>
-                    <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-jetbrains-mono">HLB {project.data?.hlbNumber || '—'}</span>
-                    {project.payment_status === 'paid' && <span className="text-[11px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">✓ Paid</span>}
-                  </div>
-                  <div className="text-xs text-gray-500 space-y-1 font-jetbrains-mono">
-                    <p className="truncate">📍 {project.data?.district || '—'}, {project.data?.state || '—'}</p>
-                    <p className="text-[10px] text-gray-400 pt-2 border-t border-gray-100">Edited {new Date(project.updated_at).toLocaleDateString()}</p>
-                  </div>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+              <div className="pl-2">
+                <div className="flex items-start justify-between mb-3 pr-6">
+                  <h3 className="text-base font-bold font-public-sans text-[var(--color-charcoal)] group-hover:text-[var(--color-saffron)] transition-colors truncate">
+                    {project.name || 'Untitled Map'}
+                  </h3>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                  <span className="text-[11px] font-bold bg-[var(--color-india-green)]/10 text-[var(--color-india-green)] px-2 py-1 rounded-full font-jetbrains-mono">{project.data?.blocks?.length || 0} Blocks</span>
+                  <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-jetbrains-mono">HLB {project.data?.hlbNumber || '—'}</span>
+                  {project.payment_status === 'paid'
+                    ? <span className="text-[11px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">✓ Paid · tap to download</span>
+                    : <span className="text-[11px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full">Draft</span>}
+                </div>
+                <div className="text-xs text-gray-500 space-y-1 font-jetbrains-mono">
+                  <p className="truncate">📍 {project.data?.district || '—'}, {project.data?.state || '—'}</p>
+                  <p className="text-[10px] text-gray-400 pt-2 border-t border-gray-100">Edited {new Date(project.updated_at).toLocaleDateString()}</p>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          );
+          const paid = projects.filter((p: any) => p.payment_status === 'paid');
+          const drafts = projects.filter((p: any) => p.payment_status !== 'paid');
+          return (
+            <div className="space-y-6">
+              {paid.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold text-green-700 uppercase tracking-wide mb-2">✓ Paid — ready to download ({paid.length})</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{paid.map(renderCard)}</div>
+                </div>
+              )}
+              {drafts.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Drafts ({drafts.length})</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{drafts.map(renderCard)}</div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {showDemoModal && (

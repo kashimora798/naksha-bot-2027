@@ -6,6 +6,19 @@ import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter, isHouseType, isNonR
 import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon, clusterByProximity, gridBlockOffsets, centroidXY } from './geo';
 import { drawSymbolOnCanvas } from './symbols';
 import { declutterSymbols } from './declutter';
+import type { RenderEnv, CanvasLike, ImageLike } from './render-env';
+import { browserEnv } from './render-env.browser';
+
+// Strip emoji + variation selectors from map labels. The official census sheet
+// shouldn't carry emoji anyway, and the server canvas (@napi-rs/canvas) has no
+// working emoji fallback (renders tofu boxes). Applied to every label we draw so
+// the browser preview and the server PDF look identical.
+function cleanLabel(s: string): string {
+  return s
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 // ═══════════════════════════════════════════════════════════
 // RENDER MAP TO CANVAS
@@ -14,7 +27,7 @@ import { declutterSymbols } from './declutter';
 // No white gaps. No uniform scaling that leaves 50% blank.
 // ═══════════════════════════════════════════════════════════
 export function renderMapToCanvas(
-  canvas: HTMLCanvasElement, data: MapData, maxW: number, maxH: number,
+  canvas: CanvasLike, data: MapData, maxW: number, maxH: number,
   options?: { watermark?: boolean; transparentBg?: boolean; hideSymbols?: boolean; focusBounds?: { south: number, west: number, north: number, east: number } }
 ): void {
   const orient = data.orientation || 'portrait';
@@ -116,7 +129,7 @@ export function renderMapToCanvas(
       const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
       ctx.fillStyle = style.stroke; ctx.font = `bold ${Math.max(8, symSz * 0.4)}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(style.label, cx, cy);
+      ctx.fillText(cleanLabel(style.label), cx, cy);
     }
   }
 
@@ -133,7 +146,7 @@ export function renderMapToCanvas(
       const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
       ctx.fillStyle = '#2E7D32'; ctx.font = `bold ${Math.max(10, symSz * 0.5)}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(`🌾 ${fb.label}`, cx, cy);
+      ctx.fillText(cleanLabel(`🌾 ${fb.label}`), cx, cy);
     }
   }
 
@@ -486,7 +499,7 @@ export function renderMapToCanvas(
 // ═══════════════════════════════════════════════════════════
 // EXPORT — synchronous, reliable, zero-failure
 // ═══════════════════════════════════════════════════════════
-export function exportPDF(data: MapData, canvas?: HTMLCanvasElement): void {
+export function exportPDF(data: MapData, canvas?: CanvasLike, env: RenderEnv = browserEnv): void {
   const orient = data.orientation || 'portrait';
   const isL = orient === 'landscape';
   const a4W = isL ? 297 : 210;
@@ -498,7 +511,7 @@ export function exportPDF(data: MapData, canvas?: HTMLCanvasElement): void {
   if (canvas) {
     imgData = canvas.toDataURL('image/jpeg', 0.92);
   } else {
-    const c = document.createElement('canvas');
+    const c = env.createCanvas(cW, cH);
     renderMapToCanvas(c, data, cW, cH);
     imgData = c.toDataURL('image/jpeg', 0.92);
   }
@@ -556,21 +569,18 @@ function findNearestRoadBearing(sym: PlacedSymbol, roads: RoadFeature[]): number
 function lng2t(lng: number, z: number): number { return Math.floor((lng + 180) / 360 * Math.pow(2, z)); }
 function lat2t(lat: number, z: number): number { return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z)); }
 
-async function captureSat(s: number, w: number, n: number, e: number): Promise<HTMLCanvasElement> {
+async function captureSat(s: number, w: number, n: number, e: number, env: RenderEnv = browserEnv): Promise<CanvasLike> {
   const dlat = n - s, dlng = e - w;
   const z = dlat > 0.006 ? 16 : dlat > 0.002 ? 17 : 18;
   const T = 256;
   const x1 = lng2t(w, z), x2 = lng2t(e, z), y1 = lat2t(n, z), y2 = lat2t(s, z);
-  const c = document.createElement('canvas');
-  c.width = (x2 - x1 + 1) * T; c.height = (y2 - y1 + 1) * T;
+  const c = env.createCanvas((x2 - x1 + 1) * T, (y2 - y1 + 1) * T);
   const ctx = c.getContext('2d')!;
-ctx.fillStyle = '#ddd'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#ddd'; ctx.fillRect(0, 0, c.width, c.height);
   if ((x2 - x1 + 1) * (y2 - y1 + 1) > 36) return c;
   for (let x = x1; x <= x2; x++) for (let y = y1; y <= y2; y++) {
     try {
-      const img = new Image(); img.crossOrigin = 'anonymous';
-      img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
-      await new Promise<void>(r => { img.onload = () => r(); img.onerror = () => r(); });
+      const img = await env.loadImage(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`);
       ctx.drawImage(img, (x - x1) * T, (y - y1) * T, T, T);
     } catch {}
   }
@@ -583,8 +593,10 @@ ctx.fillStyle = '#ddd'; ctx.fillRect(0, 0, c.width, c.height);
 export async function exportBlockPDF(
   data: MapData,
   orient: 'landscape' | 'portrait',
-  onProgress: (msg: string) => void
-): Promise<void> {
+  onProgress: (msg: string) => void,
+  env: RenderEnv = browserEnv,
+  deliver: 'download' | 'buffer' = 'download',
+): Promise<ArrayBuffer> {
   const isL = orient === 'landscape';
   const sheet = data.sheetSize === 'a3' ? 'a3' : 'a4';
   // A4: 210×297, A3: 297×420 (mm)
@@ -592,10 +604,14 @@ export async function exportBlockPDF(
   const longSide = sheet === 'a3' ? 420 : 297;
   const a4W = isL ? longSide : shortSide;
   const a4H = isL ? shortSide : longSide;
-  const dpi = 150;
+  // 120 DPI prints crisply on A4/A3 and ~halves the pixel count vs 150 → much
+  // smaller pages. Line-art pages go in as PNG (lossless + crisp text); photo
+  // pages (satellite, AI) as JPEG at SAT_Q. compress:true deflates PDF streams.
+  const dpi = 120;
+  const SAT_Q = 0.78;
   const pw = Math.round((a4W * dpi) / 25.4);
   const ph = Math.round((a4H * dpi) / 25.4);
-  const doc = new jsPDF({ orientation: orient, unit: 'mm', format: sheet });
+  const doc = new jsPDF({ orientation: orient, unit: 'mm', format: sheet, compress: true });
 
   const blocks = data.blocks && data.blocks.length > 1 ? data.blocks : [];
   let totalPages = blocks.length > 1 ? 1 + blocks.length * 2 : 1;
@@ -610,15 +626,16 @@ export async function exportBlockPDF(
   const pW = bb.west - pLng; const pE = bb.east + pLng;
   const pS = bb.south - pLat; const pN = bb.north + pLat;
 
-  const satCanvas = await captureSat(pS, pW, pN, pE);
+  const satCanvas = await captureSat(pS, pW, pN, pE, env);
 
   // ─── PAGE 1: OVERVIEW (all blocks visible) ──────────────
   onProgress(`Page ${++page}/${totalPages} — Overview`);
   await new Promise(r => setTimeout(r, 50));
   {
-    const c = document.createElement('canvas');
+    const c = env.createCanvas(pw, ph);
     renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph);
-    doc.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, a4W, a4H);
+    // Line-art sketch → PNG: lossless, crisp text, and smaller than JPEG for line work.
+    doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
     addOverlays(doc, data, a4W, a4H, 'OVERVIEW', { south: pS, west: pW, north: pN, east: pE });
   }
 
@@ -628,36 +645,37 @@ export async function exportBlockPDF(
     await new Promise(r => setTimeout(r, 50));
     doc.addPage();
 
-    const c2 = document.createElement('canvas');
-    c2.width = pw; c2.height = ph;
+    const c2 = env.createCanvas(pw, ph);
     const ctx2 = c2.getContext('2d')!;
-    ctx2.drawImage(satCanvas, 0, 0, pw, ph);
+    ctx2.drawImage(satCanvas as any, 0, 0, pw, ph);
 
     ctx2.globalAlpha = 0.5;
-    
-    let imgData = data.surveyMapBase64;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = imgData.startsWith('http') || imgData.startsWith('data:') ? imgData : `data:image/jpeg;base64,${imgData}`;
-    await new Promise<void>((resolve) => {
-      img.onload = () => resolve();
-      img.onerror = () => resolve(); // Skip silently on error
-    });
-    ctx2.drawImage(img, 0, 0, pw, ph);
+
+    const imgData = data.surveyMapBase64;
+    const src = imgData.startsWith('http') || imgData.startsWith('data:') ? imgData : `data:image/jpeg;base64,${imgData}`;
+    let aiImg: ImageLike | null = null;
+    try { aiImg = await env.loadImage(src); } catch { aiImg = null; }
+    if (aiImg) ctx2.drawImage(aiImg as any, 0, 0, pw, ph);
 
     ctx2.globalAlpha = 1.0;
-    doc.addImage(c2.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, a4W, a4H);
+    doc.addImage(c2.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
     addOverlays(doc, data, a4W, a4H, 'AI COMPARISON OVERLAY', { south: pS, west: pW, north: pN, east: pE });
 
     // ─── PAGE 1.6: FULL AI MAP (CLEAN) ──────────────────────────
     onProgress(`Page ${++page}/${totalPages} — Full AI Survey Map`);
     await new Promise(r => setTimeout(r, 50));
     doc.addPage();
-    try {
-      doc.addImage(img, 'JPEG', 0, 0, a4W, a4H);
-      addOverlays(doc, data, a4W, a4H, 'AI SURVEY MAP', { south: pS, west: pW, north: pN, east: pE });
-    } catch (e) {
-      console.error('Failed to add AI image to PDF', e);
+    if (aiImg) {
+      try {
+        // Draw onto a canvas first so jsPDF gets a portable data URL — passing a
+        // raw Image works in the browser but not with @napi-rs/canvas on the server.
+        const cAi = env.createCanvas(pw, ph);
+        cAi.getContext('2d')!.drawImage(aiImg as any, 0, 0, pw, ph);
+        doc.addImage(cAi.toDataURL('image/jpeg', 0.82), 'JPEG', 0, 0, a4W, a4H);
+        addOverlays(doc, data, a4W, a4H, 'AI SURVEY MAP', { south: pS, west: pW, north: pN, east: pE });
+      } catch (e) {
+        console.error('Failed to add AI image to PDF', e);
+      }
     }
   }
 
@@ -676,7 +694,7 @@ export async function exportBlockPDF(
       const blkBB = getBbox(blkPts);
 
       {
-        const c = document.createElement('canvas');
+        const c = env.createCanvas(pw, ph);
         const blkSym = data.symbols.filter(s => {
           return pointInPolygon({ lat: s.lat, lng: s.lng }, blkPts);
         });
@@ -710,7 +728,7 @@ export async function exportBlockPDF(
           ctx.beginPath(); pp.forEach(([x, y], j) => j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
         });
         doc.addPage();
-        doc.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, a4W, a4H);
+        doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
         addOverlays(doc, data, a4W, a4H, `BLOCK ${blk.label}`, blkBB);
         // Locator inset (bottom-right): whole HLB with this block highlighted.
         drawLocatorInset(doc, data, blkPts, a4W, a4H);
@@ -723,11 +741,11 @@ export async function exportBlockPDF(
         // Capture satellite dynamically for this block
         const padLng = (blkBB.east - blkBB.west) * 0.15;
         const padLat = (blkBB.north - blkBB.south) * 0.15;
-        const blockSatCanvas = await captureSat(blkBB.south - padLat, blkBB.west - padLng, blkBB.north + padLat, blkBB.east + padLng);
+        const blockSatCanvas = await captureSat(blkBB.south - padLat, blkBB.west - padLng, blkBB.north + padLat, blkBB.east + padLng, env);
 
         doc.addPage();
-        doc.addImage(blockSatCanvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, a4W, a4H);
-        const c = document.createElement('canvas');
+        doc.addImage(blockSatCanvas.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
+        const c = env.createCanvas(pw, ph);
         renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true, focusBounds: blkBB });
         doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
         addOverlays(doc, data, a4W, a4H, `SATELLITE — Block ${blk.label}`, blkBB);
@@ -738,8 +756,8 @@ export async function exportBlockPDF(
     onProgress(`Page ${++page}/${totalPages} — Satellite`);
     await new Promise(r => setTimeout(r, 50));
     doc.addPage();
-    doc.addImage(satCanvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, a4W, a4H);
-    const c = document.createElement('canvas');
+    doc.addImage(satCanvas.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
+    const c = env.createCanvas(pw, ph);
     renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true });
     doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
     addOverlays(doc, data, a4W, a4H, 'SATELLITE REFERENCE', { south: pS, west: pW, north: pN, east: pE });
@@ -750,7 +768,11 @@ export async function exportBlockPDF(
   // every house number is legible. A marker on the main map references "Inset N".
   await addClusterInsetPages(doc, data, orient, a4W, a4H, pw, ph, onProgress, () => ++page, totalPages);
 
-  doc.save(`HLB_${data.hlbNumber || '0000'}_Naksha_2027.pdf`);
+  // Server wants raw bytes to stream; the browser triggers a download.
+  if (deliver === 'download') {
+    doc.save(`HLB_${data.hlbNumber || '0000'}_Naksha_2027.pdf`);
+  }
+  return doc.output('arraybuffer');
 }
 
 // Detect extremely dense clusters (in lat/lng space) and render one enlarged page each.

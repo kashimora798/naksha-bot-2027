@@ -64,7 +64,12 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const mapData = project.data;
+    const mapData = typeof project.data === 'string' ? JSON.parse(project.data) : project.data;
+    
+    if (!mapData || !mapData.boundaryPins || mapData.boundaryPins.length < 3) {
+      res.status(400).json({ error: 'Project data is missing boundary pins.' });
+      return;
+    }
     const orient = (body.orientation === 'landscape' || mapData?.orientation === 'landscape')
       ? 'landscape' : 'portrait';
 
@@ -79,6 +84,6 @@ export default async function handler(req: any, res: any) {
     res.status(200).send(Buffer.from(buf));
   } catch (err: any) {
     console.error('render-pdf error:', err?.stack || err);
-    res.status(500).json({ error: 'Render failed' });
+    res.status(500).json({ error: 'Render failed: ' + (err.message || String(err)) });
   }
 }

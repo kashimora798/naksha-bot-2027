@@ -12,11 +12,15 @@ function ensureFonts() {
   // Latin is aliased to "sans-serif" (the family the renderer hard-codes); Devanagari
   // is registered too and picked up by glyph fallback for Hindi text. (Emoji are
   // stripped by the renderer — napi has no working emoji fallback, see render-text.)
-  const dir = join(process.cwd(), 'public', 'fonts');
-  GlobalFonts.registerFromPath(join(dir, 'NotoSans-Regular.ttf'), 'sans-serif');
-  GlobalFonts.registerFromPath(join(dir, 'NotoSans-Bold.ttf'), 'sans-serif');
-  GlobalFonts.registerFromPath(join(dir, 'NotoSansDevanagari-Regular.ttf'), 'sans-serif');
-  GlobalFonts.registerFromPath(join(dir, 'NotoSansDevanagari-Bold.ttf'), 'sans-serif');
+  try {
+    const dir = join(process.cwd(), 'public', 'fonts');
+    GlobalFonts.registerFromPath(join(dir, 'NotoSans-Regular.ttf'), 'sans-serif');
+    GlobalFonts.registerFromPath(join(dir, 'NotoSans-Bold.ttf'), 'sans-serif');
+    GlobalFonts.registerFromPath(join(dir, 'NotoSansDevanagari-Regular.ttf'), 'sans-serif');
+    GlobalFonts.registerFromPath(join(dir, 'NotoSansDevanagari-Bold.ttf'), 'sans-serif');
+  } catch (err) {
+    console.warn('Failed to load local fonts in Vercel. Falling back to default canvas fonts.', err);
+  }
   fontsReady = true;
 }
 

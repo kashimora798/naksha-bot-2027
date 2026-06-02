@@ -574,7 +574,17 @@ async function captureSat(s: number, w: number, n: number, e: number, env: Rende
   const z = dlat > 0.006 ? 16 : dlat > 0.002 ? 17 : 18;
   const T = 256;
   const x1 = lng2t(w, z), x2 = lng2t(e, z), y1 = lat2t(n, z), y2 = lat2t(s, z);
-  const c = env.createCanvas((x2 - x1 + 1) * T, (y2 - y1 + 1) * T);
+  let cw = (x2 - x1 + 1) * T;
+  let ch = (y2 - y1 + 1) * T;
+  
+  // Safeguard against invalid bounding boxes that would crash napi-rs/canvas natively
+  if (isNaN(cw) || isNaN(ch) || cw <= 0 || ch <= 0) {
+    cw = 256; ch = 256;
+  }
+  if (cw > 8000) cw = 8000;
+  if (ch > 8000) ch = 8000;
+
+  const c = env.createCanvas(cw, ch);
   const ctx = c.getContext('2d')!;
   ctx.fillStyle = '#ddd'; ctx.fillRect(0, 0, c.width, c.height);
   if ((x2 - x1 + 1) * (y2 - y1 + 1) > 36) return c;

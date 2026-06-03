@@ -43,6 +43,10 @@ export default function App() {
   const [resumeSessionId, setResumeSessionId] = useState<string | null>(null);
 
   const update = useCallback((u: Partial<MapData>) => setMapData(p => ({ ...p, ...u })), []);
+  // inMap: true for all map-workspace steps (3–6). MapWorkspace is ALWAYS mounted
+  // once entered (just hidden with display:none) so the Leaflet map instance is
+  // never destroyed on tab switches or when preview/other screens overlay it.
+  const hasEnteredMap = step >= 3 && step <= 7;
   const inMap = step >= 3 && step <= 6;
 
   // Title-block particulars seeded from the user's profile (Phase 2). Saved project
@@ -134,8 +138,18 @@ export default function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      // Only update session state when the user identity changes (sign in/out).
+      // Silent token refreshes keep the same user.id — updating state for those
+      // would trigger a full App re-render and cause MapWorkspace to re-mount
+      // (destroying the Leaflet map) every time the browser refreshes the JWT
+      // on tab focus. We compare user IDs to skip no-op updates.
+      setSession((prev: any) => {
+        const prevId = (prev as any)?.user?.id ?? null;
+        const nextId = newSession?.user?.id ?? null;
+        if (prevId === nextId) return prev; // same user — skip re-render
+        return newSession;
+      });
     });
 
     const params = new URLSearchParams(window.location.search);
@@ -336,10 +350,15 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Track previous user id to avoid re-fetching profile on silent token refreshes.
+  const prevUserId = useRef<string | null>(null);
   useEffect(() => {
-    if (session?.user?.id) {
+    const uid = session?.user?.id ?? null;
+    if (uid === prevUserId.current) return; // same user — skip profile re-fetch
+    prevUserId.current = uid;
+    if (uid) {
       setProfileLoading(true);
-      supabase.from('user_profiles').select('*').eq('id', session.user.id).maybeSingle().then(({ data, error }) => {
+      supabase.from('user_profiles').select('*').eq('id', uid).maybeSingle().then(({ data, error }) => {
         if (error && error.code !== 'PGRST116') console.error('Error fetching profile:', error);
         setUserProfile(data);
         setProfileLoading(false);
@@ -555,29 +574,37 @@ export default function App() {
       <div className="flex-1 relative overflow-hidden min-h-0">
         <ErrorBoundary>
         {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); setStep(3); }} onBack={() => setStep(0)} isDemoMode={isDemoMode} /></div>}
-        {inMap && <MapWorkspace
-          step={step} center={mapData.center} boundaryPins={mapData.boundaryPins} boundaryClosed={mapData.boundaryClosed}
-          roads={mapData.roads} symbols={mapData.symbols} hlbNumber={mapData.hlbNumber} blocks={mapData.blocks} farmlandBlocks={mapData.farmlandBlocks}
-          waterBodies={mapData.waterBodies} forests={mapData.forests} landuseAreas={mapData.landuseAreas} landmarks={mapData.landmarks} areaStats={mapData.areaStats}
-          onUpdateBoundary={(p: Coordinate[], c: boolean) => update({ boundaryPins: p, boundaryClosed: c })}
-          onUpdateRoads={(r: RoadFeature[]) => update({ roads: r })}
-          onUpdateSymbols={(s: PlacedSymbol[]) => {
-            const houses = s.filter(x => isHouseType(x.symbol_type));
-            update({ symbols: s, numberingComplete: houses.length > 0 && houses.every(x => x.number !== null) });
-          }}
-          onUpdateBlocks={b => update({ blocks: b })}
-          onUpdateFarmland={f => update({ farmlandBlocks: f })}
-          onUpdateWater={w => update({ waterBodies: w })}
-          onUpdateForests={f => update({ forests: f })}
-          onUpdateLandmarks={l => update({ landmarks: l })}
-          onUpdateStats={s => update({ areaStats: s })}
-          onUpdateOrientation={o => update({ orientation: o })}
-          onUpdateMapData={update}
-          onStepComplete={() => setStep(s => s + 1)}
-          onJumpToPreview={() => setStep(7)}
-          isDemoMode={isDemoMode}
-          onDemoComplete={() => setIsDemoMode(false)}
-        />}
+        {/* MapWorkspace is kept permanently mounted (never conditionally removed)
+            once the user enters the map flow. We toggle visibility with display:none
+            so the Leaflet map instance stays alive across tab switches, preventing
+            the map from being destroyed and re-created every time the tab gains focus.
+            Without this, onAuthStateChange token refreshes → React re-renders →
+            inMap toggles → Leaflet map.remove() + new L.map() = visible jitter. */}
+        <div style={{ display: hasEnteredMap ? (inMap ? 'block' : 'none') : 'none', position: 'absolute', inset: 0 }}>
+          {hasEnteredMap && <MapWorkspace
+            step={step} center={mapData.center} boundaryPins={mapData.boundaryPins} boundaryClosed={mapData.boundaryClosed}
+            roads={mapData.roads} symbols={mapData.symbols} hlbNumber={mapData.hlbNumber} blocks={mapData.blocks} farmlandBlocks={mapData.farmlandBlocks}
+            waterBodies={mapData.waterBodies} forests={mapData.forests} landuseAreas={mapData.landuseAreas} landmarks={mapData.landmarks} areaStats={mapData.areaStats}
+            onUpdateBoundary={(p: Coordinate[], c: boolean) => update({ boundaryPins: p, boundaryClosed: c })}
+            onUpdateRoads={(r: RoadFeature[]) => update({ roads: r })}
+            onUpdateSymbols={(s: PlacedSymbol[]) => {
+              const houses = s.filter(x => isHouseType(x.symbol_type));
+              update({ symbols: s, numberingComplete: houses.length > 0 && houses.every(x => x.number !== null) });
+            }}
+            onUpdateBlocks={b => update({ blocks: b })}
+            onUpdateFarmland={f => update({ farmlandBlocks: f })}
+            onUpdateWater={w => update({ waterBodies: w })}
+            onUpdateForests={f => update({ forests: f })}
+            onUpdateLandmarks={l => update({ landmarks: l })}
+            onUpdateStats={s => update({ areaStats: s })}
+            onUpdateOrientation={o => update({ orientation: o })}
+            onUpdateMapData={update}
+            onStepComplete={() => setStep(s => s + 1)}
+            onJumpToPreview={() => setStep(7)}
+            isDemoMode={isDemoMode}
+            onDemoComplete={() => setIsDemoMode(false)}
+          />}
+        </div>
         {(step === 7) && (
           <div className="h-full">
             <PreviewScreen

@@ -23,7 +23,8 @@ export default async function handler(req: any, res: any) {
     if (!SUPABASE_URL || !SERVICE_KEY) { res.status(500).json({ error: 'Server not configured' }); return; }
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const { projectId, satelliteBase64, prompt, promptKey, ratio } = body;
+    const { projectId, satelliteBase64, prompt, promptKey, ratio, kind } = body;
+    const isLive = kind === 'live';
     if (!projectId || !satelliteBase64 || !prompt) {
       res.status(400).json({ error: 'Missing projectId, satelliteBase64 or prompt' });
       return;
@@ -34,17 +35,55 @@ export default async function handler(req: any, res: any) {
     if (userErr || !userData?.user) { res.status(401).json({ error: 'Invalid session' }); return; }
     const userId = userData.user.id;
 
-    // Owned project + server-controlled regen counters.
-    const { data: project, error: projErr } = await admin
-      .from('projects')
-      .select('id, regen_allowance, regen_used')
-      .eq('id', projectId).eq('user_id', userId).single();
-    if (projErr || !project) { res.status(404).json({ error: 'Project not found' }); return; }
+    let regenAllowance = 1;
+    let regenUsed = 0;
+    let project: any = null;
 
-    if ((project.regen_used ?? 0) >= (project.regen_allowance ?? 0)) {
+    if (isLive) {
+      const { data: liveExport, error: liveErr } = await admin
+        .from('live_exports')
+        .select('session_id, regen_allowance, regen_used')
+        .eq('session_id', projectId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (liveErr) { res.status(500).json({ error: 'Database check failed' }); return; }
+
+      if (!liveExport) {
+        // First generation before payment — insert draft row
+        const { error: insErr } = await admin
+          .from('live_exports')
+          .insert({
+            session_id: projectId,
+            user_id: userId,
+            payment_status: 'unpaid',
+            regen_allowance: 1,
+            regen_used: 0
+          });
+        if (insErr) {
+          res.status(500).json({ error: 'Failed to initialize live export limits' });
+          return;
+        }
+      } else {
+        regenAllowance = liveExport.regen_allowance ?? 1;
+        regenUsed = liveExport.regen_used ?? 0;
+      }
+    } else {
+      // Owned project + server-controlled regen counters.
+      const { data: proj, error: projErr } = await admin
+        .from('projects')
+        .select('id, regen_allowance, regen_used')
+        .eq('id', projectId).eq('user_id', userId).single();
+      if (projErr || !proj) { res.status(404).json({ error: 'Project not found' }); return; }
+      project = proj;
+      regenAllowance = project.regen_allowance ?? 1;
+      regenUsed = project.regen_used ?? 0;
+    }
+
+    if (regenUsed >= regenAllowance) {
       res.status(402).json({
         error: 'regen_limit',
-        used: project.regen_used, allowance: project.regen_allowance,
+        used: regenUsed, allowance: regenAllowance,
       });
       return;
     }
@@ -73,26 +112,55 @@ export default async function handler(req: any, res: any) {
     else if (contentType.includes('png')) ext = 'png';
 
     // 3) Store in Supabase Storage (public bucket "ai-maps").
+    try {
+      const { data: bucketExists } = await admin.storage.getBucket(BUCKET);
+      if (!bucketExists) {
+        const { error: createErr } = await admin.storage.createBucket(BUCKET, {
+          public: true,
+          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+          fileSizeLimit: 52428800
+        });
+        if (createErr) console.error('Failed to create ai-maps bucket:', createErr);
+      }
+    } catch (err) {
+      console.warn('Error checking/creating bucket, trying upload:', err);
+    }
+
     const ts = Date.now();
     const path = `${userId}/${projectId}/${ts}.${ext}`;
     const up = await admin.storage.from(BUCKET).upload(path, buffer, { contentType, upsert: true });
     if (up.error) { console.error('storage upload', up.error); res.status(500).json({ error: 'Storage upload failed' }); return; }
     const publicUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 
-    // 4) Record it (default-select the newest; deselect older ones for this project).
-    await admin.from('image_generations').update({ selected: false }).eq('project_id', projectId);
-    await admin.from('image_generations').insert({
-      project_id: projectId, user_id: userId,
-      prompt_key: promptKey || 'custom', prompt, image_url: publicUrl, selected: true,
-    });
+    // 4) Record it (default-select the newest; deselect older ones).
+    if (isLive) {
+      await admin.from('live_image_generations').update({ selected: false }).eq('session_id', projectId);
+      await admin.from('live_image_generations').insert({
+        session_id: projectId, user_id: userId,
+        prompt_key: promptKey || 'custom', prompt, image_url: publicUrl, selected: true,
+      });
+    } else {
+      await admin.from('image_generations').update({ selected: false }).eq('project_id', projectId);
+      await admin.from('image_generations').insert({
+        project_id: projectId, user_id: userId,
+        prompt_key: promptKey || 'custom', prompt, image_url: publicUrl, selected: true,
+      });
+    }
 
     // 5) Count the regeneration (atomic, server-only RPC).
-    const { data: used } = await admin.rpc('increment_regen_used', { proj_id: projectId });
+    let used = 0;
+    if (isLive) {
+      const { data: usedVal } = await admin.rpc('increment_live_regen_used', { sess_id: projectId });
+      used = usedVal ?? (regenUsed + 1);
+    } else {
+      const { data: usedVal } = await admin.rpc('increment_regen_used', { proj_id: projectId });
+      used = usedVal ?? (project.regen_used + 1);
+    }
 
     res.status(200).json({
       url: publicUrl,
-      used: used ?? (project.regen_used + 1),
-      allowance: project.regen_allowance,
+      used,
+      allowance: regenAllowance,
       bytes: buffer.length,
     });
   } catch (err: any) {

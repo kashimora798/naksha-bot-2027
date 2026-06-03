@@ -1585,7 +1585,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
               <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xl font-bold">{(stats.distance / 1000).toFixed(2)}km</p><p className="text-xs text-gray-500">Distance walked</p></div>
             </div>
             <p className="text-xs text-gray-500 text-center">Tap any house on the map to edit its number</p>
-            <button onClick={() => window.location.href = `/app?live_preview_id=${engineRef.current?.sessionId}`} className="w-full min-h-[52px] bg-[var(--color-india-green)] text-white rounded-full font-bold text-lg font-baloo active:scale-95">✓ Generate Map</button>
+            <button onClick={() => navigate(`/live-session/${engineRef.current?.sessionId}`)} className="w-full min-h-[52px] bg-[var(--color-india-green)] text-white rounded-full font-bold text-lg font-baloo active:scale-95">✓ View Map & Register</button>
           </div>
         </>
       )}

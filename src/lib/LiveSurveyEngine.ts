@@ -384,6 +384,18 @@ export class LiveSurveyEngine {
           const osmCheck = this.checkOsmRoadProximity(smoothed);
           if (osmCheck.onRoad) {
             if (!this.onOsmRoad) {
+              // We just entered an OSM road. Commit any active custom segment.
+              if (this.currentSegment.points.length >= 2) {
+                this.roadSegments.push({
+                  segment_id: crypto.randomUUID(),
+                  session_id: this.sessionId,
+                  road_type: this.currentSegment.type,
+                  type: this.currentSegment.type,
+                  points: [...this.currentSegment.points]
+                });
+              }
+              this.currentSegment.points = [];
+ 
               this.onOsmRoad = true;
               this.currentOsmRoad = osmCheck.road;
               this.emit('osmRoadEntered', { road: osmCheck.road });
@@ -395,12 +407,20 @@ export class LiveSurveyEngine {
             this.onOsmRoad = false;
             this.currentOsmRoad = null;
             this.emit('osmRoadLeft');
+ 
+            // We just left an OSM road. Start recording a new custom segment.
+            this.currentSegment.points = [finalPoint];
           }
         }
-
+ 
         this.rawPoints.push(raw);
         this.smoothedPath.push(finalPoint);
-        this.currentSegment.points.push(finalPoint);
+ 
+        // ONLY record to user-drawn segment if NOT on an OSM road!
+        if (!this.onOsmRoad) {
+          this.currentSegment.points.push(finalPoint);
+        }
+ 
         this.snapBuffer.push(finalPoint); // For batch OSRM map matching
         isPathPoint = true;
         emitPosition = finalPoint;

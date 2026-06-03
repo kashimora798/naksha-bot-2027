@@ -7,6 +7,7 @@ const STEP_NAMES = [
   'Roads',
   'Symbols',
   'Numbering',
+  'AI Map',
   'Preview',
   'Export',
 ];

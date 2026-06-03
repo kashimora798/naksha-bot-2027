@@ -1,5 +1,6 @@
 import type { Coordinate } from '../types';
 import { getBbox } from './geo';
+import { supabase } from './supabase';
 
 // ═══════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -8,7 +9,18 @@ import { getBbox } from './geo';
 // Change this to your API server address
 export const API_BASE = import.meta.env.VITE_API_BASE || 'https://pixelster.vercel.app';
 
-const SURVEY_MAP_PROMPT = `Convert this satellite aerial image into a clean official survey map in the style of Survey of India topographic sheets. Use cream white paper background. Roads and lanes must be the dominant visual element — draw main roads as bold double black lines 3px wide with white fill between them, small lanes as single solid black lines 1.5px, footpaths as dashed black lines 1px. Building clusters must be drawn as simple solid black outlined rectangles grouped together, no individual roof details, no irregular shapes, just clean rectangular blocks. Agricultural fields and open land must have only a thin 1px outline with zero fill or hatching inside — fields must appear as empty white outlined polygons, not textured. Trees and vegetation must be represented only as small simple circular outlines 0.5px, no shading, no scribble, placed at the edge of settlement areas only. Water bodies must be light blue filled simple shapes. The entire image must have high contrast black lines on white/cream background. No artistic shading, no pencil texture, no crosshatching anywhere except optionally very light parallel lines inside agricultural fields only. The visual hierarchy must be: roads most prominent, then settlement block outlines, then field boundaries, then vegetation last. This is a government census layout map not an artistic illustration. and also the red colour boundary should be marked with the dotted line in the map `;
+export const SURVEY_MAP_PROMPT = `Convert this satellite aerial image into a clean official survey map in the style of Survey of India topographic sheets. Use cream white paper background. Roads and lanes must be the dominant visual element — draw main roads as bold double black lines 3px wide with white fill between them, small lanes as single solid black lines 1.5px, footpaths as dashed black lines 1px. Building clusters must be drawn as simple solid black outlined rectangles grouped together, no individual roof details, no irregular shapes, just clean rectangular blocks. Agricultural fields and open land must have only a thin 1px outline with zero fill or hatching inside — fields must appear as empty white outlined polygons, not textured. Trees and vegetation must be represented only as small simple circular outlines 0.5px, no shading, no scribble, placed at the edge of settlement areas only. Water bodies must be light blue filled simple shapes. The entire image must have high contrast black lines on white/cream background. No artistic shading, no pencil texture, no crosshatching anywhere except optionally very light parallel lines inside agricultural fields only. The visual hierarchy must be: roads most prominent, then settlement block outlines, then field boundaries, then vegetation last. This is a government census layout map not an artistic illustration. and also the red colour boundary should be marked with the dotted line in the map `;
+
+export const SURVEY_MAP_PROMPT_2 = `Convert this satellite image into a high-contrast cadastral layout map for official census boundary verification. The map must have a stark white background with solid black line details. Visual priority 1 is roads: draw all streets as clean, double-lined pathways with white space in between. Visual priority 2 is buildings: draw all structures as simple, solid-outlined dark grey or black rectangles, forming legible block segments. Agricultural fields, plots, and land boundaries must be marked with very fine black outlines, leaving the interior clean and transparent. Forests and tree clusters should be represented by minimal, green-tinted outlined zones without dense textures. All lines must be sharp, vector-quality, and flat, suitable for technical printing. No gradients, shadows, or hand-drawn sketches. Draw the red census area boundary as a bold, dashed red line.`;
+
+export const SURVEY_MAP_PROMPT_3 = `Convert this satellite view into a detailed urban census layout plan. Background must be solid off-white. Highlight urban density: draw individual buildings and housing clusters as crisp, grey-filled rectangles with distinct black outlines, leaving narrow white alleys between them. Major roads must be drawn as thick double-line roads, and smaller lanes as single lines. Include simple symbols or small circular outlines for landmarks and public spaces. Avoid realistic satellite textures, terrain shading, or complex colors. Use a minimalist, technical vector cartography style with high contrast. The red study boundary must be plotted as a clear dashed red line.`;
+
+export const PREDEFINED_PROMPTS = [
+  { id: 'soi_topo', name: 'Official Topographic Layout', prompt: SURVEY_MAP_PROMPT },
+  { id: 'cadastral', name: 'Cadastral Census Block Map', prompt: SURVEY_MAP_PROMPT_2 },
+  { id: 'urban_density', name: 'Urban High-Density Plan', prompt: SURVEY_MAP_PROMPT_3 }
+];
+
 
 // ═══════════════════════════════════════════════════════════
 // SATELLITE TILE CAPTURE — High quality rectangular capture
@@ -293,7 +305,8 @@ export interface SurveyMapResult {
 export async function generateSurveyMap(
   satelliteBase64: string,
   ratio: string = '1:1',
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  customPrompt?: string
 ): Promise<SurveyMapResult> {
   onProgress?.('Sending to AI...');
 
@@ -302,7 +315,7 @@ export async function generateSurveyMap(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prompt: SURVEY_MAP_PROMPT,
+        prompt: customPrompt || SURVEY_MAP_PROMPT,
         ratio,
         imageBase64: satelliteBase64,
       }),
@@ -354,7 +367,8 @@ export async function generateSurveyMapFromBoundary(
   mapData: any, // using any to avoid circular type dependency if MapData isn't imported, but we can import MapData
   orientation: 'landscape' | 'portrait',
   onProgress?: (msg: string) => void,
-  onPreviewImage?: (base64DataUrl: string) => Promise<boolean>
+  onPreviewImage?: (base64DataUrl: string) => Promise<boolean>,
+  customPrompt?: string
 ): Promise<SurveyMapResult> {
   const boundary = mapData.boundaryPins;
   if (!boundary || boundary.length < 3) return { success: false, error: 'Need at least 3 boundary points' };
@@ -373,8 +387,48 @@ export async function generateSurveyMapFromBoundary(
     onProgress?.('Sending to AI...');
   }
 
+  // If we have a project ID and are not in demo mode, use the secure serverless API
+  if (mapData.projectId) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        onProgress?.('Generating AI map securely...');
+        const response = await fetch('/api/generate-map', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            projectId: mapData.projectId,
+            satelliteBase64: base64,
+            prompt: customPrompt || SURVEY_MAP_PROMPT,
+            promptKey: customPrompt ? 'custom' : 'default',
+            ratio: 'auto',
+            kind: (mapData as any).isLive ? 'live' : 'project'
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          if (response.status === 402 && errData.error === 'regen_limit') {
+            return { success: false, error: 'regen_limit' };
+          }
+          return { success: false, error: errData.error || `Server error (${response.status})` };
+        }
+
+        const data = await response.json();
+        if (data && data.url) {
+          return { success: true, imageUrl: data.url };
+        }
+      }
+    } catch (e: any) {
+      console.error('Secure generation failed, falling back to direct API:', e);
+    }
+  }
+
   // The Vercel API supports ratio: "auto" to preserve our carefully calculated A4 dimensions!
-  return generateSurveyMap(base64, 'auto', onProgress);
+  return generateSurveyMap(base64, 'auto', onProgress, customPrompt);
 }
 
 export async function generateChunkedSurveyMaps(

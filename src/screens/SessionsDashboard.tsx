@@ -2,18 +2,36 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { idbStore } from '../lib/idb';
 import type { SurveySession } from '../lib/idb';
+import { supabase } from '../lib/supabase';
 
 export default function SessionsDashboard() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<SurveySession[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
+  const [payments, setPayments] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const fetchSessions = async () => {
       try {
         const data = await idbStore.getAllSessions();
         setSessions(data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+        
+        // Fetch payment statuses
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: exports } = await supabase
+            .from('live_exports')
+            .select('session_id, payment_status')
+            .eq('user_id', session.user.id);
+          if (exports) {
+            const statusMap: Record<string, string> = {};
+            exports.forEach(x => {
+              statusMap[x.session_id] = x.payment_status;
+            });
+            setPayments(statusMap);
+          }
+        }
       } catch (err) {
         console.error('Failed to load sessions:', err);
       } finally {
@@ -104,7 +122,11 @@ export default function SessionsDashboard() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-black text-lg text-gray-800">{session.hlb_number || 'Draft Session'}</span>
                       {session.state === 'completed' ? (
-                        <span className="bg-green-100 text-green-700 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Completed</span>
+                        payments[session.session_id] === 'paid' ? (
+                          <span className="bg-green-100 text-green-700 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">✓ Paid</span>
+                        ) : (
+                          <span className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider font-jetbrains-mono">Draft</span>
+                        )
                       ) : (
                         <span className="bg-blue-100 text-blue-700 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Active</span>
                       )}

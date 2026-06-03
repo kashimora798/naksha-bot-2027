@@ -28,7 +28,17 @@ function cleanLabel(s: string): string {
 // ═══════════════════════════════════════════════════════════
 export function renderMapToCanvas(
   canvas: CanvasLike, data: MapData, maxW: number, maxH: number,
-  options?: { watermark?: boolean; transparentBg?: boolean; hideSymbols?: boolean; focusBounds?: { south: number, west: number, north: number, east: number } }
+  options?: {
+    watermark?: boolean;
+    transparentBg?: boolean;
+    hideSymbols?: boolean;
+    focusBounds?: { south: number; west: number; north: number; east: number };
+    includeOsmRoads?: boolean;
+    osmRoads?: Coordinate[][];
+    includeWalkedPath?: boolean;
+    walkedPath?: Coordinate[];
+    includeMappedRoads?: boolean;
+  }
 ): void {
   const orient = data.orientation || 'portrait';
   const aspect = orient === 'landscape' ? 297 / 210 : 210 / 297;
@@ -231,53 +241,100 @@ export function renderMapToCanvas(
     lbl(data.neighbours.east, Math.min(w - 30, maxX + 8), cy2);
   }
 
-  // ─── ROADS — double-line style, ALL shown ──────────────
-  for (const road of data.roads) {
-    if (road.coords.length < 2) continue;
-    const pk = isPakkaRoad(road.highway);
-    const rs = ['residential', 'unclassified', 'tertiary', 'service', 'living_street'].includes(road.highway);
-    const kt = ['footway', 'path', 'track', 'pedestrian', 'steps'].includes(road.highway);
-    let oW: number, iW: number;
-    if (pk) { oW = 16; iW = 8; } else if (rs) { oW = 12; iW = 6; } else if (kt) { oW = 10; iW = 5; } else { oW = 11; iW = 5.5; }
-    const dash = kt ? [8, 5] : [];
-    const col = road.confirmed ? '#000' : '#555';
-    
-    // Draw outer road border
-    ctx.strokeStyle = col; ctx.lineWidth = oW; ctx.setLineDash(dash);
-    ctx.beginPath(); road.coords.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
-    // Draw inner road fill
-    ctx.strokeStyle = '#FFF'; ctx.lineWidth = iW; ctx.setLineDash(dash);
-    ctx.beginPath(); road.coords.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
+  // ─── OSM ROADS ──────────────────────────────────────────
+  if (options?.includeOsmRoads && options.osmRoads) {
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 3.5;
+    ctx.setLineDash([]);
+    for (const osmRoad of options.osmRoads) {
+      if (osmRoad.length < 2) continue;
+      ctx.beginPath();
+      osmRoad.forEach((c, i) => {
+        const [x, y] = proj(c);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+  }
 
-    // ─── DRAW ROAD NAME ───
-    if (road.osm_id && (road as any).name) {
-      // Find the longest segment to place the name
-      let maxLen = 0, bA = road.coords[0], bB = road.coords[1];
-      for (let i = 0; i < road.coords.length - 1; i++) {
-        const [x1, y1] = proj(road.coords[i]), [x2, y2] = proj(road.coords[i+1]);
-        const len = Math.hypot(x2 - x1, y2 - y1);
-        if (len > maxLen) { maxLen = len; bA = road.coords[i]; bB = road.coords[i+1]; }
-      }
-      if (maxLen > 30) { // Only draw if segment is long enough
-        const [x1, y1] = proj(bA), [x2, y2] = proj(bB);
-        let cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
-        let angle = Math.atan2(y2 - y1, x2 - x1);
-        if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI; // Keep text upright
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(angle);
-        // Add a slight white outline and larger, bolder font
-        ctx.font = 'bold 18px sans-serif'; 
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4;
-        ctx.strokeText((road as any).name, 0, 0);
-        ctx.fillStyle = '#111';
-        ctx.fillText((road as any).name, 0, 0);
-        ctx.restore();
+  // ─── ROADS — double-line style, ALL shown ──────────────
+  if (options?.includeMappedRoads !== false) {
+    for (const road of data.roads) {
+      if (road.coords.length < 2) continue;
+      const pk = isPakkaRoad(road.highway);
+      const rs = ['residential', 'unclassified', 'tertiary', 'service', 'living_street'].includes(road.highway);
+      const kt = ['footway', 'path', 'track', 'pedestrian', 'steps'].includes(road.highway);
+      let oW: number, iW: number;
+      if (pk) { oW = 16; iW = 8; } else if (rs) { oW = 12; iW = 6; } else if (kt) { oW = 10; iW = 5; } else { oW = 11; iW = 5.5; }
+      const dash = kt ? [8, 5] : [];
+      const col = road.confirmed ? '#000' : '#555';
+      
+      // Draw outer road border
+      ctx.strokeStyle = col; ctx.lineWidth = oW; ctx.setLineDash(dash);
+      ctx.beginPath(); road.coords.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
+      // Draw inner road fill
+      ctx.strokeStyle = '#FFF'; ctx.lineWidth = iW; ctx.setLineDash(dash);
+      ctx.beginPath(); road.coords.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
+
+      // ─── DRAW ROAD NAME ───
+      if (road.osm_id && (road as any).name) {
+        // Find the longest segment to place the name
+        let maxLen = 0, bA = road.coords[0], bB = road.coords[1];
+        for (let i = 0; i < road.coords.length - 1; i++) {
+          const [x1, y1] = proj(road.coords[i]), [x2, y2] = proj(road.coords[i+1]);
+          const len = Math.hypot(x2 - x1, y2 - y1);
+          if (len > maxLen) { maxLen = len; bA = road.coords[i]; bB = road.coords[i+1]; }
+        }
+        if (maxLen > 30) { // Only draw if segment is long enough
+          const [x1, y1] = proj(bA), [x2, y2] = proj(bB);
+          let cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+          let angle = Math.atan2(y2 - y1, x2 - x1);
+          if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI; // Keep text upright
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(angle);
+          // Add a slight white outline and larger, bolder font
+          ctx.font = 'bold 18px sans-serif'; 
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4;
+          ctx.strokeText((road as any).name, 0, 0);
+          ctx.fillStyle = '#111';
+          ctx.fillText((road as any).name, 0, 0);
+          ctx.restore();
+        }
       }
     }
   }
   ctx.setLineDash([]);
+
+  // ─── WALKED PATH ────────────────────────────────────────
+  if (options?.includeWalkedPath && options.walkedPath && options.walkedPath.length >= 2) {
+    // Solid white line
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    options.walkedPath.forEach((c, i) => {
+      const [x, y] = proj(c);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Dashed black line on top
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 3.5;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    options.walkedPath.forEach((c, i) => {
+      const [x, y] = proj(c);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]); // Reset line dash
+  }
 
   // ─── SERPENTINE ─────────────────────────────────────────
   if (!options?.hideSymbols) {
@@ -624,10 +681,13 @@ export async function exportBlockPDF(
   const doc = new jsPDF({ orientation: orient, unit: 'mm', format: sheet, compress: true });
 
   const blocks = data.blocks && data.blocks.length > 1 ? data.blocks : [];
+  const selectedAiImages: string[] = (data as any).selectedAiImages || [];
+  const aiImagesToPrint = selectedAiImages.length > 0 
+    ? selectedAiImages 
+    : (data.surveyMapBase64 ? [data.surveyMapBase64] : []);
+
   let totalPages = blocks.length > 1 ? 1 + blocks.length * 2 : 1;
-  if (data.surveyMapBase64) {
-    totalPages += 2;
-  }
+  totalPages += aiImagesToPrint.length * 2;
   let page = 0;
 
   const bb = getBbox(data.boundaryPins);
@@ -643,15 +703,18 @@ export async function exportBlockPDF(
   await new Promise(r => setTimeout(r, 50));
   {
     const c = env.createCanvas(pw, ph);
-    renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph);
+    renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, (data as any).renderOptions);
     // Line-art sketch → PNG: lossless, crisp text, and smaller than JPEG for line work.
     doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
     addOverlays(doc, data, a4W, a4H, 'OVERVIEW', { south: pS, west: pW, north: pN, east: pE });
   }
 
-  // ─── PAGE 1.5: AI COMPARISON OVERLAY ────────────────────────
-  if (data.surveyMapBase64) {
-    onProgress(`Page ${++page}/${totalPages} — AI Comparison Overlay`);
+  // ─── AI COMPARISON & CLEAN MAP PAGES ────────────────────────
+  for (let idx = 0; idx < aiImagesToPrint.length; idx++) {
+    const imgData = aiImagesToPrint[idx];
+    const labelSuffix = aiImagesToPrint.length > 1 ? ` (Map ${idx + 1})` : '';
+
+    onProgress(`Page ${++page}/${totalPages} — AI Comparison Overlay${labelSuffix}`);
     await new Promise(r => setTimeout(r, 50));
     doc.addPage();
 
@@ -661,7 +724,6 @@ export async function exportBlockPDF(
 
     ctx2.globalAlpha = 0.5;
 
-    const imgData = data.surveyMapBase64;
     const src = imgData.startsWith('http') || imgData.startsWith('data:') ? imgData : `data:image/jpeg;base64,${imgData}`;
     let aiImg: ImageLike | null = null;
     try { aiImg = await env.loadImage(src); } catch { aiImg = null; }
@@ -669,20 +731,18 @@ export async function exportBlockPDF(
 
     ctx2.globalAlpha = 1.0;
     doc.addImage(c2.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
-    addOverlays(doc, data, a4W, a4H, 'AI COMPARISON OVERLAY', { south: pS, west: pW, north: pN, east: pE });
+    addOverlays(doc, data, a4W, a4H, `AI COMPARISON OVERLAY${labelSuffix}`, { south: pS, west: pW, north: pN, east: pE });
 
-    // ─── PAGE 1.6: FULL AI MAP (CLEAN) ──────────────────────────
-    onProgress(`Page ${++page}/${totalPages} — Full AI Survey Map`);
+    // ─── CLEAN AI MAP PAGE ──────────────────────────
+    onProgress(`Page ${++page}/${totalPages} — Full AI Survey Map${labelSuffix}`);
     await new Promise(r => setTimeout(r, 50));
     doc.addPage();
     if (aiImg) {
       try {
-        // Draw onto a canvas first so jsPDF gets a portable data URL — passing a
-        // raw Image works in the browser but not with @napi-rs/canvas on the server.
         const cAi = env.createCanvas(pw, ph);
         cAi.getContext('2d')!.drawImage(aiImg as any, 0, 0, pw, ph);
         doc.addImage(cAi.toDataURL('image/jpeg', 0.82), 'JPEG', 0, 0, a4W, a4H);
-        addOverlays(doc, data, a4W, a4H, 'AI SURVEY MAP', { south: pS, west: pW, north: pN, east: pE });
+        addOverlays(doc, data, a4W, a4H, `AI SURVEY MAP${labelSuffix}`, { south: pS, west: pW, north: pN, east: pE });
       } catch (e) {
         console.error('Failed to add AI image to PDF', e);
       }
@@ -713,7 +773,7 @@ export async function exportBlockPDF(
           symbols: blkSym,
           blocks: blocks.map((b, i) => i === bi ? { ...b } : { ...b }),
         };
-        renderMapToCanvas(c, fakeData, pw, ph, { focusBounds: blkBB });
+        renderMapToCanvas(c, fakeData, pw, ph, { focusBounds: blkBB, ...(data as any).renderOptions });
         // Highlight current block, dim others
         const ctx = c.getContext('2d')!;
         const [w, h] = [c.width, c.height];
@@ -756,7 +816,7 @@ export async function exportBlockPDF(
         doc.addPage();
         doc.addImage(blockSatCanvas.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
         const c = env.createCanvas(pw, ph);
-        renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true, focusBounds: blkBB });
+        renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true, focusBounds: blkBB, ...(data as any).renderOptions });
         doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
         addOverlays(doc, data, a4W, a4H, `SATELLITE — Block ${blk.label}`, blkBB);
       }
@@ -768,7 +828,7 @@ export async function exportBlockPDF(
     doc.addPage();
     doc.addImage(satCanvas.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
     const c = env.createCanvas(pw, ph);
-    renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true });
+    renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true, ...(data as any).renderOptions });
     doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
     addOverlays(doc, data, a4W, a4H, 'SATELLITE REFERENCE', { south: pS, west: pW, north: pN, east: pE });
   }
@@ -1019,7 +1079,14 @@ export async function generateLiveExportPdf(
   symbols: SurveySymbol[], 
   path: SurveyPoint[], 
   roads: RoadSegment[],
-  onProgress: (msg: string) => void
+  onProgress: (msg: string) => void,
+  renderOptions?: {
+    includeOsmRoads?: boolean;
+    osmRoads?: Coordinate[][];
+    includeWalkedPath?: boolean;
+    includeMappedRoads?: boolean;
+    selectedAiImages?: string[];
+  }
 ) {
   // Construct MapData format for renderMapToCanvas
   const mapData: MapData = {
@@ -1059,6 +1126,15 @@ export async function generateLiveExportPdf(
     } as RoadFeature)),
     gridConfig: { enabled: true, columns: 2, rows: 2 }
   };
+
+  (mapData as any).renderOptions = {
+    ...renderOptions,
+    walkedPath: path.map(p => ({ lat: p.lat, lng: p.lng }))
+  };
+
+  if (renderOptions?.selectedAiImages) {
+    (mapData as any).selectedAiImages = renderOptions.selectedAiImages;
+  }
 
   await exportBlockPDF(mapData, 'portrait', onProgress);
 }

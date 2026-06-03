@@ -853,7 +853,7 @@ export default function MapWorkspace({
         footer={
           <div className="space-y-1.5">
             {done
-              ? <Btn green onClick={onStepComplete}>Preview &amp; Generate PDF →</Btn>
+              ? <Btn green onClick={onStepComplete}>Continue to AI Map →</Btn>
               : <Btn onClick={autoNum}>⚡ Auto-Number All Houses</Btn>}
             {!done && <button onClick={onJumpToPreview} className="w-full py-1.5 text-xs text-gray-500 font-bold">Skip to Preview →</button>}
           </div>

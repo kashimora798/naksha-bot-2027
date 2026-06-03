@@ -71,6 +71,7 @@ serve(async (req) => {
       )
 
       const isLive = orderId.startsWith('live_')
+      const isLiveRegen = orderId.startsWith('lrg_')
 
       if (isLive) {
         const { data: liveExp } = await supabaseAdmin
@@ -80,7 +81,18 @@ serve(async (req) => {
           .maybeSingle()
 
         if (liveExp && liveExp.payment_status !== 'paid') {
-          await supabaseAdmin.from('live_exports').update({ payment_status: 'paid' }).eq('session_id', liveExp.session_id)
+          await supabaseAdmin.from('live_exports').update({ payment_status: 'paid', regen_allowance: 6 }).eq('session_id', liveExp.session_id)
+        }
+      } else if (isLiveRegen) {
+        const { data: liveExp } = await supabaseAdmin
+          .from('live_exports')
+          .select('session_id, payment_id')
+          .eq('payment_id', orderId)
+          .maybeSingle()
+
+        if (liveExp && !liveExp.payment_id.startsWith('processed_')) {
+          await supabaseAdmin.rpc('grant_live_regen_allowance', { sess_id: liveExp.session_id, n: 6 })
+          await supabaseAdmin.from('live_exports').update({ payment_id: 'processed_' + orderId }).eq('session_id', liveExp.session_id)
         }
       } else {
         // order_id was stored in projects.payment_id when the order was created.

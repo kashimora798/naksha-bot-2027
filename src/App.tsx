@@ -7,6 +7,7 @@ import AppHeader from './components/AppHeader';
 import SMSParseScreen from './screens/SMSParseScreen';
 import MapWorkspace from './screens/MapWorkspace';
 import PreviewScreen from './screens/PreviewScreen';
+import AIMapStep from './screens/AIMapStep';
 import DashboardScreen from './screens/DashboardScreen';
 import LiveSurveyScreen from './screens/LiveSurveyScreen';
 import SessionsDashboard from './screens/SessionsDashboard';
@@ -46,7 +47,7 @@ export default function App() {
   // inMap: true for all map-workspace steps (3–6). MapWorkspace is ALWAYS mounted
   // once entered (just hidden with display:none) so the Leaflet map instance is
   // never destroyed on tab switches or when preview/other screens overlay it.
-  const hasEnteredMap = step >= 3 && step <= 7;
+  const hasEnteredMap = step >= 3 && step <= 8;
   const inMap = step >= 3 && step <= 6;
 
   // Title-block particulars seeded from the user's profile (Phase 2). Saved project
@@ -213,8 +214,8 @@ export default function App() {
                isLive: true,
                paymentStatus: paymentStatus,
              });
-             setStep(7);
-           });
+             setStep(8);
+            });
         });
       });
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -311,7 +312,7 @@ export default function App() {
                   paymentStatus: isPaid ? 'paid' : 'unpaid'
                 });
                 setJustPaid(isPaid);
-                setStep(7);
+                setStep(8);
               });
             });
           });
@@ -332,8 +333,8 @@ export default function App() {
               paymentStatus: data.payment_status,
               exportCount: data.export_count,
             });
-            setJustPaid(data.payment_status === 'paid');
-            setStep(7); // Always land on the preview/download screen.
+             setJustPaid(data.payment_status === 'paid');
+            setStep(8); // Always land on the preview/download screen.
           } else {
             console.error('Could not load project after payment');
             alert('Payment verified! But we could not load your map. Please go to Dashboard and open your project.');
@@ -470,9 +471,9 @@ export default function App() {
   }
 
   if (!isSignedIn) {
-    // Signed-out users can still use demo maps (steps 2-7) and live survey (step 10).
+    // Signed-out users can still use demo maps (steps 2-8) and live survey (step 10).
     // Only the dashboard (0), SMS (1) and live survey (10) have dedicated signed-out
-    // screens; steps 2-7 fall through to the shared map shell below so navigation
+    // screens; steps 2-8 fall through to the shared map shell below so navigation
     // never lands on a blank screen.
     if (step === 0) {
       return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
@@ -506,7 +507,7 @@ export default function App() {
         </ErrorBoundary>
       </div>;
     }
-    // steps 2-7 fall through to the shared map shell below
+    // steps 2-8 fall through to the shared map shell below
   }
 
   if (isSignedIn && step === 0) {
@@ -526,8 +527,8 @@ export default function App() {
           setIsDemoMode(false);
           setMapData({ ...DEFAULT_MAP_DATA, ...profileMapDefaults(), ...data, projectId: id, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
-          // Determine where to resume based on data
-          if (data.blocks && data.blocks.length > 0) setStep(7);
+           // Determine where to resume based on data
+          if (data.blocks && data.blocks.length > 0) setStep(8);
           else if (data.symbols && data.symbols.length > 0) setStep(5);
           else if (data.roads && data.roads.length > 0) setStep(4);
           else if (data.boundaryClosed) setStep(3);
@@ -561,7 +562,7 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-gray-50 flex flex-col relative">
-      {step >= 2 && step < 8 && (
+      {step >= 2 && step < 9 && (
         <AppHeader
           currentStep={step}
           maxStep={maxStep}
@@ -600,18 +601,29 @@ export default function App() {
             onUpdateOrientation={o => update({ orientation: o })}
             onUpdateMapData={update}
             onStepComplete={() => setStep(s => s + 1)}
-            onJumpToPreview={() => setStep(7)}
+            onJumpToPreview={() => setStep(8)}
             isDemoMode={isDemoMode}
             onDemoComplete={() => setIsDemoMode(false)}
           />}
         </div>
         {(step === 7) && (
           <div className="h-full">
+            <AIMapStep
+              mapData={mapData}
+              onStepComplete={() => setStep(8)}
+              onBack={() => setStep(6)}
+              onUpdateMapData={update}
+              isDemoMode={isDemoMode}
+            />
+          </div>
+        )}
+        {(step === 8) && (
+          <div className="h-full">
             <PreviewScreen
               mapData={mapData}
               isDemoMode={isDemoMode}
               justPaid={justPaid}
-              onBack={() => setStep(5)}
+              onBack={() => setStep(7)}
               onExitToDashboard={() => { forceSave(); setJustPaid(false); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
             />
           </div>

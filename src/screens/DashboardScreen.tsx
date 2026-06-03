@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { idbStore, SurveySession } from '../lib/idb';
 import type { MapData } from '../types';
@@ -27,6 +28,7 @@ interface Props {
 }
 
 export default function DashboardScreen({ user, userProfile, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap, onProfileUpdated }: Props) {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -183,7 +185,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <p className="text-xs text-white/80 mt-0.5">Build an HLB map from satellite imagery</p>
           </button>
           <button
-            onClick={() => onLiveSurvey?.(undefined)}
+            onClick={() => navigate('/live-dashboard')}
             className="group text-left p-5 rounded-2xl bg-white border border-[var(--color-saffron)]/15 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
           >
             <div className="w-11 h-11 rounded-xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-2xl mb-3">🚶</div>
@@ -224,7 +226,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">🚶 Live Surveys</h2>
               <button
-                onClick={() => onLiveSurvey?.(undefined)}
+                onClick={() => navigate('/live-prep')}
                 className="px-3.5 py-2 bg-[var(--color-saffron)] text-white rounded-xl font-bold text-xs shadow active:scale-95 transition-all"
               >
                 + New Survey

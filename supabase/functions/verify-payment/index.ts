@@ -34,21 +34,28 @@ serve(async (req) => {
     const { projectId, kind } = await req.json()
     if (!projectId) return json({ error: 'Missing projectId' }, 400)
     const isLive = kind === 'live'
+    const isRegen = kind === 'regen'
+    const isLiveRegen = kind === 'live_regen'
  
     const admin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
  
-    if (isLive) {
+    if (isLive || isLiveRegen) {
       const { data: liveExport } = await admin
         .from('live_exports')
         .select('session_id, user_id, payment_status, payment_id')
         .eq('session_id', projectId).eq('user_id', user.id).maybeSingle()
       if (!liveExport) return json({ error: 'Live export not found' }, 404)
  
+      // If already processed for this live regen order
+      if (liveExport.payment_id && liveExport.payment_id.startsWith('processed_')) {
+        return json({ paid: true })
+      }
+ 
       // Already paid → idempotent success
-      if (liveExport.payment_status === 'paid') return json({ paid: true })
+      if (isLive && liveExport.payment_status === 'paid') return json({ paid: true })
       if (!liveExport.payment_id) return json({ paid: false, reason: 'no order' })
  
       // Ask Cashfree if this order is actually PAID.
@@ -64,8 +71,14 @@ serve(async (req) => {
         return json({ paid: false, reason: order?.order_status || 'unconfirmed' })
       }
  
-      // Confirmed PAID → unlock live export
-      await admin.from('live_exports').update({ payment_status: 'paid' }).eq('session_id', projectId)
+      if (isLiveRegen) {
+        // Confirmed PAID for live regen → grant live regens (6), mark payment_id as processed
+        await admin.rpc('grant_live_regen_allowance', { sess_id: projectId, n: 6 })
+        await admin.from('live_exports').update({ payment_id: 'processed_' + liveExport.payment_id }).eq('session_id', projectId)
+      } else {
+        // Confirmed PAID for live unlock → unlock + set regens to 6
+        await admin.from('live_exports').update({ payment_status: 'paid', regen_allowance: 6 }).eq('session_id', projectId)
+      }
       return json({ paid: true })
     } else {
       const { data: project } = await admin
@@ -74,8 +87,13 @@ serve(async (req) => {
         .eq('id', projectId).eq('user_id', user.id).single()
       if (!project) return json({ error: 'Project not found' }, 404)
  
-      // Already paid → idempotent success (no double-granting of regens).
-      if (project.payment_status === 'paid') return json({ paid: true })
+      // If already processed for this regen order
+      if (project.payment_id && project.payment_id.startsWith('processed_')) {
+        return json({ paid: true })
+      }
+ 
+      // For project payment, if already paid, success.
+      if (!isRegen && project.payment_status === 'paid') return json({ paid: true })
       if (!project.payment_id) return json({ paid: false, reason: 'no order' })
  
       // Ask Cashfree if this order is actually PAID.
@@ -91,9 +109,15 @@ serve(async (req) => {
         return json({ paid: false, reason: order?.order_status || 'unconfirmed' })
       }
  
-      // Confirmed PAID → unlock + grant regens (service role passes the guard trigger).
-      await admin.from('projects').update({ payment_status: 'paid' }).eq('id', projectId)
-      await admin.rpc('grant_regen_allowance', { proj_id: projectId, n: REGENS_PER_PAYMENT })
+      if (isRegen) {
+        // Confirmed PAID for regen → grant regens, mark payment_id as processed to prevent double-granting
+        await admin.rpc('grant_regen_allowance', { proj_id: projectId, n: REGENS_PER_PAYMENT })
+        await admin.from('projects').update({ payment_id: 'processed_' + project.payment_id }).eq('id', projectId)
+      } else {
+        // Confirmed PAID → unlock + grant regens
+        await admin.from('projects').update({ payment_status: 'paid' }).eq('id', projectId)
+        await admin.rpc('grant_regen_allowance', { proj_id: projectId, n: REGENS_PER_PAYMENT })
+      }
  
       return json({ paid: true })
     }

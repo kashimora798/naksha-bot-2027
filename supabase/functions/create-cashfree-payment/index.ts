@@ -30,9 +30,9 @@ serve(async (req) => {
     if (!user) throw new Error('Not authenticated')
  
     const { projectId, sessionId, kind } = await req.json()
-    const targetKind = kind === 'live' ? 'live' : 'project'
-    const targetId = targetKind === 'live' ? sessionId : projectId
-    if (!targetId) throw new Error(`Missing ${targetKind === 'live' ? 'sessionId' : 'projectId'}`)
+    const targetKind = kind === 'live' ? 'live' : kind === 'regen' ? 'regen' : kind === 'live_regen' ? 'live_regen' : 'project'
+    const targetId = (targetKind === 'live' || targetKind === 'live_regen') ? (sessionId || projectId) : projectId
+    if (!targetId) throw new Error(`Missing ${targetKind.startsWith('live') ? 'sessionId' : 'projectId'}`)
  
     let isAlreadyPaid = false;
     if (targetKind === 'live') {
@@ -43,7 +43,18 @@ serve(async (req) => {
         .eq('user_id', user.id)
         .maybeSingle()
       if (liveExport?.payment_status === 'paid') isAlreadyPaid = true;
-    } else {
+    } else if (targetKind === 'live_regen') {
+      const { data: liveExport } = await supabaseClient
+        .from('live_exports')
+        .select('session_id, payment_status')
+        .eq('session_id', targetId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!liveExport) throw new Error('Live survey session not found')
+      if (liveExport.payment_status !== 'paid') {
+        throw new Error('Live survey must be paid for before purchasing extra generations')
+      }
+    } else if (targetKind === 'project') {
       const { data: project } = await supabaseClient
         .from('projects')
         .select('id, payment_status')
@@ -52,9 +63,21 @@ serve(async (req) => {
         .single()
       if (!project) throw new Error('Project not found or unauthorized')
       if (project.payment_status === 'paid') isAlreadyPaid = true;
+    } else if (targetKind === 'regen') {
+      // For regen, make sure the project exists and is already paid for first
+      const { data: project } = await supabaseClient
+        .from('projects')
+        .select('id, payment_status')
+        .eq('id', targetId)
+        .eq('user_id', user.id)
+        .single()
+      if (!project) throw new Error('Project not found or unauthorized')
+      if (project.payment_status !== 'paid') {
+        throw new Error('Project must be paid for before purchasing extra generations')
+      }
     }
  
-    if (isAlreadyPaid) {
+    if (targetKind !== 'regen' && isAlreadyPaid) {
       return new Response(JSON.stringify({ error: 'Already paid' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -72,7 +95,8 @@ serve(async (req) => {
     // Unique order id per attempt — reusing the projectId breaks retries after a
     // failed/expired order (Cashfree rejects duplicate order_id). We store it in
     // projects.payment_id or live_exports.payment_id; the webhook matches on that.
-    const orderId = `${targetKind === 'live' ? 'live' : 'ord'}_${targetId.replace(/-/g, '')}_${Date.now().toString(36)}`.slice(0, 45)
+    const orderPrefix = targetKind === 'live' ? 'live' : targetKind === 'regen' ? 'reg' : targetKind === 'live_regen' ? 'lrg' : 'ord'
+    const orderId = `${orderPrefix}_${targetId.replace(/-/g, '')}_${Date.now().toString(36)}`.slice(0, 45)
  
     const orderPayload = {
       order_amount: MAP_PRICE,
@@ -86,7 +110,9 @@ serve(async (req) => {
       },
       order_meta: {
         // Return URL with the correct kind so we know how to handle it
-        return_url: `${req.headers.get('origin')}/?payment=success&project_id=${targetId}&kind=${targetKind}`,
+        return_url: (targetKind === 'live' || targetKind === 'live_regen')
+          ? `${req.headers.get('origin')}/live-session/${targetId}?payment=success&kind=${targetKind}`
+          : `${req.headers.get('origin')}/app?payment=success&project_id=${targetId}&kind=${targetKind}`,
       },
     }
  
@@ -113,7 +139,17 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
-    if (targetKind === 'live') {
+    if (targetKind === 'live_regen') {
+      const { error: liveErr } = await admin
+        .from('live_exports')
+        .update({ payment_id: cashfreeData.order_id })
+        .eq('session_id', targetId)
+        .eq('user_id', user.id)
+      if (liveErr) {
+        console.error('Failed to store live regen payment_id:', liveErr)
+        throw new Error('Could not record the live regen order')
+      }
+    } else if (targetKind === 'live') {
       const { error: liveErr } = await admin
         .from('live_exports')
         .upsert({ session_id: targetId, user_id: user.id, payment_id: cashfreeData.order_id, payment_status: 'unpaid' })

@@ -148,6 +148,8 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
   const [houseFormStep, setHouseFormStep] = useState<1 | 2>(1);
   const [drawMode, setDrawMode] = useState<'none' | 'block' | 'farmland' | 'forest' | 'waterBody' | 'landmark'>('none');
   const [drawingPoints, setDrawingPoints] = useState<Coordinate[]>([]);
+  const [snapToRoads, setSnapToRoads] = useState(true);
+  const [showExtraDrawTools, setShowExtraDrawTools] = useState(false);
   const drawingPolylineRef = useRef<L.Polyline | null>(null);
 
   // ── Compass tracking ──────────────────────────────────────────
@@ -213,12 +215,29 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
     engineInitialized.current = true;
 
     engineRef.current = new LiveSurveyEngine(activePolygon, supabase, idbStore, resumeSessionId);
+    engineRef.current.setSnapToRoadsEnabled(snapToRoads);
 
     if (resumeSessionId) {
-      engineRef.current.loadSessionData().then(() => {
+      engineRef.current.loadSessionData().then(async () => {
         if (engineRef.current) {
           setActivePolygon(engineRef.current.blockPolygon);
           setSymbols([...engineRef.current.symbols]);
+          
+          // Load cached footprints if available
+          try {
+            const cached = await idbStore.getCachedFootprints(resumeSessionId);
+            if (cached) {
+              setOsmRoads(cached.roads);
+              setOsmBuildings(cached.buildings);
+              setOsmWater(cached.water || []);
+              setOsmForests(cached.forests || []);
+              setOsmFarmland(cached.farmland || []);
+              engineRef.current.setOsmRoads(cached.roads);
+            }
+          } catch (e) {
+            console.error('Failed to load cached footprints:', e);
+          }
+
           // Re-trigger draw if map exists
           setTimeout(() => drawLivePath(), 500);
           setPhase('PAUSED');
@@ -714,6 +733,18 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
     setPhase('BOUNDARY_DRAW');
   };
 
+  // ── Cache OSM Footprints locally ──
+  const cacheFootprints = (sessionId: string, roads: any[], detectedData: any) => {
+    idbStore.saveCachedFootprints({
+      session_id: sessionId,
+      buildings: detectedData.symbols.filter((s: any) => ['pucca_house', 'kutcha_house', 'apartment', 'non_residential'].includes(s.symbol_type)),
+      roads: roads,
+      water: detectedData.waterBodies || [],
+      forests: detectedData.forests || [],
+      farmland: detectedData.farmlands || [],
+    }).catch(e => console.error('Failed to cache footprints:', e));
+  };
+
   // ── OSM background fetch ─────────────────────────────────────
   const fetchOsmData = useCallback(async (polygon: any) => {
     let cancelled = false;
@@ -769,8 +800,11 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
         setOsmForests(detectedData.forests || []);
         setOsmFarmland(detectedData.farmlands || []);
         setOsmBuildings(detectedData.symbols.filter(s => s.symbol_type === 'pucca_house' || s.symbol_type === 'kutcha_house' || s.symbol_type === 'apartment' || s.symbol_type === 'non_residential'));
-        // Feed OSM roads to engine for auto-snap
-        if (engineRef.current) engineRef.current.setOsmRoads(roads);
+        // Feed OSM roads to engine for auto-snap and cache
+        if (engineRef.current) {
+          engineRef.current.setOsmRoads(roads);
+          cacheFootprints(engineRef.current.sessionId, roads, detectedData);
+        }
       }
     } catch (err) {
       console.warn('Background OSM fetch failed, continuing without overlay:', err);
@@ -860,8 +894,11 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
           setOsmForests(detectedData.forests || []);
           setOsmFarmland(detectedData.farmlands || []);
           setOsmBuildings(detectedData.symbols.filter(s => s.symbol_type === 'pucca_house' || s.symbol_type === 'kutcha_house' || s.symbol_type === 'apartment' || s.symbol_type === 'non_residential'));
-          // Feed OSM roads to engine for auto-snap
-          if (engineRef.current) engineRef.current.setOsmRoads(roads);
+          // Feed OSM roads to engine for auto-snap and cache
+          if (engineRef.current) {
+            engineRef.current.setOsmRoads(roads);
+            cacheFootprints(engineRef.current.sessionId, roads, detectedData);
+          }
           clearInterval(tileTimer);
           setDlProgress({ tiles: 100, roads: 100, features: 100, gps: 100 });
           setTimeout(() => { if (!cancelled) setPhase('READY'); }, 500);
@@ -1425,6 +1462,18 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
 
         <CompassWidget />
         <button
+          onClick={() => {
+            const next = !snapToRoads;
+            setSnapToRoads(next);
+            engineRef.current?.setSnapToRoadsEnabled(next);
+          }}
+          className={`absolute right-4 z-[2000] w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 border border-gray-100 ${snapToRoads ? 'bg-green-600 text-white' : 'bg-white text-gray-400'}`}
+          style={{ bottom: 'calc(144px + env(safe-area-inset-bottom))' }}
+          title={snapToRoads ? "Road Snapping: ON" : "Road Snapping: OFF"}
+        >
+          <span className="text-xl">🧲</span>
+        </button>
+        <button
           onClick={() => setPureCanvasMode(!pureCanvasMode)}
           className={`absolute right-4 z-[2000] w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 border border-gray-100 ${pureCanvasMode ? 'bg-[var(--color-saffron)] text-white' : 'bg-white text-gray-700'}`}
           style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))' }}
@@ -1482,10 +1531,18 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
             {/* Draw Tools */}
             <div className="w-px h-6 bg-gray-200 mx-1 flex-shrink-0" />
             <button onClick={() => setDrawMode(drawMode === 'block' ? 'none' : 'block')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'block' ? 'border-b-2 border-red-500 bg-red-50' : ''}`} title="Draw Block">🟥</button>
-            <button onClick={() => setDrawMode(drawMode === 'farmland' ? 'none' : 'farmland')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'farmland' ? 'border-b-2 border-green-500 bg-green-50' : ''}`} title="Draw Farmland">🌾</button>
-            <button onClick={() => setDrawMode(drawMode === 'forest' ? 'none' : 'forest')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'forest' ? 'border-b-2 border-green-500 bg-green-50' : ''}`} title="Draw Forest">🌳</button>
-            <button onClick={() => setDrawMode(drawMode === 'waterBody' ? 'none' : 'waterBody')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'waterBody' ? 'border-b-2 border-blue-500 bg-blue-50' : ''}`} title="Draw Water">💧</button>
             <button onClick={() => setDrawMode(drawMode === 'landmark' ? 'none' : 'landmark')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'landmark' ? 'border-b-2 border-gray-500 bg-gray-50' : ''}`} title="Drop Landmark">📌</button>
+            
+            {showExtraDrawTools ? (
+              <>
+                <button onClick={() => setDrawMode(drawMode === 'farmland' ? 'none' : 'farmland')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'farmland' ? 'border-b-2 border-green-500 bg-green-50' : ''}`} title="Draw Farmland">🌾</button>
+                <button onClick={() => setDrawMode(drawMode === 'forest' ? 'none' : 'forest')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'forest' ? 'border-b-2 border-green-500 bg-green-50' : ''}`} title="Draw Forest">🌳</button>
+                <button onClick={() => setDrawMode(drawMode === 'waterBody' ? 'none' : 'waterBody')} className={`min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg ${drawMode === 'waterBody' ? 'border-b-2 border-blue-500 bg-blue-50' : ''}`} title="Draw Water">💧</button>
+                <button onClick={() => setShowExtraDrawTools(false)} className="min-w-[34px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-xs text-gray-400 font-bold hover:bg-gray-100">«</button>
+              </>
+            ) : (
+              <button onClick={() => setShowExtraDrawTools(true)} className="min-w-[44px] h-[34px] flex items-center justify-center rounded-lg flex-shrink-0 text-lg hover:bg-gray-100" title="More Tools">➕</button>
+            )}
           </div>
         </div>
       )}

@@ -1,132 +1,610 @@
-// Official Census 2027 Houselisting & Housing (HLO) schedule — the single source
-// of truth for BOTH the data-entry form and the register export.
-//
-// Source: HLO_SE_Questions_Hindi_English.md (cols 1–34).
-//
-// NOTE on storage keys: per project decision we do NOT renumber the existing
-// stored fields (which used a different, non-official numbering). Instead each
-// official column maps to a storage `key` chosen by SEMANTICS — reusing an
-// existing PlacedSymbol field where one already captures that meaning (even if its
-// name has a misleading number), and a new key where the column was never captured.
-// Form reads/writes record[key]; the register reads the same key. One source, no drift.
-
-export type HloInputType = 'auto' | 'text' | 'number' | 'code';
-
-export interface HloOption { code: number | string; en: string; hi: string }
-
-export interface HloField {
-  col: number;            // official column number (1–34)
-  key: string;            // storage key on the symbol record
-  en: string;             // short English label
-  hi: string;             // short Hindi label
-  type: HloInputType;
-  options?: HloOption[];  // for type 'code'
-  group?: string;         // section heading
-  /** Shown in the form only when this returns true (skip logic). */
-  visibleWhen?: (r: Record<string, any>) => boolean;
+export interface HLOFieldOption {
+  value: number | string;
+  labelEn: string;
+  labelHi: string;
+  icon?: string;
 }
 
-const o = (arr: [number | string, string, string][]): HloOption[] =>
-  arr.map(([code, en, hi]) => ({ code, en, hi }));
+export interface HLOFieldDefinition {
+  col: number;
+  key: string;
+  labelEn: string;
+  labelHi: string;
+  type: 'select' | 'text' | 'number' | 'boolean';
+  options?: HLOFieldOption[];
+  visibleWhen?: (formData: any) => boolean;
+  defaultValue?: any;
+  required?: boolean | ((formData: any) => boolean);
+}
 
-// ── Skip-logic helpers (official rules) ─────────────────────────────────────
-// Col 7 (use) is stored in the existing `col_4_use_type` field.
-export const useCode = (r: Record<string, any>): number | undefined => r.col_4_use_type;
-export const isResidential = (r: Record<string, any>) => useCode(r) === 1 || useCode(r) === 2;
-// Institutional household → household number 999 (cols 12,13 and 14–34 skipped).
-export const isInstitutional = (r: Record<string, any>) => Number(r.household_no) === 999;
-export const isNormalHousehold = (r: Record<string, any>) => isResidential(r) && !isInstitutional(r);
-// Col 20 access ∈ {1,2} unlocks col 21 (latrine type). Stored in col_20_latrine.
-export const hasOwnLatrine = (r: Record<string, any>) => r.col_20_latrine === 1 || r.col_20_latrine === 2;
-
-export const HLO_SCHEDULE: HloField[] = [
-  { col: 1, key: 'line_no', en: 'Line number', hi: 'लाइन संख्या', type: 'auto', group: 'Identification' },
-  { col: 2, key: 'building_no', en: 'Building number', hi: 'भवन संख्या', type: 'text' },
-  { col: 3, key: 'census_house_no', en: 'Census house number', hi: 'जनगणना मकान संख्या', type: 'text' },
-
-  { col: 4, key: 'm_floor', en: 'Floor material', hi: 'फर्श सामग्री', type: 'code', group: 'Structure (4–6)', options: o([
-    [1, 'Mud', 'मिट्टी'], [2, 'Wood/bamboo', 'लकड़ी/बांस'], [3, 'Burnt brick', 'पक्की ईंट'], [4, 'Stone', 'पत्थर'],
-    [5, 'Cement', 'सीमेंट'], [6, 'Mosaic/tiles', 'मोजैक/टाइल'], [7, 'Any other', 'अन्य'] ]) },
-  { col: 5, key: 'col_6_wall_material', en: 'Wall material', hi: 'दीवार सामग्री', type: 'code', options: o([
-    [1, 'Grass/thatch', 'घांस/फूस'], [2, 'Plastic', 'प्लास्टिक'], [3, 'Mud/unburnt brick', 'मिट्टी/कच्ची ईंट'], [4, 'Wood', 'लकड़ी'],
-    [5, 'Stone (no mortar)', 'पत्थर बिना गारा'], [6, 'Stone (mortar)', 'पत्थर गारा सहित'], [7, 'GI/metal/asbestos', 'जी.आई./धातु'],
-    [8, 'Burnt brick', 'पक्की ईंट'], [9, 'Concrete', 'कंक्रीट'], [0, 'Any other', 'अन्य'] ]) },
-  { col: 6, key: 'col_7_roof_material', en: 'Roof material', hi: 'छत सामग्री', type: 'code', options: o([
-    [1, 'Grass/thatch/mud', 'घांस/मिट्टी'], [2, 'Plastic', 'प्लास्टिक'], [3, 'Handmade tiles', 'हस्त टाइल'], [4, 'Machine tiles', 'मशीन टाइल'],
-    [5, 'Burnt brick', 'पक्की ईंट'], [6, 'Stone', 'पत्थर'], [7, 'Slate', 'स्लेट'], [8, 'GI/metal/asbestos', 'जी.आई./धातु'],
-    [9, 'Concrete', 'कंक्रीट'], [0, 'Any other', 'अन्य'] ]) },
-
-  { col: 7, key: 'col_4_use_type', en: 'Use of census house', hi: 'मकान का उपयोग', type: 'code', group: 'Use', options: o([
-    [1, 'Residence', 'आवास'], [2, 'Residence-cum-other', 'आवास-सह-अन्य'], [3, 'Shop/office', 'दुकान/कार्यालय'], [4, 'School/college', 'स्कूल/कॉलेज'],
-    [5, 'Hotel/lodge', 'होटल/लॉज'], [6, 'Hospital', 'अस्पताल'], [7, 'Factory/workshop', 'फैक्टरी'], [8, 'Place of worship', 'पूजा स्थल'],
-    [9, 'Other non-residential', 'अन्य गैर-आवासीय'], [0, 'Vacant', 'खाली'] ]) },
-  { col: 8, key: 'col_8_condition', en: 'Condition', hi: 'मकान की स्थिति', type: 'code', visibleWhen: isResidential, options: o([
-    [1, 'Good', 'अच्छा'], [2, 'Livable', 'रहने योग्य'], [3, 'Dilapidated', 'जीर्ण-शीर्ण'] ]) },
-
-  { col: 9, key: 'household_no', en: 'Household number', hi: 'परिवार क्रमांक', type: 'number', group: 'Household (9–13)', visibleWhen: isResidential },
-  { col: 10, key: 'col_9_family_count', en: 'Persons in household', hi: 'व्यक्तियों की संख्या', type: 'number', visibleWhen: isResidential },
-  { col: 11, key: 'col_10_head_name', en: 'Head of household', hi: 'मुखिया का नाम', type: 'text', visibleWhen: isResidential },
-  { col: 12, key: 'm_sex', en: 'Sex of head', hi: 'मुखिया का लिंग', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Male', 'पुरुष'], [2, 'Female', 'स्त्री'], [3, 'Transgender', 'ट्रांसजेंडर'] ]) },
-  { col: 13, key: 'm_caste', en: 'SC/ST/Other', hi: 'अ.जा./अ.ज.जा./अन्य', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'SC', 'अ.जा.'], [2, 'ST', 'अ.ज.जा.'], [3, 'Other', 'अन्य'] ]) },
-
-  { col: 14, key: 'col_12_ownership', en: 'Ownership', hi: 'स्वामित्व', type: 'code', group: 'Normal household (14–34)', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Owned', 'अपना'], [2, 'Rented, owns elsewhere', 'किराया, अन्यत्र अपना'], [3, "Rented, owns none", 'किराया, अपना नहीं'], [4, 'Any other', 'अन्य'] ]) },
-  { col: 15, key: 'col_11_total_rooms', en: 'Dwelling rooms', hi: 'कमरों की संख्या', type: 'number', visibleWhen: isNormalHousehold },
-  { col: 16, key: 'm_couples', en: 'Married couples', hi: 'विवाहित दंपत्ति', type: 'number', visibleWhen: isNormalHousehold },
-
-  { col: 17, key: 'col_18_water_source', en: 'Drinking water source', hi: 'पेयजल स्रोत', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Tap (treated)', 'नल (उपचारित)'], [2, 'Tap (untreated)', 'नल (अनुपचारित)'], [3, 'Well', 'कुआं'], [4, 'Hand pump', 'हैण्डपंप'],
-    [5, 'Tubewell/borehole', 'ट्यूबवेल'], [6, 'Spring', 'झरना'], [7, 'River/canal', 'नदी/नहर'], [8, 'Tank/pond/lake', 'तालाब/झील'],
-    [9, 'Packaged/bottled', 'बोतल'], [0, 'Other', 'अन्य'] ]) },
-  { col: 18, key: 'col_18a_water_location', en: 'Water availability', hi: 'पेयजल उपलब्धता', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Within premises', 'परिसर के अंदर'], [2, 'Near premises', 'परिसर के निकट'], [3, 'Away', 'दूर'] ]) },
-  { col: 19, key: 'm_lighting', en: 'Lighting source', hi: 'प्रकाश स्रोत', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Electricity', 'बिजली'], [2, 'Kerosene', 'मिट्टी का तेल'], [3, 'Solar', 'सौर'], [4, 'Other oil', 'अन्य तेल'], [5, 'Any other', 'अन्य'], [6, 'No lighting', 'प्रकाश रहित'] ]) },
-  { col: 20, key: 'col_20_latrine', en: 'Latrine access', hi: 'शौचालय सुलभता', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Exclusive', 'केवल परिवार'], [2, 'Shared', 'साझा'], [3, 'Public', 'सार्वजनिक'], [4, 'Open (none)', 'खुले में'] ]) },
-  { col: 21, key: 'col_21_latrine_type', en: 'Latrine type', hi: 'शौचालय का प्रकार', type: 'code', visibleWhen: (r) => isNormalHousehold(r) && hasOwnLatrine(r), options: o([
-    [1, 'Type 1', 'प्रकार 1'], [2, 'Type 2', 'प्रकार 2'], [3, 'Type 3', 'प्रकार 3'], [4, 'Type 4', 'प्रकार 4'], [5, 'Type 5', 'प्रकार 5'],
-    [6, 'Type 6', 'प्रकार 6'], [7, 'Type 7', 'प्रकार 7'], [8, 'Type 8', 'प्रकार 8'], [9, 'Type 9', 'प्रकार 9'] ]) },
-  { col: 22, key: 'm_wastewater', en: 'Waste water outlet', hi: 'गंदे पानी की निकासी', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Closed drainage', 'ढकी नाली'], [2, 'Open drainage', 'खुली नाली'], [3, 'No drainage', 'कोई नाली नहीं'] ]) },
-  { col: 23, key: 'col_22_bathroom', en: 'Bathing facility', hi: 'स्नान सुविधा', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Bathroom', 'स्नानगृह'], [2, 'Enclosure (no roof)', 'बिना छत अहाता'], [3, 'No', 'नहीं'] ]) },
-  { col: 24, key: 'col_24_kitchen', en: 'Kitchen + LPG/PNG', hi: 'रसोई व एलपीजी/पीएनजी', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Code 1', 'कोड 1'], [2, 'Code 2', 'कोड 2'], [3, 'Code 3', 'कोड 3'], [4, 'Code 4', 'कोड 4'], [5, 'Code 5', 'कोड 5'], [6, 'Code 6', 'कोड 6'], [7, 'Code 7', 'कोड 7'] ]) },
-  { col: 25, key: 'col_25_cooking_fuel', en: 'Cooking fuel', hi: 'खाना पकाने का ईंधन', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Firewood', 'जलाऊ लकड़ी'], [2, 'Crop residue', 'फसल अवशेष'], [3, 'Cowdung', 'उपला'], [4, 'Coal', 'कोयला'], [5, 'Kerosene', 'मिट्टी का तेल'],
-    [6, 'LPG/PNG', 'एलपीजी/पीएनजी'], [7, 'Electricity', 'बिजली'], [8, 'Bio-gas', 'गोबर गैस'], [9, 'Solar', 'सौर'], [0, 'Any other', 'अन्य'] ]) },
-
-  { col: 26, key: 'm_radio', en: 'Radio/Transistor', hi: 'रेडियो', type: 'code', group: 'Assets (26–32)', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Traditional', 'परंपरागत'], [2, 'On mobile', 'मोबाइल पर'], [3, 'Other device', 'अन्य'], [4, 'No', 'नहीं'] ]) },
-  { col: 27, key: 'm_tv', en: 'Television', hi: 'टेलीविजन', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'DD free dish', 'डीडी मुफ्त डिश'], [2, 'Other DTH', 'अन्य डीटीएच'], [3, 'Cable', 'केबल'], [4, 'Any other', 'अन्य'], [5, 'No', 'नहीं'] ]) },
-  { col: 28, key: 'm_internet', en: 'Internet access', hi: 'इंटरनेट', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Laptop/computer', 'लैपटॉप'], [2, 'Mobile', 'मोबाइल'], [3, 'Other device', 'अन्य'], [4, 'No', 'नहीं'] ]) },
-  { col: 29, key: 'm_laptop', en: 'Laptop/Computer', hi: 'लैपटॉप/कंप्यूटर', type: 'code', visibleWhen: isNormalHousehold, options: o([ [1, 'Yes', 'हां'], [2, 'No', 'नहीं'] ]) },
-  { col: 30, key: 'm_phone', en: 'Phone/Mobile', hi: 'टेलीफोन/मोबाइल', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Landline only', 'केवल लैंडलाइन'], [2, 'Smartphone only', 'केवल स्मार्टफोन'], [3, 'Basic mobile', 'बुनियादी मोबाइल'], [4, 'Both', 'दोनों'], [5, 'No', 'नहीं'] ]) },
-  { col: 31, key: 'm_vehicle2w', en: 'Cycle/Scooter', hi: 'साइकिल/स्कूटर', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Bicycle', 'साइकिल'], [2, 'Scooter/Motorcycle', 'स्कूटर/मोटरसाइकिल'], [3, 'Both', 'दोनों'], [4, 'None', 'नहीं'] ]) },
-  { col: 32, key: 'm_car', en: 'Car/Jeep/Van', hi: 'कार/जीप/वैन', type: 'code', visibleWhen: isNormalHousehold, options: o([ [1, 'Yes', 'हां'], [2, 'No', 'नहीं'] ]) },
-
-  { col: 33, key: 'm_cereal', en: 'Main cereal', hi: 'मुख्य अनाज', type: 'code', visibleWhen: isNormalHousehold, options: o([
-    [1, 'Rice', 'चावल'], [2, 'Wheat', 'गेहूं'], [3, 'Jowar', 'ज्वार'], [4, 'Bajra', 'बाजरा'], [5, 'Maize', 'मक्का'], [6, 'Any other', 'अन्य'] ]) },
-  { col: 34, key: 'col_34_mobile_number', en: 'Mobile number', hi: 'मोबाइल नंबर', type: 'text', visibleWhen: isResidential },
+export const HLO_SCHEDULE: HLOFieldDefinition[] = [
+  {
+    col: 1,
+    key: 'col_1_line_no',
+    labelEn: 'Line Number',
+    labelHi: 'लाइन संख्या',
+    type: 'number',
+    defaultValue: 1
+  },
+  {
+    col: 2,
+    key: 'col_2_building_no',
+    labelEn: 'Building Number',
+    labelHi: 'भवन संख्या',
+    type: 'number',
+    required: true
+  },
+  {
+    col: 3,
+    key: 'col_3_house_no',
+    labelEn: 'Census House Number',
+    labelHi: 'जनगणना मकान संख्या',
+    type: 'text',
+    required: true
+  },
+  {
+    col: 4,
+    key: 'col_4_floor',
+    labelEn: 'Floor Material',
+    labelHi: 'फर्श की सामग्री',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Mud', labelHi: 'मिट्टी', icon: '🟫' },
+      { value: 2, labelEn: 'Wood/Bamboo', labelHi: 'लकड़ी/बांस', icon: '🪵' },
+      { value: 3, labelEn: 'Burnt Brick', labelHi: 'पक्की ईंट', icon: '🧱' },
+      { value: 4, labelEn: 'Stone', labelHi: 'पत्थर', icon: '🪨' },
+      { value: 5, labelEn: 'Cement', labelHi: 'सीमेंट', icon: '🔘' },
+      { value: 6, labelEn: 'Mosaic/Tiles', labelHi: 'मोजैक/टाइल्स', icon: '⬜' },
+      { value: 7, labelEn: 'Any Other', labelHi: 'अन्य कोई', icon: '📦' }
+    ],
+    required: true
+  },
+  {
+    col: 5,
+    key: 'col_5_wall',
+    labelEn: 'Wall Material',
+    labelHi: 'दीवार की सामग्री',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Grass/Thatch/Bamboo', labelHi: 'घांस/फूस/बांस', icon: '🌿' },
+      { value: 2, labelEn: 'Plastic/Polythene', labelHi: 'प्लास्टिक/पॉलीथिन', icon: '🛍️' },
+      { value: 3, labelEn: 'Mud/Unburnt Brick', labelHi: 'मिट्टी/कच्ची ईंट', icon: '🟫' },
+      { value: 4, labelEn: 'Wood', labelHi: 'लकड़ी', icon: '🪵' },
+      { value: 5, labelEn: 'Stone (No Mortar)', labelHi: 'पत्थर (मसाला रहित)', icon: '🪨' },
+      { value: 6, labelEn: 'Stone (With Mortar)', labelHi: 'पत्थर (मसाला युक्त)', icon: '🧱' },
+      { value: 7, labelEn: 'GI/Metal Sheets', labelHi: 'जी.आई./धातु चादरें', icon: '🔩' },
+      { value: 8, labelEn: 'Burnt Brick', labelHi: 'पक्की ईंट', icon: '🧱' },
+      { value: 9, labelEn: 'Concrete', labelHi: 'कंक्रीट', icon: '🏗️' },
+      { value: 0, labelEn: 'Any Other', labelHi: 'अन्य कोई', icon: '📦' }
+    ],
+    required: true
+  },
+  {
+    col: 6,
+    key: 'col_6_roof',
+    labelEn: 'Roof Material',
+    labelHi: 'छत की सामग्री',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Grass/Thatch/Wood', labelHi: 'घांस/फूस/लकड़ी', icon: '🌿' },
+      { value: 2, labelEn: 'Plastic/Polythene', labelHi: 'प्लास्टिक/पॉलीथिन', icon: '🛍️' },
+      { value: 3, labelEn: 'Handmade Tiles', labelHi: 'हस्त निर्मित टाइल्स', icon: '🔷' },
+      { value: 4, labelEn: 'Machine Made Tiles', labelHi: 'मशीन निर्मित टाइल्स', icon: '🟦' },
+      { value: 5, labelEn: 'Burnt Brick', labelHi: 'पक्की ईंट', icon: '🧱' },
+      { value: 6, labelEn: 'Stone', labelHi: 'पत्थर', icon: '🪨' },
+      { value: 7, labelEn: 'Slate', labelHi: 'स्लेट', icon: '📐' },
+      { value: 8, labelEn: 'GI/Metal Sheets', labelHi: 'जी.आई./धातु चादरें', icon: '🔩' },
+      { value: 9, labelEn: 'Concrete', labelHi: 'कंक्रीट', icon: '🏗️' },
+      { value: 0, labelEn: 'Any Other', labelHi: 'अन्य कोई', icon: '📦' }
+    ],
+    required: true
+  },
+  {
+    col: 7,
+    key: 'col_7_use',
+    labelEn: 'Use of Census House',
+    labelHi: 'जनगणना मकान का उपयोग',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Residence', labelHi: 'आवास', icon: '🏠' },
+      { value: 2, labelEn: 'Residence-cum-other', labelHi: 'आवास-सह-अन्य', icon: '🏪' },
+      { value: 3, labelEn: 'Shop/Office', labelHi: 'दुकान/कार्यालय', icon: '🏢' },
+      { value: 4, labelEn: 'School/College', labelHi: 'स्कूल/कॉलेज', icon: '🏫' },
+      { value: 5, labelEn: 'Hotel/Lodge', labelHi: 'होटल/लॉज', icon: '🏨' },
+      { value: 6, labelEn: 'Hospital/Dispensary', labelHi: 'अस्पताल/डिस्पेंसरी', icon: '🏥' },
+      { value: 7, labelEn: 'Factory/Workshop', labelHi: 'फैक्टरी/वर्कशॉप', icon: '🏭' },
+      { value: 8, labelEn: 'Place of Worship', labelHi: 'पूजा स्थल', icon: '🛕' },
+      { value: 9, labelEn: 'Other Non-Residential', labelHi: 'अन्य गैर-आवासीय', icon: '📦' },
+      { value: 0, labelEn: 'Vacant', labelHi: 'खाली', icon: '🔒' }
+    ],
+    required: true
+  },
+  {
+    col: 8,
+    key: 'col_8_condition',
+    labelEn: 'Condition of House',
+    labelHi: 'जनगणना मकान की स्थिति',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Good', labelHi: 'अच्छी' },
+      { value: 2, labelEn: 'Livable', labelHi: 'रहने योग्य' },
+      { value: 3, labelEn: 'Dilapidated', labelHi: 'जीर्ण-शीर्ण' }
+    ],
+    visibleWhen: (f) => f.col_7_use === 1 || f.col_7_use === 2,
+    required: (f) => f.col_7_use === 1 || f.col_7_use === 2
+  },
+  {
+    col: 9,
+    key: 'col_9_household_no',
+    labelEn: 'Household Number',
+    labelHi: 'परिवार क्रमांक',
+    type: 'number',
+    defaultValue: 1,
+    visibleWhen: (f) => f.col_7_use === 1 || f.col_7_use === 2,
+    required: (f) => f.col_7_use === 1 || f.col_7_use === 2
+  },
+  {
+    col: 10,
+    key: 'col_10_persons',
+    labelEn: 'Total Persons in Household',
+    labelHi: 'परिवार में व्यक्तियों की कुल संख्या',
+    type: 'number',
+    defaultValue: 1,
+    visibleWhen: (f) => f.col_7_use === 1 || f.col_7_use === 2,
+    required: (f) => f.col_7_use === 1 || f.col_7_use === 2
+  },
+  {
+    col: 11,
+    key: 'col_11_head_name',
+    labelEn: 'Name of the Head of Household',
+    labelHi: 'परिवार के मुखिया का नाम',
+    type: 'text',
+    visibleWhen: (f) => f.col_7_use === 1 || f.col_7_use === 2,
+    required: (f) => f.col_7_use === 1 || f.col_7_use === 2
+  },
+  {
+    col: 12,
+    key: 'col_12_sex',
+    labelEn: 'Sex of Head',
+    labelHi: 'मुखिया का लिंग',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Male', labelHi: 'पुरुष' },
+      { value: 2, labelEn: 'Female', labelHi: 'स्त्री' },
+      { value: 3, labelEn: 'Transgender', labelHi: 'ट्रांसजेंडर' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 13,
+    key: 'col_13_caste',
+    labelEn: 'Caste Category (SC/ST/Other)',
+    labelHi: 'जाति वर्ग (अ.जा./अ.ज.जा./अन्य)',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'SC', labelHi: 'अ.जा. (Scheduled Caste)' },
+      { value: 2, labelEn: 'ST', labelHi: 'अ.ज.जा. (Scheduled Tribe)' },
+      { value: 3, labelEn: 'Other', labelHi: 'अन्य' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 14,
+    key: 'col_14_ownership',
+    labelEn: 'Ownership Status of House',
+    labelHi: 'मकान के स्वामित्व की स्थिति',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Owned', labelHi: 'अपना' },
+      { value: 2, labelEn: 'Rented (Own house elsewhere)', labelHi: 'किराए पर (परन्तु अन्यत्र अपना मकान)' },
+      { value: 3, labelEn: 'Rented (No other house)', labelHi: 'किराए का (एवं अपना कोई मकान नहीं)' },
+      { value: 4, labelEn: 'Any Other', labelHi: 'अन्य' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 15,
+    key: 'col_15_rooms',
+    labelEn: 'Dwelling Rooms in Possession',
+    labelHi: 'उपलब्ध कमरों की संख्या',
+    type: 'number',
+    defaultValue: 1,
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 16,
+    key: 'col_16_couples',
+    labelEn: 'Married Couples in Household',
+    labelHi: 'विवाहित दंपत्तियों की संख्या',
+    type: 'number',
+    defaultValue: 0,
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 17,
+    key: 'col_17_water_source',
+    labelEn: 'Main Source of Drinking Water',
+    labelHi: 'पेयजल का मुख्य स्रोत',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Tap Water (Treated)', labelHi: 'नल का पानी (उपचारित)', icon: '🚰' },
+      { value: 2, labelEn: 'Tap Water (Untreated)', labelHi: 'नल का पानी (अनउपचारित)', icon: '🚱' },
+      { value: 3, labelEn: 'Well', labelHi: 'कुआं', icon: '🪣' },
+      { value: 4, labelEn: 'Hand Pump', labelHi: 'हैण्डपंप', icon: '⛽' },
+      { value: 5, labelEn: 'Tubewell/Borehole', labelHi: 'ट्यूबवेल/बोरहोल', icon: '🌀' },
+      { value: 6, labelEn: 'Spring', labelHi: 'झरना', icon: '⛲' },
+      { value: 7, labelEn: 'River/Canal', labelHi: 'नदी/नहर', icon: '🏞️' },
+      { value: 8, labelEn: 'Tank/Pond/Lake', labelHi: 'टैंक/तालाब/झील', icon: '💧' },
+      { value: 9, labelEn: 'Packaged/Bottled Water', labelHi: 'सीलबंद पैकेट/बोतल का पानी', icon: '🧴' },
+      { value: 0, labelEn: 'Other Source', labelHi: 'अन्य स्रोत', icon: '📦' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 18,
+    key: 'col_18_water_location',
+    labelEn: 'Availability of Drinking Water Source',
+    labelHi: 'पेयजल स्रोत की उपलब्धता',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Within Premises', labelHi: 'परिसर के अंदर' },
+      { value: 2, labelEn: 'Near Premises', labelHi: 'परिसर के निकट' },
+      { value: 3, labelEn: 'Away', labelHi: 'दूर' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999 && f.col_17_water_source !== undefined,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999 && f.col_17_water_source !== undefined
+  },
+  {
+    col: 19,
+    key: 'col_19_lighting',
+    labelEn: 'Main Source of Lighting',
+    labelHi: 'प्रकाश का मुख्य स्रोत',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Electricity', labelHi: 'बिजली', icon: '⚡' },
+      { value: 2, labelEn: 'Kerosene', labelHi: 'मिट्टी का तेल', icon: '🪔' },
+      { value: 3, labelEn: 'Solar Energy', labelHi: 'सौर ऊर्जा', icon: '☀️' },
+      { value: 4, labelEn: 'Other Oil', labelHi: 'अन्य तेल', icon: '💧' },
+      { value: 5, labelEn: 'Any Other', labelHi: 'अन्य', icon: '📦' },
+      { value: 6, labelEn: 'No Lighting', labelHi: 'प्रकाश रहित', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 20,
+    key: 'col_20_latrine',
+    labelEn: 'Access to Latrine',
+    labelHi: 'शौचालय की सुलभता',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Exclusive for Household', labelHi: 'केवल परिवार के लिए', icon: '🚽' },
+      { value: 2, labelEn: 'Shared with other Household', labelHi: 'अन्य परिवार के साथ साझे में', icon: '🚻' },
+      { value: 3, labelEn: 'Public Latrine', labelHi: 'सार्वजनिक शौचालय', icon: '🚹' },
+      { value: 4, labelEn: 'No: Open Defecation', labelHi: 'नहीं: खुले में', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 21,
+    key: 'col_21_latrine_type',
+    labelEn: 'Type of Latrine',
+    labelHi: 'शौचालय का प्रकार',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Flush to Sewer', labelHi: 'फ्लश: सीवर से', icon: '🚽' },
+      { value: 2, labelEn: 'Flush to Septic Tank', labelHi: 'फ्लश: सेप्टिक टैंक से', icon: '🚽' },
+      { value: 3, labelEn: 'Flush to Twin Pit', labelHi: 'फ्लश: ट्विन पिट से', icon: '🚽' },
+      { value: 4, labelEn: 'Flush to Single Pit', labelHi: 'फ्लश: सिंगल पिट से', icon: '🚽' },
+      { value: 5, labelEn: 'Flush to Other', labelHi: 'फ्लश: अन्य', icon: '🚽' },
+      { value: 6, labelEn: 'Pit Latrine with Slab', labelHi: 'पिट शौचालय (स्लैब सहित)', icon: '🕳️' },
+      { value: 7, labelEn: 'Pit Latrine without Slab', labelHi: 'पिट शौचालय (बिना स्लैब)', icon: '🕳️' },
+      { value: 8, labelEn: 'Service Latrine', labelHi: 'सर्विस शौचालय', icon: '🛖' },
+      { value: 9, labelEn: 'Other Latrine', labelHi: 'अन्य शौचालय', icon: '🛖' },
+      { value: 0, labelEn: 'No Latrine / Not Connected', labelHi: 'कोई नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999 && (f.col_20_latrine === 1 || f.col_20_latrine === 2),
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999 && (f.col_20_latrine === 1 || f.col_20_latrine === 2)
+  },
+  {
+    col: 22,
+    key: 'col_22_drainage',
+    labelEn: 'Waste Water Outlet Connected to',
+    labelHi: 'गंदे पानी की निकासी किससे जुड़ी है',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Closed Drainage', labelHi: 'ढकी नाली से', icon: '➖' },
+      { value: 2, labelEn: 'Open Drainage', labelHi: 'खुली नाली से', icon: '🥛' },
+      { value: 3, labelEn: 'No Drainage', labelHi: 'किसी भी नाली से नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 23,
+    key: 'col_23_bathing',
+    labelEn: 'Bathing Facility Within Premises',
+    labelHi: 'परिसर के अन्दर स्नान सुविधा',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Yes: Bathroom', labelHi: 'स्नानगृह', icon: '🚿' },
+      { value: 2, labelEn: 'Yes: Enclosure without Roof', labelHi: 'छत के बिना अहाता', icon: '🧼' },
+      { value: 3, labelEn: 'No', labelHi: 'नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 24,
+    key: 'col_24_kitchen',
+    labelEn: 'Availability of Kitchen / LPG Connection',
+    labelHi: 'रसोई घर और एलपीजी/पीएनजी गैस',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Kitchen with LPG/PNG', labelHi: 'रसोई घर (एलपीजी/पीएनजी सहित)', icon: '🍳' },
+      { value: 2, labelEn: 'Kitchen without LPG/PNG', labelHi: 'रसोई घर (एलपीजी/पीएनजी रहित)', icon: '🍳' },
+      { value: 3, labelEn: 'No Separate Kitchen with LPG/PNG', labelHi: 'अलग रसोई घर नहीं (एलपीजी/पीएनजी सहित)', icon: '🥘' },
+      { value: 4, labelEn: 'No Separate Kitchen without LPG/PNG', labelHi: 'अलग रसोई घर नहीं (एलपीजी/पीएनजी रहित)', icon: '🥘' },
+      { value: 5, labelEn: 'Cooking in Open with LPG/PNG', labelHi: 'खुले में खाना पकाना (एलपीजी/पीएनजी सहित)', icon: '⛺' },
+      { value: 6, labelEn: 'Cooking in Open without LPG/PNG', labelHi: 'खुले में खाना पकाना (एलपीजी/पीएनजी रहित)', icon: '⛺' },
+      { value: 7, labelEn: 'No Cooking Done', labelHi: 'कोई खाना नहीं पकाया जाता', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 25,
+    key: 'col_25_fuel',
+    labelEn: 'Main Fuel Used for Cooking',
+    labelHi: 'खाना पकाने के लिए मुख्य ईंधन',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Firewood', labelHi: 'जलाऊ लकड़ी', icon: '🪵' },
+      { value: 2, labelEn: 'Crop Residue', labelHi: 'फसल का अवशेष', icon: '🌾' },
+      { value: 3, labelEn: 'Cowdung Cake', labelHi: 'उपला', icon: '🐄' },
+      { value: 4, labelEn: 'Coal/Lignite/Charcoal', labelHi: 'पक्का कोयला', icon: '⬛' },
+      { value: 5, labelEn: 'Kerosene', labelHi: 'मिट्टी का तेल', icon: '🪔' },
+      { value: 6, labelEn: 'LPG/PNG', labelHi: 'एलपीजी/पीएनजी', icon: '🔵' },
+      { value: 7, labelEn: 'Electricity', labelHi: 'बिजली', icon: '⚡' },
+      { value: 8, labelEn: 'Bio-gas/Gobar Gas', labelHi: 'गोबर गैस', icon: '🍃' },
+      { value: 9, labelEn: 'Solar Energy', labelHi: 'सौर ऊर्जा', icon: '☀️' },
+      { value: 0, labelEn: 'Any Other', labelHi: 'अन्य', icon: '📦' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999 && f.col_24_kitchen !== 7,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999 && f.col_24_kitchen !== 7
+  },
+  {
+    col: 26,
+    key: 'col_26_radio',
+    labelEn: 'Radio / Transistor',
+    labelHi: 'रेडियो/ट्रांजिस्टर',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Traditional Radio Set', labelHi: 'परंपरागत रेडियो सेट', icon: '📻' },
+      { value: 2, labelEn: 'On Mobile/Smartphone', labelHi: 'मोबाइल/स्मार्टफोन पर', icon: '📱' },
+      { value: 3, labelEn: 'On other device', labelHi: 'अन्य उपकरण', icon: '💻' },
+      { value: 4, labelEn: 'No', labelHi: 'नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 27,
+    key: 'col_27_tv',
+    labelEn: 'Television',
+    labelHi: 'टेलीविजन',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'DD Free Dish', labelHi: 'दूरदर्शन मुफ्त डिश', icon: '📡' },
+      { value: 2, labelEn: 'Other DTH/Dish', labelHi: 'अन्य डीटीएच/डिश', icon: '📡' },
+      { value: 3, labelEn: 'Cable Connection', labelHi: 'केबल कनेक्शन', icon: '🔌' },
+      { value: 4, labelEn: 'Other', labelHi: 'अन्य', icon: '📺' },
+      { value: 5, labelEn: 'No', labelHi: 'नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 28,
+    key: 'col_28_internet',
+    labelEn: 'Internet Facility',
+    labelHi: 'इंटरनेट सुविधा',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'On Laptop/Computer', labelHi: 'लैपटॉप/कंप्यूटर में', icon: '💻' },
+      { value: 2, labelEn: 'On Mobile/Smartphone', labelHi: 'मोबाइल/स्मार्टफोन में', icon: '📱' },
+      { value: 3, labelEn: 'On other device', labelHi: 'अन्य', icon: '📺' },
+      { value: 4, labelEn: 'No', labelHi: 'नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 29,
+    key: 'col_29_computer',
+    labelEn: 'Laptop / Computer',
+    labelHi: 'लैपटॉप/कंप्यूटर',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Yes', labelHi: 'हां', icon: '💻' },
+      { value: 2, labelEn: 'No', labelHi: 'नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 30,
+    key: 'col_30_phone',
+    labelEn: 'Telephone / Mobile Phone',
+    labelHi: 'टेलीफोन और मोबाइल फोन',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Landline only', labelHi: 'केवल लैंडलाइन', icon: '☎️' },
+      { value: 2, labelEn: 'Mobile Smartphone only', labelHi: 'केवल मोबाइल स्मार्टफोन', icon: '📱' },
+      { value: 3, labelEn: 'Other basic mobile', labelHi: 'अन्य बुनियादी मोबाइल', icon: '📟' },
+      { value: 4, labelEn: 'Both', labelHi: 'दोनों', icon: '🔌' },
+      { value: 5, labelEn: 'No', labelHi: 'नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 31,
+    key: 'col_31_vehicle_2w',
+    labelEn: 'Bicycle / Scooter / Motorcycle',
+    labelHi: 'साइकिल और स्कूटर/मोटरसाइकिल',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Bicycle', labelHi: 'साइकिल', icon: '🚲' },
+      { value: 2, labelEn: 'Scooter/Motorcycle/Moped', labelHi: 'स्कूटर/मोटरसाइकिल/मोपेड', icon: '🛵' },
+      { value: 3, labelEn: 'Both', labelHi: 'दोनों', icon: '🔌' },
+      { value: 4, labelEn: 'None', labelHi: 'नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 32,
+    key: 'col_32_car',
+    labelEn: 'Car / Jeep / Van',
+    labelHi: 'कार/जीप/वैन',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Yes', labelHi: 'हां', icon: '🚗' },
+      { value: 2, labelEn: 'No', labelHi: 'नहीं', icon: '🚫' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 33,
+    key: 'col_33_cereal',
+    labelEn: 'Main Cereal Consumed',
+    labelHi: 'मुख्य अनाज/खाद्यान्न',
+    type: 'select',
+    options: [
+      { value: 1, labelEn: 'Rice', labelHi: 'चावल', icon: '🍚' },
+      { value: 2, labelEn: 'Wheat', labelHi: 'गेहूं', icon: '🌾' },
+      { value: 3, labelEn: 'Jowar', labelHi: 'ज्वार', icon: '🌾' },
+      { value: 4, labelEn: 'Bajra', labelHi: 'बाजरा', icon: '🌾' },
+      { value: 5, labelEn: 'Maize', labelHi: 'मक्का', icon: '🌽' },
+      { value: 6, labelEn: 'Any Other', labelHi: 'अन्य', icon: '📦' }
+    ],
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999,
+    required: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  },
+  {
+    col: 34,
+    key: 'col_34_mobile',
+    labelEn: 'Mobile Number (for contact)',
+    labelHi: 'मोबाइल नंबर (केवल संपर्क के लिए)',
+    type: 'text',
+    visibleWhen: (f) => (f.col_7_use === 1 || f.col_7_use === 2) && f.col_9_household_no !== 999
+  }
 ];
 
-// Short header used in the (very wide) register: "Floor\n(4)".
-export const headerLabel = (f: HloField) => `${f.en}\n(${f.col})`;
+export function getFieldByKey(key: string): HLOFieldDefinition | undefined {
+  return HLO_SCHEDULE.find(f => f.key === key);
+}
 
-// Resolve a stored value to a human cell: "code – label" for code fields, else raw.
-export function cellValue(f: HloField, r: Record<string, any>): string {
-  const v = r[f.key];
-  if (v === undefined || v === null || v === '') return '';
-  if (f.type === 'code' && f.options) {
-    const opt = f.options.find(op => op.code === v);
-    return opt ? `${v} ${opt.en}` : String(v);
+export function getFieldByCol(col: number): HLOFieldDefinition | undefined {
+  return HLO_SCHEDULE.find(f => f.col === col);
+}
+
+/** Legacy mapping helper for backwards compatibility. */
+export function migrateLegacySymbolData(legacyData: any): any {
+  const data = { ...legacyData };
+  
+  // Floor, wall, roof mapping
+  if (data.col_6_wall_material !== undefined && data.col_5_wall === undefined) {
+    data.col_5_wall = data.col_6_wall_material;
   }
-  return String(v);
+  if (data.col_7_roof_material !== undefined && data.col_6_roof === undefined) {
+    data.col_6_roof = data.col_7_roof_material;
+  }
+  
+  // Use mapping: legacy col_4_use_type is now col_7_use
+  if (data.col_4_use_type !== undefined && data.col_7_use === undefined) {
+    data.col_7_use = data.col_4_use_type;
+  }
+  
+  // Families mapping: legacy col_9_family_count maps to col_9_household_no (seq) 
+  // and col_10_persons (persons count is new, default 1).
+  if (data.col_9_family_count !== undefined) {
+    if (data.col_9_household_no === undefined) data.col_9_household_no = 1;
+    if (data.col_10_persons === undefined) data.col_10_persons = data.col_9_family_count;
+  }
+
+  // Head name mapping: col_10_head_name / head_of_household → col_11_head_name
+  if (data.col_10_head_name !== undefined && data.col_11_head_name === undefined) {
+    data.col_11_head_name = data.col_10_head_name;
+  } else if (data.head_of_household !== undefined && data.col_11_head_name === undefined) {
+    data.col_11_head_name = data.head_of_household;
+  }
+
+  // Dwelling rooms: col_11_total_rooms → col_15_rooms
+  if (data.col_11_total_rooms !== undefined && data.col_15_rooms === undefined) {
+    data.col_15_rooms = data.col_11_total_rooms;
+  }
+
+  // Ownership: col_12_ownership → col_14_ownership
+  if (data.col_12_ownership !== undefined && data.col_14_ownership === undefined) {
+    data.col_14_ownership = data.col_12_ownership;
+  }
+
+  // Water source: col_18_water_source → col_17_water_source
+  if (data.col_18_water_source !== undefined && data.col_17_water_source === undefined) {
+    data.col_17_water_source = data.col_18_water_source;
+  }
+  if (data.col_18a_water_location !== undefined && data.col_18_water_location === undefined) {
+    data.col_18_water_location = data.col_18a_water_location;
+  }
+
+  // Electricity
+  if (data.col_19_electricity !== undefined && data.col_19_lighting === undefined) {
+    data.col_19_lighting = data.col_19_electricity ? 1 : 6;
+  }
+
+  // Bathroom: col_22_bathroom → col_23_bathing
+  if (data.col_22_bathroom !== undefined && data.col_23_bathing === undefined) {
+    data.col_23_bathing = data.col_22_bathroom;
+  }
+
+  // Assets mapping
+  if (data.asset_radio !== undefined && data.col_26_radio === undefined) {
+    data.col_26_radio = data.asset_radio ? 1 : 4;
+  }
+  if (data.asset_tv !== undefined && data.col_27_tv === undefined) {
+    data.col_27_tv = data.asset_tv ? 3 : 5; // Default to cable or no
+  }
+  if (data.asset_computer_internet !== undefined && data.col_28_internet === undefined) {
+    data.col_28_internet = data.asset_computer_internet ? 1 : 4;
+  }
+  if (data.asset_laptop !== undefined && data.col_29_computer === undefined) {
+    data.col_29_computer = data.asset_laptop ? 1 : 2;
+  }
+  if (data.asset_mobile !== undefined && data.col_30_phone === undefined) {
+    data.col_30_phone = data.asset_mobile ? 2 : 5;
+  }
+  if (data.asset_bicycle !== undefined && data.col_31_vehicle_2w === undefined) {
+    data.col_31_vehicle_2w = data.asset_bicycle ? 1 : 4;
+  }
+  if (data.asset_scooter_motorcycle !== undefined && data.col_31_vehicle_2w === undefined) {
+    data.col_31_vehicle_2w = data.asset_scooter_motorcycle ? 2 : 4;
+  }
+  if (data.asset_car_jeep_van !== undefined && data.col_32_car === undefined) {
+    data.col_32_car = data.asset_car_jeep_van ? 1 : 2;
+  }
+  if (data.col_34_mobile_number !== undefined && data.col_34_mobile === undefined) {
+    data.col_34_mobile = data.col_34_mobile_number;
+  }
+
+  return data;
 }

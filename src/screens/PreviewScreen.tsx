@@ -203,9 +203,13 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     return exportData;
   }
 
-  async function handleExport() {
+  async function handleExport(exportType: 'map' | 'register_pdf' | 'register_xlsx' = 'map') {
     // Demo/tour: render locally (no payment, no server) so the walkthrough works offline.
     if (isDemoMode) {
+      if (exportType !== 'map') {
+        alert('Register export is not available in demo mode.');
+        return;
+      }
       setExporting(true);
       setExportProgress('Rendering map...');
       try {
@@ -222,25 +226,23 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     }
 
     // Real export: verify payment SERVER-SIDE first, then render client-side.
-    // The server issues a time-limited signed token to confirm payment — the
-    // clean PDF is only rendered when the token is valid. No native modules on
-    // the server, so no Vercel crashes.
     if (!isPaid) { handlePayment(); return; }
-    if (!mapData.projectId) { alert('Project is still saving — please wait a moment and try again.'); return; }
+    if (!mapData.projectId) { alert('Project/Session is still saving — please wait a moment and try again.'); return; }
 
     setExporting(true);
     setExportProgress('Verifying payment…');
     try {
-      // Save current sheet size / orientation / AI image so the export renders
-      // exactly what the user sees.
-      await supabase.from('projects').update({ data: buildExportData() }).eq('id', mapData.projectId);
+      // Save current sheet size / orientation / AI image ONLY for standard projects
+      if (!mapData.isLive) {
+        await supabase.from('projects').update({ data: buildExportData() }).eq('id', mapData.projectId);
+      }
 
       // Step 1: Verify payment server-side and get a render token
       const { data: { session } } = await supabase.auth.getSession();
       const verifyResp = await fetch('/api/verify-download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-        body: JSON.stringify({ projectId: mapData.projectId }),
+        body: JSON.stringify({ projectId: mapData.projectId, kind: mapData.isLive ? 'live' : 'project' }),
       });
       if (!verifyResp.ok) {
         if (verifyResp.status === 402) { handlePayment(); return; }
@@ -248,19 +250,41 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
         throw new Error(errBody.error || 'Payment verification failed (' + verifyResp.status + ')');
       }
 
-      // Step 2: Render the clean PDF client-side (browser canvas — always works)
-      setExportProgress('Rendering print-ready PDF…');
-      await new Promise(r => setTimeout(r, 100)); // Let UI update
+      // Step 2: Render based on exportType
+      if (exportType === 'map') {
+        setExportProgress('Rendering print-ready PDF…');
+        await new Promise(r => setTimeout(r, 100)); // Let UI update
 
-      await exportBlockPDF(
-        buildExportData(),
-        orient,
-        (msg: string) => setExportProgress(msg),
-      );
+        await exportBlockPDF(
+          buildExportData(),
+          orient,
+          (msg: string) => setExportProgress(msg),
+        );
 
-      // Step 3: Increment export count
-      await supabase.rpc('increment_export_count', { proj_id: mapData.projectId });
-      mapData.exportCount = (mapData.exportCount || 0) + 1;
+        if (!mapData.isLive) {
+          // Step 3: Increment export count for standard projects
+          await supabase.rpc('increment_export_count', { proj_id: mapData.projectId });
+          mapData.exportCount = (mapData.exportCount || 0) + 1;
+        }
+      } else if (exportType === 'register_pdf') {
+        setExportProgress('Generating HLO Register PDF…');
+        await new Promise(r => setTimeout(r, 100));
+        const { exportRegisterPDF } = await import('../lib/register-export');
+        exportRegisterPDF(
+          mapData.locationName || 'Live Survey',
+          mapData.hlbNumber || 'LIVE',
+          mapData.symbols
+        );
+      } else if (exportType === 'register_xlsx') {
+        setExportProgress('Generating HLO Register XLSX…');
+        await new Promise(r => setTimeout(r, 100));
+        const { exportRegisterXLSX } = await import('../lib/register-export');
+        exportRegisterXLSX(
+          mapData.locationName || 'Live Survey',
+          mapData.hlbNumber || 'LIVE',
+          mapData.symbols
+        );
+      }
       setExported(true);
     } catch (err) {
       console.error(err);
@@ -274,10 +298,13 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     setPaying(true);
     try {
       if (!mapData.projectId) {
-        throw new Error('Project is still saving, please wait a moment and try again.');
+        throw new Error('Project/Session ID is missing, please reload.');
       }
+      const payload = mapData.isLive
+        ? { sessionId: mapData.projectId, kind: 'live' }
+        : { projectId: mapData.projectId, kind: 'project' };
       const { data, error } = await supabase.functions.invoke('create-cashfree-payment', {
-        body: { projectId: mapData.projectId }
+        body: payload
       });
       if (error) throw error;
       if (data && data.paymentSessionId) {
@@ -338,7 +365,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           {aiImg && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ AI Survey Map included</p>}
           <div className="bg-amber-50 rounded-lg p-2"><p className="text-xs text-amber-700">💡 Print at cyber café — A4 {orient}</p></div>
           <button onClick={() => onExitToDashboard ? onExitToDashboard() : window.location.reload()} className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-[Baloo_2] shadow" style={{ height: 52 }}>Return to Dashboard</button>
-          <button onClick={handleExport} className="w-full py-2 border-2 border-orange-300 text-orange-600 rounded-xl text-sm font-semibold">📥 Download Again</button>
+          <button onClick={() => handleExport()} className="w-full py-2 border-2 border-orange-300 text-orange-600 rounded-xl text-sm font-semibold">📥 Download Again</button>
         </div>
 
         {/* FEEDBACK POPUP */}
@@ -471,15 +498,45 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
         {/* Prominent bottom CTA (hidden during the demo tour, which has its own bar) */}
         {!isDemoMode && !exporting && (
           <div className="absolute left-0 right-0 bottom-4 z-[55] flex justify-center px-4 pointer-events-none">
-            <button
-              onClick={() => isPaid ? handleExport() : setShowPaywall(true)}
-              disabled={paying}
-              className={`pointer-events-auto w-full max-w-md py-4 rounded-2xl font-black text-base shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${isPaid ? 'bg-orange-500 text-white' : 'bg-gradient-to-r from-emerald-600 to-green-600 text-white'}`}
-            >
-              {isPaid
-                ? <>🖨️ Print / Download PDF</>
-                : <>🔓 Unlock Print &amp; PDF — <span className="opacity-90">₹25</span></>}
-            </button>
+            {!isPaid ? (
+              <button
+                onClick={() => setShowPaywall(true)}
+                disabled={paying}
+                className="pointer-events-auto w-full max-w-md py-4 rounded-2xl font-black text-base shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white"
+              >
+                🔓 Unlock Map &amp; HLO Register — <span className="opacity-90">₹25</span>
+              </button>
+            ) : mapData.isLive ? (
+              <div className="pointer-events-auto w-full max-w-md flex flex-col gap-2">
+                <button
+                  onClick={() => handleExport('map')}
+                  className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black text-sm shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                  🖨️ Download Map PDF
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleExport('register_pdf')}
+                    className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                  >
+                    📄 Register PDF (A3)
+                  </button>
+                  <button
+                    onClick={() => handleExport('register_xlsx')}
+                    className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                  >
+                    📊 Register Excel (XLSX)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => handleExport('map')}
+                className="pointer-events-auto w-full max-w-md py-4 rounded-2xl font-black text-base shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 bg-orange-500 text-white"
+              >
+                🖨️ Print / Download PDF
+              </button>
+            )}
           </div>
         )}
 
@@ -661,7 +718,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
             )}
             <div className="flex gap-2 px-3 pb-3 pt-1">
               <button
-                onClick={handleExport}
+                onClick={() => handleExport()}
                 disabled={exporting}
                 className="flex-1 py-2 rounded-xl text-xs font-bold bg-orange-500 text-white shadow active:scale-95 transition-all disabled:opacity-60"
               >
@@ -746,11 +803,11 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
           <div className="w-full max-w-xs space-y-3">
             <button
-              onClick={() => { setShowCelebrate(false); handleExport(); }}
+              onClick={() => { setShowCelebrate(false); handleExport('map'); }}
               disabled={exporting}
               className="w-full py-4 rounded-2xl bg-white text-green-700 font-black text-base shadow-xl active:scale-[0.98] transition-all disabled:opacity-70"
             >
-              {exporting ? 'Preparing…' : '⬇️ Download your PDF'}
+              {exporting ? 'Preparing…' : mapData.isLive ? '⬇️ Download Map PDF' : '⬇️ Download your PDF'}
             </button>
             <button
               onClick={() => setShowCelebrate(false)}

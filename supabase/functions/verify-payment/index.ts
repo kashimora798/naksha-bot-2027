@@ -31,42 +31,72 @@ serve(async (req) => {
     const { data: { user } } = await userClient.auth.getUser()
     if (!user) return json({ error: 'Not authenticated' }, 401)
 
-    const { projectId } = await req.json()
+    const { projectId, kind } = await req.json()
     if (!projectId) return json({ error: 'Missing projectId' }, 400)
-
+    const isLive = kind === 'live'
+ 
     const admin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
-
-    const { data: project } = await admin
-      .from('projects')
-      .select('id, user_id, payment_status, payment_id')
-      .eq('id', projectId).eq('user_id', user.id).single()
-    if (!project) return json({ error: 'Project not found' }, 404)
-
-    // Already paid → idempotent success (no double-granting of regens).
-    if (project.payment_status === 'paid') return json({ paid: true })
-    if (!project.payment_id) return json({ paid: false, reason: 'no order' })
-
-    // Ask Cashfree if this order is actually PAID.
-    const cf = await fetch(`${CASHFREE_BASE}/orders/${encodeURIComponent(project.payment_id)}`, {
-      headers: {
-        'x-client-id': Deno.env.get('CASHFREE_APP_ID') ?? '',
-        'x-client-secret': Deno.env.get('CASHFREE_SECRET_KEY') ?? '',
-        'x-api-version': '2025-01-01',
-      },
-    })
-    const order = await cf.json()
-    if (!cf.ok || order?.order_status !== 'PAID') {
-      return json({ paid: false, reason: order?.order_status || 'unconfirmed' })
+ 
+    if (isLive) {
+      const { data: liveExport } = await admin
+        .from('live_exports')
+        .select('session_id, user_id, payment_status, payment_id')
+        .eq('session_id', projectId).eq('user_id', user.id).maybeSingle()
+      if (!liveExport) return json({ error: 'Live export not found' }, 404)
+ 
+      // Already paid → idempotent success
+      if (liveExport.payment_status === 'paid') return json({ paid: true })
+      if (!liveExport.payment_id) return json({ paid: false, reason: 'no order' })
+ 
+      // Ask Cashfree if this order is actually PAID.
+      const cf = await fetch(`${CASHFREE_BASE}/orders/${encodeURIComponent(liveExport.payment_id)}`, {
+        headers: {
+          'x-client-id': Deno.env.get('CASHFREE_APP_ID') ?? '',
+          'x-client-secret': Deno.env.get('CASHFREE_SECRET_KEY') ?? '',
+          'x-api-version': '2025-01-01',
+        },
+      })
+      const order = await cf.json()
+      if (!cf.ok || order?.order_status !== 'PAID') {
+        return json({ paid: false, reason: order?.order_status || 'unconfirmed' })
+      }
+ 
+      // Confirmed PAID → unlock live export
+      await admin.from('live_exports').update({ payment_status: 'paid' }).eq('session_id', projectId)
+      return json({ paid: true })
+    } else {
+      const { data: project } = await admin
+        .from('projects')
+        .select('id, user_id, payment_status, payment_id')
+        .eq('id', projectId).eq('user_id', user.id).single()
+      if (!project) return json({ error: 'Project not found' }, 404)
+ 
+      // Already paid → idempotent success (no double-granting of regens).
+      if (project.payment_status === 'paid') return json({ paid: true })
+      if (!project.payment_id) return json({ paid: false, reason: 'no order' })
+ 
+      // Ask Cashfree if this order is actually PAID.
+      const cf = await fetch(`${CASHFREE_BASE}/orders/${encodeURIComponent(project.payment_id)}`, {
+        headers: {
+          'x-client-id': Deno.env.get('CASHFREE_APP_ID') ?? '',
+          'x-client-secret': Deno.env.get('CASHFREE_SECRET_KEY') ?? '',
+          'x-api-version': '2025-01-01',
+        },
+      })
+      const order = await cf.json()
+      if (!cf.ok || order?.order_status !== 'PAID') {
+        return json({ paid: false, reason: order?.order_status || 'unconfirmed' })
+      }
+ 
+      // Confirmed PAID → unlock + grant regens (service role passes the guard trigger).
+      await admin.from('projects').update({ payment_status: 'paid' }).eq('id', projectId)
+      await admin.rpc('grant_regen_allowance', { proj_id: projectId, n: REGENS_PER_PAYMENT })
+ 
+      return json({ paid: true })
     }
-
-    // Confirmed PAID → unlock + grant regens (service role passes the guard trigger).
-    await admin.from('projects').update({ payment_status: 'paid' }).eq('id', projectId)
-    await admin.rpc('grant_regen_allowance', { proj_id: projectId, n: REGENS_PER_PAYMENT })
-
-    return json({ paid: true })
   } catch (error) {
     console.error('verify-payment error:', error)
     return json({ error: (error as Error).message }, 400)

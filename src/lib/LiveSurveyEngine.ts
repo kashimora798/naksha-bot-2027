@@ -56,7 +56,7 @@ export class LiveSurveyEngine {
   returnDetectedFlag = false;
   returnMode: 'none' | 'two_lane' | 'follow_back' = 'none';
 
-  // New buffers for advanced filtering & OSRM
+  snapToRoadsEnabled = true;
   snapBuffer: SurveyPoint[] = [];
   snapInterval: any = null;
   recentPointsBuffer: SurveyPoint[] = [];
@@ -66,6 +66,16 @@ export class LiveSurveyEngine {
     this.supabase = supabaseClient;
     this.idb = idbService;
     this.sessionId = existingSessionId || crypto.randomUUID();
+  }
+
+  setSnapToRoadsEnabled(enabled: boolean) {
+    this.snapToRoadsEnabled = enabled;
+    if (!enabled && this.snapInterval) {
+      clearInterval(this.snapInterval);
+      this.snapInterval = null;
+    } else if (enabled && !this.snapInterval && this.state === 'RECORDING') {
+      this.startSnapInterval();
+    }
   }
 
   async loadSessionData() {
@@ -166,6 +176,9 @@ export class LiveSurveyEngine {
         console.warn('Wake lock failed', e);
       }
     }
+    if (this.snapToRoadsEnabled) {
+      this.startSnapInterval();
+    }
     this.emit('stateChanged', this.state);
   }
 
@@ -199,8 +212,16 @@ export class LiveSurveyEngine {
   resumeSurvey() {
     if (this.state !== 'PAUSED') return;
     this.state = 'RECORDING';
+    
+    // Seed the new segment with the last known point to keep the road continuous
+    if (this.currentSegment.points.length === 0 && this.smoothedPath.length > 0) {
+      this.currentSegment.points.push(this.smoothedPath[this.smoothedPath.length - 1]);
+    }
+
     this.emit('stateChanged', this.state);
-    this.startSnapInterval();
+    if (this.snapToRoadsEnabled) {
+      this.startSnapInterval();
+    }
   }
 
   async endSurvey() {
@@ -228,7 +249,9 @@ export class LiveSurveyEngine {
     // Convert to compatible type for numbering
     this.symbols = serpentineNumbering(this.symbols as any) as any;
     
-    this.roadSegments = await snapRoadsToOSM(this.roadSegments, this.blockPolygon) as any;
+    if (this.snapToRoadsEnabled) {
+      this.roadSegments = await snapRoadsToOSM(this.roadSegments, this.blockPolygon) as any;
+    }
     
     await this.saveToIDB();
     await this.syncToSupabase();
@@ -357,7 +380,7 @@ export class LiveSurveyEngine {
         let finalPoint: SurveyPoint = { ...smoothed };
 
         // OSM road proximity check & snap
-        if (this.osmRoadLines.length > 0) {
+        if (this.snapToRoadsEnabled && this.osmRoadLines.length > 0) {
           const osmCheck = this.checkOsmRoadProximity(smoothed);
           if (osmCheck.onRoad) {
             if (!this.onOsmRoad) {
@@ -463,6 +486,7 @@ export class LiveSurveyEngine {
   startSnapInterval() {
     if (this.snapInterval) clearInterval(this.snapInterval);
     this.snapInterval = setInterval(async () => {
+      if (!this.snapToRoadsEnabled) return;
       if (this.snapBuffer.length < 5) return;
       
       const pointsToSnap = [...this.snapBuffer];
@@ -582,6 +606,19 @@ export class LiveSurveyEngine {
       finalLat = offset.geometry.coordinates[1];
     }
 
+    // Boundary check
+    if (this.blockPolygon?.geometry) {
+      try {
+        const pt = turf.point([finalLng, finalLat]);
+        const poly = turf.polygon(this.blockPolygon.geometry.coordinates);
+        const inside = turf.booleanPointInPolygon(pt, poly);
+        if (!inside) {
+          const approve = window.confirm("⚠️ Warning: This symbol is outside the block boundary. Do you still want to place it?");
+          if (!approve) return null;
+        }
+      } catch (e) { /* ignore bad geometries */ }
+    }
+
     // Duplicate detection - check if house already exists within 5m
     const nearby = this.symbols.filter(s =>
       ['pucca_house', 'kutcha_house', 'apartment', 'non_residential'].includes(s.symbol_type) &&
@@ -654,19 +691,7 @@ export class LiveSurveyEngine {
   }
 
   private recalculateHouseNumbers() {
-    const houses = this.symbols.filter(s => 
-      ['pucca_house', 'kutcha_house', 'apartment', 'non_residential'].includes(s.symbol_type as string)
-    );
-    
-    // Sort chronologically by placement time
-    houses.sort((a, b) => new Date(a.placed_at || 0).getTime() - new Date(b.placed_at || 0).getTime());
-    
-    // Re-assign sequential building numbers
-    let currentNumber = 1;
-    for (const h of houses) {
-      h.number = currentNumber;
-      currentNumber++;
-    }
+    this.symbols = serpentineNumbering(this.symbols as any) as any;
   }
 
   switchRoadType(newType: string) {

@@ -69,18 +69,33 @@ serve(async (req) => {
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       )
-      // order_id was stored in projects.payment_id when the order was created.
-      const { data: proj } = await supabaseAdmin
-        .from('projects')
-        .select('id, payment_status')
-        .eq('payment_id', orderId)
-        .single()
 
-      // Idempotent: only act if not already paid (verify-payment may have run first),
-      // so regenerations are granted exactly once per ₹25.
-      if (proj && proj.payment_status !== 'paid') {
-        await supabaseAdmin.from('projects').update({ payment_status: 'paid' }).eq('id', proj.id)
-        await supabaseAdmin.rpc('grant_regen_allowance', { proj_id: proj.id, n: 5 })
+      const isLive = orderId.startsWith('live_')
+
+      if (isLive) {
+        const { data: liveExp } = await supabaseAdmin
+          .from('live_exports')
+          .select('session_id, payment_status')
+          .eq('payment_id', orderId)
+          .maybeSingle()
+
+        if (liveExp && liveExp.payment_status !== 'paid') {
+          await supabaseAdmin.from('live_exports').update({ payment_status: 'paid' }).eq('session_id', liveExp.session_id)
+        }
+      } else {
+        // order_id was stored in projects.payment_id when the order was created.
+        const { data: proj } = await supabaseAdmin
+          .from('projects')
+          .select('id, payment_status')
+          .eq('payment_id', orderId)
+          .maybeSingle()
+
+        // Idempotent: only act if not already paid (verify-payment may have run first),
+        // so regenerations are granted exactly once per ₹25.
+        if (proj && proj.payment_status !== 'paid') {
+          await supabaseAdmin.from('projects').update({ payment_status: 'paid' }).eq('id', proj.id)
+          await supabaseAdmin.rpc('grant_regen_allowance', { proj_id: proj.id, n: 5 })
+        }
       }
     }
 

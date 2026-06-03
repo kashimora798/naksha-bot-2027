@@ -42,6 +42,15 @@ export interface RoadSegment {
   is_new_road?: boolean;
 }
 
+export interface CachedFootprints {
+  session_id: string;
+  buildings: any[];
+  roads: any[];
+  water?: any[];
+  forests?: any[];
+  farmland?: any[];
+}
+
 interface NakshaBotDB extends DBSchema {
   survey_sessions: {
     key: string;
@@ -63,13 +72,17 @@ interface NakshaBotDB extends DBSchema {
     value: RoadSegment;
     indexes: { 'session_id': string, 'road_type': string, 'is_new_road': number };
   };
+  cached_footprints: {
+    key: string;
+    value: CachedFootprints;
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<NakshaBotDB>>;
 
 export function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<NakshaBotDB>('nakshabot-live-survey', 2, {
+    dbPromise = openDB<NakshaBotDB>('nakshabot-live-survey', 3, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const sessionStore = db.createObjectStore('survey_sessions', { keyPath: 'session_id' });
@@ -89,6 +102,11 @@ export function getDB() {
           roadStore.createIndex('session_id', 'session_id');
           roadStore.createIndex('road_type', 'road_type');
           roadStore.createIndex('is_new_road', 'is_new_road');
+        }
+        if (oldVersion < 3) {
+          if (!db.objectStoreNames.contains('cached_footprints')) {
+            db.createObjectStore('cached_footprints', { keyPath: 'session_id' });
+          }
         }
       },
     });
@@ -179,6 +197,17 @@ export const idbStore = {
     return db.getAllFromIndex('road_segments', 'session_id', session_id);
   },
 
+  async saveCachedFootprints(footprints: CachedFootprints) {
+    const db = await getDB();
+    await db.put('cached_footprints', footprints);
+  },
+
+  async getCachedFootprints(session_id: string): Promise<CachedFootprints | undefined> {
+    const db = await getDB();
+    if (!db.objectStoreNames.contains('cached_footprints')) return undefined;
+    return db.get('cached_footprints', session_id);
+  },
+
   async deleteSession(session_id: string) {
     const db = await getDB();
     
@@ -208,5 +237,14 @@ export const idbStore = {
       roadsTx.store.delete(key);
     }
     await roadsTx.done;
+
+    // Delete associated footprints if the store exists
+    if (db.objectStoreNames.contains('cached_footprints')) {
+      try {
+        await db.delete('cached_footprints', session_id);
+      } catch (e) {
+        console.error('Error deleting cached footprints:', e);
+      }
+    }
   }
 };

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SurveySymbol } from '../../lib/idb';
+import { HLO_SCHEDULE, migrateLegacySymbolData, HLOFieldDefinition, HLOFieldOption } from '../../lib/hlo-schedule';
 
 interface HouseDataSidebarProps {
   house: SurveySymbol;
@@ -8,387 +9,330 @@ interface HouseDataSidebarProps {
 }
 
 export const HouseDataSidebar: React.FC<HouseDataSidebarProps> = ({ house, onClose, onSave }) => {
-  // If the house already has significant data, start in VIEW mode
-  const hasData = house.col_4_use_type !== undefined || house.head_of_household !== undefined || house.col_10_head_name !== undefined;
+  // Pre-migrate legacy data to new HLO 2027 schema
+  const migratedHouse = migrateLegacySymbolData(house);
   
-  const [mode, setMode] = useState<'VIEW' | 'EDIT'>(hasData ? 'VIEW' : 'EDIT');
-  const [step, setStep] = useState<1 | 2>(1); // 1 = Schedule 1, 2 = Schedule A
+  const [formData, setFormData] = useState<Partial<SurveySymbol>>({ ...migratedHouse });
   
-  // Local state for all fields
-  const [formData, setFormData] = useState<Partial<SurveySymbol>>({ ...house });
+  // Calculate if the house has existing data to determine VIEW vs EDIT mode
+  const hasExistingData = HLO_SCHEDULE.some(field => {
+    // Check if any visible field has a value defined
+    if (field.visibleWhen && !field.visibleWhen(migratedHouse)) return false;
+    const val = migratedHouse[field.key as keyof SurveySymbol];
+    return val !== undefined && val !== '' && val !== null;
+  });
+
+  const [mode, setMode] = useState<'VIEW' | 'EDIT'>(hasExistingData ? 'VIEW' : 'EDIT');
+  const [activeTab, setActiveTab] = useState<'SCH1' | 'SCHA'>('SCH1');
 
   useEffect(() => {
-    setFormData({ ...house });
+    const updated = migrateLegacySymbolData(house);
+    setFormData({ ...updated });
   }, [house]);
 
-  const handleSave = () => {
-    // Calculate completeness
-    let filledFields = 0;
-    const totalFields = 17; // Approximate key fields to track
-    
-    const sch1Complete = !!(formData.col_4_use_type && formData.col_6_wall_material && formData.col_7_roof_material && formData.col_8_condition && formData.col_9_family_count);
-    const schAComplete = !!(formData.col_18_water_source && formData.col_19_electricity !== undefined && formData.col_20_latrine && formData.col_25_cooking_fuel);
-    
-    // Just a basic heuristic
-    if (formData.col_4_use_type) filledFields++;
-    if (formData.col_6_wall_material) filledFields++;
-    if (formData.col_7_roof_material) filledFields++;
-    if (formData.col_8_condition) filledFields++;
-    if (formData.col_9_family_count) filledFields++;
-    if (formData.col_10_head_name) filledFields++;
-    if (formData.col_11_total_rooms) filledFields++;
-    if (formData.col_12_ownership) filledFields++;
-    
-    if (formData.col_18_water_source) filledFields++;
-    if (formData.col_19_electricity !== undefined) filledFields++;
-    if (formData.col_20_latrine) filledFields++;
-    if (formData.col_21_latrine_type) filledFields++;
-    if (formData.col_22_bathroom) filledFields++;
-    if (formData.col_25_cooking_fuel) filledFields++;
-    if (formData.col_24_kitchen) filledFields++;
-    if (formData.col_34_mobile_number) filledFields++;
-    if (formData.asset_mobile || formData.asset_tv || formData.asset_bicycle) filledFields++;
+  const updateField = (key: string, value: any) => {
+    setFormData(prev => {
+      const updated = { ...prev, [key]: value };
+      
+      // Auto-set col_3_house_no when col_2_building_no is edited if col_3 is blank
+      if (key === 'col_2_building_no' && !updated.col_3_house_no) {
+        updated.col_3_house_no = String(value);
+      }
 
-    const form_fill_percentage = Math.round((filledFields / totalFields) * 100);
+      // Skip logic: clear dependent values if parent condition is no longer met
+      HLO_SCHEDULE.forEach(field => {
+        if (field.visibleWhen && !field.visibleWhen(updated)) {
+          delete updated[field.key as keyof SurveySymbol];
+        }
+      });
+
+      return updated;
+    });
+  };
+
+  const handleSave = () => {
+    // 1. Enforce validation (residential must have head name and persons)
+    const isResidential = formData.col_7_use === 1 || formData.col_7_use === 2;
+    if (isResidential) {
+      if (!formData.col_11_head_name) {
+        alert('Please enter the Name of the Head of Household (कॉलम 11).');
+        return;
+      }
+      if (!formData.col_10_persons || formData.col_10_persons <= 0) {
+        alert('Please enter the Total Persons (कॉलम 10).');
+        return;
+      }
+    }
+
+    // 2. Calculate fill percentage for visible fields
+    let totalVisible = 0;
+    let filledVisible = 0;
+    
+    HLO_SCHEDULE.forEach(field => {
+      const isVisible = field.visibleWhen ? field.visibleWhen(formData) : true;
+      if (isVisible) {
+        totalVisible++;
+        const val = formData[field.key as keyof SurveySymbol];
+        if (val !== undefined && val !== '' && val !== null) {
+          filledVisible++;
+        }
+      }
+    });
+
+    const form_fill_percentage = Math.round((filledVisible / totalVisible) * 100);
+    const sch1Complete = !!(formData.col_4_floor && formData.col_5_wall && formData.col_6_roof && formData.col_7_use);
+    const schAComplete = isResidential
+      ? !!(formData.col_17_water_source && formData.col_19_lighting && formData.col_20_latrine && formData.col_24_kitchen)
+      : true;
+
+    // Clean up empty strings or nulls to keep DB representation small
+    const cleanedData = { ...formData };
+    Object.keys(cleanedData).forEach(k => {
+      if (cleanedData[k as keyof SurveySymbol] === '') {
+        delete cleanedData[k as keyof SurveySymbol];
+      }
+    });
 
     onSave({
-      ...formData,
+      ...cleanedData,
       schedule1_complete: sch1Complete,
       schedule_a_complete: schAComplete,
       form_fill_percentage
     });
   };
 
-  const updateField = (key: keyof SurveySymbol, value: any) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
-  };
+  // Split fields by Schedule 1 (cols 1-13) and Schedule A (cols 14-34)
+  const isResidential = formData.col_7_use === 1 || formData.col_7_use === 2;
+  const isNormalHousehold = formData.col_9_household_no !== 999;
+  
+  const sch1Fields = HLO_SCHEDULE.filter(f => f.col <= 13);
+  const schAFields = HLO_SCHEDULE.filter(f => f.col > 13);
 
-  // ---------------- UI COMPONENTS ---------------- //
-  const renderIconGrid = (fieldId: keyof SurveySymbol, label: string, options: {value: number|string, label: string, icon: string}[]) => (
-    <div className="mb-6">
-      <label className="block text-sm font-bold text-gray-700 mb-2">{label}</label>
-      <div className="grid grid-cols-3 gap-2">
-        {options.map(opt => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => updateField(fieldId, opt.value)}
-            className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${formData[fieldId] === opt.value ? 'bg-orange-50 border-[var(--color-saffron)] text-[var(--color-saffron)] shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}
-          >
-            <span className="text-2xl mb-1">{opt.icon}</span>
-            <span className="text-xs font-semibold text-center">{opt.label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  // ---------------- RENDERING HELPERS ---------------- //
+  const renderField = (field: HLOFieldDefinition) => {
+    const isVisible = field.visibleWhen ? field.visibleWhen(formData) : true;
+    if (!isVisible) return null;
 
-  const renderPills = (fieldId: keyof SurveySymbol, label: string, options: {value: number, label: string}[]) => (
-    <div className="mb-6">
-      <label className="block text-sm font-bold text-gray-700 mb-2">{label}</label>
-      <div className="flex flex-wrap gap-2">
-        {options.map(opt => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => updateField(fieldId, opt.value)}
-            className={`px-4 py-2 rounded-full border text-sm font-semibold transition-all ${formData[fieldId] === opt.value ? 'bg-[var(--color-saffron)] border-[var(--color-saffron)] text-white shadow-md' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+    const value = formData[field.key as keyof SurveySymbol];
 
-  const renderScrollCards = (fieldId: keyof SurveySymbol, label: string, options: {value: number, label: string, icon: string}[]) => (
-    <div className="mb-6">
-      <label className="block text-sm font-bold text-gray-700 mb-2">{label}</label>
-      <div className="flex overflow-x-auto gap-3 pb-2 snap-x hide-scrollbar">
-        {options.map(opt => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => updateField(fieldId, opt.value)}
-            className={`flex-shrink-0 w-24 flex flex-col items-center justify-center p-3 rounded-xl border snap-start transition-all ${formData[fieldId] === opt.value ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' : 'bg-white border-gray-200 text-gray-600'}`}
-          >
-            <span className="text-2xl mb-1">{opt.icon}</span>
-            <span className="text-xs font-semibold text-center leading-tight">{opt.label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderStepper = (fieldId: keyof SurveySymbol, label: string, min: number = 1, max: number = 20) => {
-    const val = (formData[fieldId] as number) || min;
     return (
-      <div className="mb-6 flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-200">
-        <label className="text-sm font-bold text-gray-700">{label}</label>
-        <div className="flex items-center gap-4">
-          <button type="button" onClick={() => updateField(fieldId, Math.max(min, val - 1))} className="w-10 h-10 rounded-full bg-white border border-gray-300 flex items-center justify-center text-xl font-bold text-gray-600 shadow-sm">-</button>
-          <span className="text-xl font-black w-6 text-center">{val}</span>
-          <button type="button" onClick={() => updateField(fieldId, Math.min(max, val + 1))} className="w-10 h-10 rounded-full bg-[var(--color-saffron)] text-white flex items-center justify-center text-xl font-bold shadow-md">+</button>
+      <div key={field.key} className="mb-6 animate-fadeIn bg-slate-50/50 p-4 rounded-2xl border border-slate-100/80">
+        <div className="flex justify-between items-start mb-2">
+          <span className="text-[10px] font-black text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-wider">
+            Col {field.col}
+          </span>
+          {field.required && (
+            <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded-full">
+              Required
+            </span>
+          )}
         </div>
+        
+        <label className="block text-sm font-extrabold text-slate-800 leading-snug">
+          {field.labelEn}
+        </label>
+        <label className="block text-xs text-slate-500 font-medium mb-3">
+          {field.labelHi}
+        </label>
+
+        {field.type === 'select' && field.options && (
+          <div className="grid grid-cols-2 gap-2">
+            {field.options.map(opt => {
+              const isSelected = value === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => updateField(field.key, opt.value)}
+                  className={`flex items-center gap-2 p-3 rounded-xl border text-left transition-all duration-200 active:scale-[0.98] ${
+                    isSelected
+                      ? 'bg-orange-50/70 border-[var(--color-saffron)] text-[var(--color-saffron)] shadow-sm'
+                      : 'bg-white border-slate-200/80 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                  }`}
+                >
+                  {opt.icon && <span className="text-xl flex-shrink-0">{opt.icon}</span>}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black truncate leading-tight">{opt.labelEn}</p>
+                    <p className="text-[10px] font-semibold text-slate-400 truncate mt-0.5 leading-none">{opt.labelHi}</p>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-300">({opt.value})</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {(field.type === 'text' || field.type === 'number') && (
+          <input
+            type={field.type === 'number' ? 'number' : 'text'}
+            value={(value !== undefined && value !== null) ? (typeof value === 'boolean' ? String(value) : value) : ''}
+            onChange={(e) => {
+              const v = field.type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value;
+              updateField(field.key, v);
+            }}
+            placeholder={`Enter Col ${field.col}...`}
+            className="w-full p-4 bg-white border border-slate-200/80 rounded-xl focus:outline-none focus:border-[var(--color-saffron)] focus:ring-2 focus:ring-orange-100 font-bold text-sm transition-all"
+          />
+        )}
       </div>
     );
   };
 
-  const renderAssetsGrid = () => {
-    const assets = [
-      { id: 'asset_radio', label: 'Radio', icon: '📻' },
-      { id: 'asset_tv', label: 'TV', icon: '📺' },
-      { id: 'asset_computer_internet', label: 'Computer', icon: '💻' },
-      { id: 'asset_mobile', label: 'Mobile', icon: '📱' },
-      { id: 'asset_bicycle', label: 'Bicycle', icon: '🚲' },
-      { id: 'asset_scooter_motorcycle', label: 'Scooter', icon: '🛵' },
-      { id: 'asset_car_jeep_van', label: 'Car/Jeep', icon: '🚗' }
-    ] as const;
-
-    return (
-      <div className="mb-6">
-        <label className="block text-sm font-bold text-gray-700 mb-2">Household Assets (Select all that apply)</label>
-        <div className="flex flex-wrap gap-2">
-          {assets.map(asset => (
-            <button
-              key={asset.id}
-              type="button"
-              onClick={() => updateField(asset.id, !formData[asset.id as keyof SurveySymbol])}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${formData[asset.id as keyof SurveySymbol] ? 'bg-green-50 border-green-500 text-green-700 shadow-sm' : 'bg-white border-gray-200 text-gray-600'}`}
-            >
-              <span>{asset.icon}</span>
-              <span className="font-medium">{asset.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
+  const getOptionLabel = (field: HLOFieldDefinition, val: any): string => {
+    if (val === undefined || val === null) return '-';
+    if (field.options) {
+      const opt = field.options.find(o => o.value === val);
+      return opt ? `${opt.labelEn} (${opt.value}) / ${opt.labelHi}` : String(val);
+    }
+    return String(val);
   };
 
   // ---------------- RENDER ---------------- //
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 z-[2999] transition-opacity" onClick={onClose} />
-      <div className="fixed top-0 right-0 bottom-0 w-[85%] max-w-[400px] bg-white z-[3000] shadow-[-10px_0_40px_rgba(0,0,0,0.2)] flex flex-col transition-transform duration-300" style={{ animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[2999] transition-opacity" onClick={onClose} />
+      <div 
+        className="fixed top-0 right-0 bottom-0 w-[90%] max-w-[420px] bg-white z-[3000] shadow-[-10px_0_40px_rgba(0,0,0,0.15)] flex flex-col transition-transform duration-300 overflow-hidden" 
+        style={{ animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}
+      >
         
         {/* HEADER */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50 backdrop-blur-sm flex-shrink-0">
           <div>
-            <h2 className="text-xl font-black text-gray-800 flex items-center gap-2">
-              <span className="w-8 h-8 rounded-full bg-[var(--color-saffron)] text-white flex items-center justify-center text-sm shadow-md">{house.number || '?'}</span>
-              House Details
+            <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 font-[Baloo_2]">
+              <span className="w-8 h-8 rounded-full bg-[var(--color-saffron)] text-white flex items-center justify-center text-sm shadow-md font-mono">{house.number || '?'}</span>
+              HLO Survey Register
             </h2>
-            <p className="text-xs text-gray-500 mt-1 font-medium ml-10">Schedule 1 & A Data</p>
+            <p className="text-[11px] text-slate-400 mt-0.5 font-bold ml-10">Official 2027 Schedule (34 Columns)</p>
           </div>
-          <button onClick={onClose} className="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm text-gray-500">×</button>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm text-slate-500 font-bold hover:bg-slate-50">×</button>
         </div>
 
         {/* CONTENT */}
-        <div className="flex-1 overflow-y-auto p-5 pb-24">
+        <div className="flex-1 overflow-y-auto p-5 pb-28">
           
           {mode === 'VIEW' ? (
             <div className="space-y-6">
-              <div className="bg-orange-50 border border-orange-100 rounded-2xl p-5 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10 text-6xl">🏠</div>
-                <h3 className="text-sm font-bold text-orange-800 mb-1">Head of Household</h3>
-                <p className="text-2xl font-black text-gray-900">{house.col_10_head_name || house.head_of_household || 'Not provided'}</p>
-                <div className="flex items-center gap-4 mt-4">
-                  <div>
-                    <p className="text-xs text-orange-600 font-bold">FAMILIES</p>
-                    <p className="font-black text-lg">{house.col_9_family_count || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-orange-600 font-bold">ROOMS</p>
-                    <p className="font-black text-lg">{house.col_11_total_rooms || '-'}</p>
-                  </div>
-                </div>
+              {/* Summary card */}
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 border border-orange-100 rounded-3xl p-5 relative overflow-hidden shadow-sm">
+                <div className="absolute top-2 right-2 opacity-10 text-7xl">🗺️</div>
+                <h3 className="text-[10px] font-black text-orange-700 uppercase tracking-widest mb-1">Census House #{migratedHouse.col_3_house_no || house.number || '?'}</h3>
+                
+                {isResidential ? (
+                  <>
+                    <p className="text-2xl font-black text-slate-800 leading-snug">{migratedHouse.col_11_head_name || 'No Head Name'}</p>
+                    <div className="flex items-center gap-6 mt-4">
+                      <div>
+                        <p className="text-[9px] text-orange-600 font-extrabold uppercase tracking-wider">Persons (10)</p>
+                        <p className="font-extrabold text-lg text-slate-800 font-mono">{migratedHouse.col_10_persons || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-orange-600 font-extrabold uppercase tracking-wider">Rooms (15)</p>
+                        <p className="font-extrabold text-lg text-slate-800 font-mono">{migratedHouse.col_15_rooms || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-orange-600 font-extrabold uppercase tracking-wider">Household No. (9)</p>
+                        <p className="font-extrabold text-lg text-slate-800 font-mono">{migratedHouse.col_9_household_no === 999 ? 'Inst.' : (migratedHouse.col_9_household_no || '-')}</p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-black text-slate-800 leading-snug">Non-Residential Block</p>
+                    <p className="text-xs text-orange-700/80 font-bold mt-1">Use: {getOptionLabel(HLO_SCHEDULE[6], migratedHouse.col_7_use)}</p>
+                  </>
+                )}
               </div>
 
+              {/* Grid overview */}
               <div>
-                <h4 className="font-bold text-gray-700 mb-3 border-b pb-2">Quick Overview</h4>
+                <h4 className="font-black text-xs text-slate-400 uppercase tracking-wider mb-3 border-b border-slate-100 pb-2">Completed Data Columns</h4>
                 <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500 text-sm">Use Type</span>
-                    <span className="font-semibold text-sm">{house.col_4_use_type === 1 ? 'Residence' : house.col_4_use_type ? 'Other' : '-'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500 text-sm">Ownership</span>
-                    <span className="font-semibold text-sm">{house.col_12_ownership === 1 ? 'Owned' : house.col_12_ownership === 2 ? 'Rented' : '-'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500 text-sm">Drinking Water</span>
-                    <span className="font-semibold text-sm">{house.col_18_water_source ? 'Recorded' : '-'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500 text-sm">Mobile</span>
-                    <span className="font-semibold text-sm">{house.col_34_mobile_number || '-'}</span>
-                  </div>
+                  {HLO_SCHEDULE.map(field => {
+                    const isVisible = field.visibleWhen ? field.visibleWhen(migratedHouse) : true;
+                    if (!isVisible) return null;
+                    const val = migratedHouse[field.key as keyof SurveySymbol];
+                    return (
+                      <div key={field.key} className="flex justify-between items-center gap-3 text-xs border-b border-slate-50 pb-2">
+                        <span className="text-slate-400 font-extrabold">Col {field.col}: {field.labelEn}</span>
+                        <span className="font-bold text-slate-700 text-right max-w-[200px] truncate">
+                          {field.type === 'select' ? getOptionLabel(field, val) : (val !== undefined && val !== null ? String(val) : '-')}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              <button onClick={() => setMode('EDIT')} className="w-full py-4 bg-gray-900 text-white rounded-xl font-bold shadow-lg shadow-gray-300">
-                ✏️ Edit Full Details
+              <button onClick={() => setMode('EDIT')} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-lg shadow-slate-200 hover:bg-slate-800 transition-all">
+                ✏️ Edit Census Fields
               </button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div>
               {/* Tabs */}
-              <div className="flex gap-2 mb-6 p-1 bg-gray-100 rounded-xl">
-                <button type="button" onClick={() => setStep(1)} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${step === 1 ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>Schedule 1</button>
-                {formData.col_4_use_type === 1 || formData.col_4_use_type === 2 ? (
-                  formData.col_9_family_count !== 999 ? (
-                    <button type="button" onClick={() => setStep(2)} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${step === 2 ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>Schedule A</button>
-                  ) : null
-                ) : null}
+              <div className="flex gap-2 mb-6 p-1 bg-slate-100 rounded-2xl flex-shrink-0">
+                <button 
+                  type="button" 
+                  onClick={() => setActiveTab('SCH1')} 
+                  className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all duration-200 ${activeTab === 'SCH1' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                >
+                  Schedule 1 (General)
+                </button>
+                {isResidential && isNormalHousehold && (
+                  <button 
+                    type="button" 
+                    onClick={() => setActiveTab('SCHA')} 
+                    className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all duration-200 ${activeTab === 'SCHA' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+                  >
+                    Schedule A (Amenities)
+                  </button>
+                )}
               </div>
 
-              {step === 1 && (
-                <div className="animate-fadeIn">
-                  {renderIconGrid('col_4_use_type', 'Type of Use', [
-                    { value: 1, label: 'Residence', icon: '🏠' },
-                    { value: 2, label: 'Res+Shop', icon: '🏪' },
-                    { value: 3, label: 'Shop/Office', icon: '🏢' },
-                    { value: 4, label: 'School', icon: '🏫' },
-                    { value: 6, label: 'Worship', icon: '🛕' },
-                    { value: 9, label: 'Vacant', icon: '🔒' },
-                    { value: 0, label: 'Other Non-Res', icon: '📦' }
-                  ])}
-
-                  {renderScrollCards('col_6_wall_material', 'Wall Material', [
-                    { value: 3, label: 'Mud/Unburnt', icon: '🟫' },
-                    { value: 6, label: 'Burnt Brick', icon: '🧱' },
-                    { value: 9, label: 'Concrete', icon: '🏗️' },
-                    { value: 5, label: 'GI Sheet', icon: '🔩' },
-                    { value: 4, label: 'Wood', icon: '🪵' }
-                  ])}
-
-                  {renderScrollCards('col_7_roof_material', 'Roof Material', [
-                    { value: 8, label: 'Concrete', icon: '🏗️' },
-                    { value: 7, label: 'GI Sheet', icon: '🔩' },
-                    { value: 4, label: 'Machine Tile', icon: '🔷' },
-                    { value: 1, label: 'Grass/Mud', icon: '🌿' }
-                  ])}
-
-                  {/* Phase 2 Conditional Logic: Residential Only */}
-                  {(formData.col_4_use_type === 1 || formData.col_4_use_type === 2) && (
-                    <div className="mt-8 border-t border-gray-200 pt-6">
-                      <h4 className="font-bold text-orange-600 mb-4">Residential Details</h4>
-                      
-                      {renderPills('col_8_condition', 'Condition', [
-                        { value: 1, label: 'Good' },
-                        { value: 2, label: 'Liveable' },
-                        { value: 3, label: 'Dilapidated' }
-                      ])}
-
-                      {formData.col_9_family_count !== 999 && renderStepper('col_9_family_count', 'Number of Households (Families)')}
-                      
-                      <div className="flex items-center gap-2 mb-6 ml-2">
-                        <input type="checkbox" id="inst_hh" className="w-5 h-5 accent-orange-500" checked={formData.col_9_family_count === 999} onChange={(e) => updateField('col_9_family_count', e.target.checked ? 999 : 1)} />
-                        <label htmlFor="inst_hh" className="text-sm font-semibold text-gray-700">Institutional Household (Code 999)</label>
-                      </div>
-
-                      <div className="mb-6">
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Head of Household Name</label>
-                        <input 
-                          type="text" 
-                          value={formData.col_10_head_name || formData.head_of_household || ''} 
-                          onChange={(e) => { updateField('col_10_head_name', e.target.value); updateField('head_of_household', e.target.value); }}
-                          className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-[var(--color-saffron)] focus:ring-2 focus:ring-orange-100 font-semibold"
-                          placeholder="e.g. Ramesh Kumar"
-                        />
-                      </div>
-
-                      {renderStepper('col_11_total_rooms', 'Total Rooms')}
-
-                      {renderPills('col_12_ownership', 'Ownership', [
-                        { value: 1, label: 'Owned' },
-                        { value: 2, label: 'Rented' },
-                        { value: 3, label: 'Other' }
-                      ])}
-                      
-                      {formData.col_9_family_count !== 999 && (
-                        <button type="button" onClick={() => setStep(2)} className="w-full py-4 mt-4 bg-[var(--color-saffron)] text-white rounded-xl font-bold shadow-lg shadow-orange-200">
-                          Next: Schedule A Details →
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {step === 2 && (
-                <div className="animate-fadeIn">
-                  {renderIconGrid('col_18_water_source', 'Drinking Water Source', [
-                    { value: 1, label: 'Tap (Treated)', icon: '🚰' },
-                    { value: 2, label: 'Tap (Untreated)', icon: '🚱' },
-                    { value: 5, label: 'Handpump', icon: '⛽' },
-                    { value: 3, label: 'Covered Well', icon: '🪣' }
-                  ])}
-
-                  {/* Phase 4: Latrine Logic */}
-                  {renderPills('col_20_latrine', 'Access to Latrine (Col 20)', [
-                    { value: 1, label: 'Exclusive' },
-                    { value: 2, label: 'Shared' },
-                    { value: 3, label: 'Public' },
-                    { value: 4, label: 'Open' }
-                  ])}
-
-                  {(formData.col_20_latrine === 1 || formData.col_20_latrine === 2) && (
-                    <div className="ml-4 pl-4 border-l-2 border-orange-200">
-                      {renderIconGrid('col_21_latrine_type', 'Type of Latrine (Col 21)', [
-                        { value: 1, label: 'Flush/Pour', icon: '🚽' },
-                        { value: 2, label: 'Pit Latrine', icon: '🕳️' },
-                        { value: 3, label: 'Other', icon: '🛖' }
-                      ])}
-                    </div>
-                  )}
-
-                  {/* Phase 4: Cooking Fuel Logic */}
-                  {renderIconGrid('col_24_kitchen', 'Kitchen Availability (Col 24)', [
-                    { value: 1, label: 'Inside, exclusive', icon: '🍳' },
-                    { value: 2, label: 'Inside, shared', icon: '🍳' },
-                    { value: 3, label: 'Outside, exclusive', icon: '⛺' },
-                    { value: 4, label: 'Outside, shared', icon: '⛺' },
-                    { value: 5, label: 'Open space', icon: '🔥' },
-                    { value: 6, label: 'Other', icon: '🥘' },
-                    { value: 7, label: 'No Cooking', icon: '🚫' }
-                  ])}
-
-                  {(formData.col_24_kitchen && formData.col_24_kitchen <= 6) && (
-                    <div className="ml-4 pl-4 border-l-2 border-orange-200">
-                      {renderIconGrid('col_25_cooking_fuel', 'Main Fuel Used (Col 25)', [
-                        { value: 6, label: 'LPG/PNG', icon: '🔵' },
-                        { value: 1, label: 'Firewood', icon: '🪵' },
-                        { value: 3, label: 'Cowdung', icon: '🐄' },
-                        { value: 7, label: 'Electricity', icon: '⚡' }
-                      ])}
-                    </div>
-                  )}
-
-                  {renderAssetsGrid()}
-
-                  <div className="mb-6">
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Mobile Number</label>
-                    <input 
-                      type="tel" 
-                      value={formData.col_34_mobile_number || ''} 
-                      onChange={(e) => updateField('col_34_mobile_number', e.target.value)}
-                      className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-[var(--color-saffron)] font-semibold"
-                      placeholder="e.g. 9876543210"
-                    />
-                  </div>
-                </div>
-              )}
+              {/* Schema Fields */}
+              <div className="space-y-2">
+                {activeTab === 'SCH1' 
+                  ? sch1Fields.map(f => renderField(f))
+                  : schAFields.map(f => renderField(f))
+                }
+              </div>
             </div>
           )}
         </div>
 
         {/* BOTTOM FIXED BAR */}
         {mode === 'EDIT' && (
-          <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-            <button onClick={handleSave} className="w-full py-4 bg-[var(--color-india-green)] text-white rounded-xl font-bold shadow-lg shadow-green-200 flex items-center justify-center gap-2 text-lg">
-              <span>✓</span> Save Details
-            </button>
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-[3005]">
+            <div className="flex gap-3">
+              {isResidential && isNormalHousehold && activeTab === 'SCH1' ? (
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    // Quick validation of Sch 1 before moving
+                    if (!formData.col_11_head_name) {
+                      alert('Please enter the Name of the Head of Household (कॉलम 11).');
+                      return;
+                    }
+                    if (!formData.col_10_persons || formData.col_10_persons <= 0) {
+                      alert('Please enter the Total Persons (कॉलम 10).');
+                      return;
+                    }
+                    setActiveTab('SCHA');
+                  }} 
+                  className="flex-1 py-4 bg-[var(--color-saffron)] text-white rounded-2xl font-bold shadow-lg shadow-orange-100 flex items-center justify-center gap-2 text-sm"
+                >
+                  Next: Amenities Details →
+                </button>
+              ) : (
+                <button 
+                  onClick={handleSave} 
+                  className="flex-1 py-4 bg-[var(--color-india-green)] text-white rounded-2xl font-bold shadow-lg shadow-green-100 flex items-center justify-center gap-2 text-sm"
+                >
+                  <span>✓</span> Save Register Details
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -49,6 +49,42 @@ export interface PlacedSymbol {
   
   col_34_mobile_number?: string;
   
+  // ===== OFFICIAL 34 COLUMNS (HLO 2027) =====
+  col_1_line_no?: number;
+  col_2_building_no?: number;
+  col_3_house_no?: string;
+  col_4_floor?: number;
+  col_5_wall?: number;
+  col_6_roof?: number;
+  col_7_use?: number;
+  // col_8_condition is already defined above
+  col_9_household_no?: number;
+  col_10_persons?: number;
+  col_11_head_name?: string;
+  col_12_sex?: number;
+  col_13_caste?: number;
+  col_14_ownership?: number;
+  col_15_rooms?: number;
+  col_16_couples?: number;
+  col_17_water_source?: number;
+  col_18_water_location?: number;
+  col_19_lighting?: number;
+  // col_20_latrine is already defined above
+  // col_21_latrine_type is already defined above
+  col_22_drainage?: number;
+  col_23_bathing?: number;
+  // col_24_kitchen is already defined above
+  col_25_fuel?: number;
+  col_26_radio?: number;
+  col_27_tv?: number;
+  col_28_internet?: number;
+  col_29_computer?: number;
+  col_30_phone?: number;
+  col_31_vehicle_2w?: number;
+  col_32_car?: number;
+  col_33_cereal?: number;
+  col_34_mobile?: string;
+
   schedule1_complete?: boolean;
   schedule_a_complete?: boolean;
   form_fill_percentage?: number;
@@ -114,6 +150,7 @@ export interface MapData {
   surveyMapBase64?: string;
   aiMapChunks?: { label: string; bbox: Coordinate[]; imageBase64: string; features?: any }[];
   projectId?: string;
+  isLive?: boolean;
   paymentStatus?: string;
   exportCount?: number;
   autoExport?: boolean;

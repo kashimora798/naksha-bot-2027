@@ -141,12 +141,28 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const isPaymentSuccess = params.get('payment') === 'success';
     const paymentProjectId = params.get('project_id');
+    const paymentKind = params.get('kind');
     const livePreviewId = params.get('live_preview_id');
 
     if (livePreviewId) {
       import('./lib/idb').then(({ idbStore }) => {
-        idbStore.getSession(livePreviewId).then(session => {
+        idbStore.getSession(livePreviewId).then(async (session) => {
            if (!session) return;
+           let paymentStatus = 'unpaid';
+           try {
+             const { data: { session: authSession } } = await supabase.auth.getSession();
+             if (authSession?.user) {
+               const { data: liveExp } = await supabase.from('live_exports')
+                 .select('payment_status')
+                 .eq('session_id', livePreviewId)
+                 .maybeSingle();
+               if (liveExp) {
+                 paymentStatus = liveExp.payment_status;
+               }
+             }
+           } catch (e) {
+             console.error('Failed to fetch live export status:', e);
+           }
            Promise.all([
              idbStore.getSymbolsForSession(livePreviewId),
              idbStore.getSegmentsForSession(livePreviewId)
@@ -179,6 +195,9 @@ export default function App() {
                boundaryPins: poly ? poly.geometry.coordinates[0].map((c: any) => ({ lat: c[1], lng: c[0] })) : [],
                boundaryClosed: true,
                numberingComplete: true,
+               projectId: livePreviewId,
+               isLive: true,
+               paymentStatus: paymentStatus,
              });
              setStep(7);
            });
@@ -218,39 +237,94 @@ export default function App() {
         }
 
         // Step 2: Verify payment server-side (with retries)
+        let isPaid = false;
         try {
           for (let attempt = 0; attempt < 4; attempt++) {
             const { data, error } = await supabase.functions.invoke('verify-payment', {
-              body: { projectId: paymentProjectId },
+              body: { projectId: paymentProjectId, kind: paymentKind === 'live' ? 'live' : 'project' },
             });
-            if (!error && data?.paid) break;
+            if (!error && data?.paid) {
+              isPaid = true;
+              break;
+            }
             await new Promise(r => setTimeout(r, 2000)); // 2s between retries
           }
         } catch (e) { console.error('verify-payment failed', e); }
 
-        // Step 3: Load the project (with retries, 2s apart)
-        let data: any = null;
-        for (let i = 0; i < 6 && !data; i++) {
-          const r = await supabase.from('projects').select('*').eq('id', paymentProjectId).maybeSingle();
-          data = r.data;
-          if (!data) await new Promise(res => setTimeout(res, 2000));
-        }
-        if (data) {
-          setProjectId(data.id);
-          setMapData({
-            ...DEFAULT_MAP_DATA,
-            ...data.data,
-            projectId: data.id,
-            paymentStatus: data.payment_status,
-            exportCount: data.export_count,
+        if (paymentKind === 'live') {
+          // Load live session from IndexedDB
+          import('./lib/idb').then(({ idbStore }) => {
+            idbStore.getSession(paymentProjectId).then((session) => {
+              if (!session) {
+                alert('Payment verified! But we could not find your live session locally.');
+                setStep(0);
+                return;
+              }
+              Promise.all([
+                idbStore.getSymbolsForSession(paymentProjectId),
+                idbStore.getSegmentsForSession(paymentProjectId)
+              ]).then(([symbols, segments]) => {
+                const df = session.drawn_features ? JSON.parse(session.drawn_features) : { blocks: [], farmlandBlocks: [], forests: [], waterBodies: [], landuseAreas: [], landmarks: [] };
+                let poly = null;
+                if (session.polygon_geojson) try { poly = JSON.parse(session.polygon_geojson); } catch(e){}
+                const center = poly && poly.geometry?.coordinates[0][0] ? { lat: poly.geometry.coordinates[0][0][1], lng: poly.geometry.coordinates[0][0][0] } : DEFAULT_MAP_DATA.center;
+                
+                const roadFeatures = segments.filter(seg => seg.points.length >= 2).map(seg => ({
+                   id: seg.segment_id,
+                   coords: seg.points,
+                   highway: seg.road_type || 'residential',
+                   confirmed: true,
+                   source: 'user' as const,
+                }));
+
+                setMapData({
+                  ...DEFAULT_MAP_DATA,
+                  hlbNumber: session.hlb_number || 'LIVE',
+                  center: center,
+                  symbols: symbols as any[],
+                  roads: roadFeatures,
+                  blocks: df.blocks,
+                  farmlandBlocks: df.farmlandBlocks,
+                  forests: df.forests,
+                  waterBodies: df.waterBodies,
+                  landuseAreas: df.landuseAreas,
+                  landmarks: df.landmarks,
+                  boundaryPins: poly ? poly.geometry.coordinates[0].map((c: any) => ({ lat: c[1], lng: c[0] })) : [],
+                  boundaryClosed: true,
+                  numberingComplete: true,
+                  projectId: paymentProjectId,
+                  isLive: true,
+                  paymentStatus: isPaid ? 'paid' : 'unpaid'
+                });
+                setJustPaid(isPaid);
+                setStep(7);
+              });
+            });
           });
-          setJustPaid(data.payment_status === 'paid');
-          setStep(7); // Always land on the preview/download screen.
         } else {
-          // Genuinely couldn't load — show error but try to stay useful
-          console.error('Could not load project after payment');
-          alert('Payment verified! But we could not load your map. Please go to Dashboard and open your project.');
-          setStep(0);
+          // Step 3: Load the project (with retries, 2s apart)
+          let data: any = null;
+          for (let i = 0; i < 6 && !data; i++) {
+            const r = await supabase.from('projects').select('*').eq('id', paymentProjectId).maybeSingle();
+            data = r.data;
+            if (!data) await new Promise(res => setTimeout(res, 2000));
+          }
+          if (data) {
+            setProjectId(data.id);
+            setMapData({
+              ...DEFAULT_MAP_DATA,
+              ...data.data,
+              projectId: data.id,
+              paymentStatus: data.payment_status,
+              exportCount: data.export_count,
+            });
+            setJustPaid(data.payment_status === 'paid');
+            setStep(7); // Always land on the preview/download screen.
+          } else {
+            console.error('Could not load project after payment');
+            alert('Payment verified! But we could not load your map. Please go to Dashboard and open your project.');
+            setStep(0);
+          }
         }
       })();
       window.history.replaceState({}, document.title, window.location.pathname);

@@ -36,6 +36,7 @@ export default async function handler(req: any, res: any) {
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const projectId: string = body.projectId;
+    const kind: string = body.kind || 'project';
     if (!projectId) {
       res.status(400).json({ error: 'Missing projectId' });
       return;
@@ -50,20 +51,41 @@ export default async function handler(req: any, res: any) {
     }
     const userId = userData.user.id;
 
-    const { data: project, error: projErr } = await admin
-      .from('projects')
-      .select('id, user_id, payment_status, export_count')
-      .eq('id', projectId)
-      .eq('user_id', userId)
-      .single();
+    let exportCount = 0;
 
-    if (projErr || !project) {
-      res.status(404).json({ error: 'Project not found' });
-      return;
-    }
-    if (project.payment_status !== 'paid') {
-      res.status(402).json({ error: 'Payment required' });
-      return;
+    if (kind === 'live') {
+      const { data: liveExport, error: liveErr } = await admin
+        .from('live_exports')
+        .select('session_id, user_id, payment_status')
+        .eq('session_id', projectId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (liveErr || !liveExport) {
+        res.status(404).json({ error: 'Live export not found' });
+        return;
+      }
+      if (liveExport.payment_status !== 'paid') {
+        res.status(402).json({ error: 'Payment required' });
+        return;
+      }
+    } else {
+      const { data: project, error: projErr } = await admin
+        .from('projects')
+        .select('id, user_id, payment_status, export_count')
+        .eq('id', projectId)
+        .eq('user_id', userId)
+        .single();
+
+      if (projErr || !project) {
+        res.status(404).json({ error: 'Project not found' });
+        return;
+      }
+      if (project.payment_status !== 'paid') {
+        res.status(402).json({ error: 'Payment required' });
+        return;
+      }
+      exportCount = project.export_count || 0;
     }
 
     // Generate a time-limited render token (valid for 5 minutes)
@@ -73,7 +95,7 @@ export default async function handler(req: any, res: any) {
     res.status(200).json({
       ok: true,
       renderToken,
-      exportCount: project.export_count || 0,
+      exportCount,
     });
   } catch (err: any) {
     console.error('verify-download error:', err?.stack || err);

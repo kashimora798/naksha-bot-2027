@@ -119,8 +119,16 @@ function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, e
     return true;
   };
 
-  for (let iter = 0; iter < 16; iter++) {
-    const margin = Math.max(2.6, cell * 0.38);
+  // Tight fixed margin: keep just a small clearance from the block edge so
+  // houses align close to road boundaries (like a real census map) but still
+  // have a small visual gap. A cell-proportional component handles very coarse
+  // grids. Previously margin = max(2.6, cell*0.38) was far too large and caused
+  // all interior points to be stripped in narrow blocks, yielding a single row.
+  const EDGE_MARGIN = 1.8; // metres — absolute minimum clearance from block edge
+
+  for (let iter = 0; iter < 20; iter++) {
+    // margin = 1.8m + 8% of cell, capped at half-cell so we never exceed usable area.
+    const margin = Math.min(cell * 0.48, EDGE_MARGIN + cell * 0.08);
     const pts: { p: Coordinate; u: number; v: number }[] = [];
     for (let v = vMin; v <= vMax; v += cell) {
       for (let u = uMin; u <= uMax; u += cell) {
@@ -128,7 +136,9 @@ function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, e
         if (usable(p, margin)) pts.push({ p, u, v });
       }
     }
-    if (pts.length >= count || cell <= 5.5) {
+    // Stop when we have enough points OR cell is already at the minimum.
+    // Min cell is 3.5m so even 6-7m wide blocks can fit two rows.
+    if (pts.length >= count || cell <= 3.5) {
       // row-major order: rows top→bottom (descending v), snake within each row
       const rowOf = (v: number) => Math.round((vMax - v) / cell);
       pts.sort((a, b) => {
@@ -138,7 +148,7 @@ function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, e
       });
       return { points: pts.slice(0, count).map(x => x.p), cellMeters: cell };
     }
-    cell = Math.max(5.5, cell * 0.85);
+    cell = Math.max(3.5, cell * 0.78);
   }
   return { points: [], cellMeters: cell };
 }
@@ -172,6 +182,8 @@ export function placeGroupsInBlock(block: Block, groups: SymGroup[], opts: { lay
   for (const g of groups) for (let i = 0; i < Math.max(0, g.count); i++) seq.push({ type: g.type, unitCount: g.unitCount });
   return points.map((p, i) => {
     const t = seq[i] ?? seq[seq.length - 1];
+    // Apply unit_count to any house type when unitCount > 1 (census model: any building can have multiple census houses)
+    const hasUnits = (t.unitCount ?? 1) > 1;
     return {
       id: crypto.randomUUID(),
       symbol_type: t.type,
@@ -180,7 +192,7 @@ export function placeGroupsInBlock(block: Block, groups: SymGroup[], opts: { lay
       number: null,
       placed_at: new Date().toISOString(),
       is_residential: isHouseType(t.type) ? true : undefined,
-      unit_count: t.type === 'apartment' ? (t.unitCount ?? 2) : undefined,
+      unit_count: (isHouseType(t.type) && hasUnits) ? (t.unitCount ?? 2) : undefined,
     };
   });
 }

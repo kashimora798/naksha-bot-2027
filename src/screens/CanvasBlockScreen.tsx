@@ -113,6 +113,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   const [popType, setPopType] = useState<SymbolType>('pucca_house');
   const [popLayout, setPopLayout] = useState<LayoutMode>('grid');
   const [popIsNonRes, setPopIsNonRes] = useState(false);
+  const [popUnitCount, setPopUnitCount] = useState(2);
   const [groups, setGroups] = useState<SymGroup[]>([]);
   const [roadWidth, setRoadWidth] = useState(7);
   const [blkMsg, setBlkMsg] = useState('');
@@ -976,7 +977,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     if (selIds.length !== 1) return;
     const blk = blocks.find(b => b.id === selIds[0]); if (!blk) return;
     // Use the built group list, or fall back to the single type+count inputs.
-    const singleGroup: SymGroup = { type: popType, count: popCount };
+    const singleGroup: SymGroup = { type: popType, count: popCount, unitCount: popUnitCount > 1 ? popUnitCount : undefined };
     if (popIsNonRes && isHouseType(popType)) (singleGroup as any).isNonResidential = true;
     const recipe: SymGroup[] = groups.length ? groups : [singleGroup];
     const requested = recipe.reduce((s, g) => s + Math.max(0, g.count), 0);
@@ -1426,6 +1427,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                         onChange={e => setPopCount(Math.max(1, parseInt(e.target.value) || 1))} 
                         className="border border-emerald-300 rounded-lg px-2.5 py-1 w-16 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         style={{ minHeight: '36px' }}
+                        title="Number of buildings"
                       />
                       <select 
                         value={popType} 
@@ -1443,6 +1445,22 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                           {SYMBOL_DEFS.filter(d => !d.isHouse).map(d => <option key={`lmk-${d.type}`} value={d.type}>{d.label}</option>)}
                         </optgroup>
                       </select>
+                      {/* Flats / census-houses per building — for any house type */}
+                      {isHouseType(popType) && (
+                        <div className="flex items-center gap-1.5 bg-white border border-emerald-200 rounded-lg px-2 py-1" style={{ minHeight: '36px' }}>
+                          <span className="text-[11px] font-bold text-emerald-900 whitespace-nowrap">🏢 Flats:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={99}
+                            value={popUnitCount}
+                            onChange={e => setPopUnitCount(Math.max(1, Math.min(99, parseInt(e.target.value) || 1)))}
+                            className="border border-emerald-200 rounded px-1.5 py-0.5 w-12 text-xs bg-white font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-center"
+                            title="Number of flats / census houses within each building"
+                          />
+                          {popUnitCount > 1 && <span className="text-[10px] text-emerald-600 font-bold">/bldg</span>}
+                        </div>
+                      )}
                       {/* Non-residential toggle — only for house types */}
                       {isHouseType(popType) && (
                         <label className="flex items-center gap-1 text-xs font-bold text-emerald-900 cursor-pointer py-1 px-1.5 bg-white border border-emerald-200 rounded-lg" style={{ minHeight: '36px' }}>
@@ -1457,7 +1475,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                       )}
                       <button
                         onClick={() => {
-                          const grp: SymGroup = { type: popType, count: popCount };
+                          const grp: SymGroup = { type: popType, count: popCount, unitCount: popUnitCount > 1 ? popUnitCount : undefined };
                           if (popIsNonRes) (grp as any).isNonResidential = true;
                           setGroups(g => [...g, grp]);
                         }}
@@ -1473,7 +1491,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                         className="border border-emerald-300 rounded-lg px-2 py-1 text-xs bg-white font-medium focus:outline-none"
                         style={{ minHeight: '36px' }}
                       >
-                        <option value="grid">Grid (Block Centered)</option>
+                        <option value="grid">Grid (Fill Block)</option>
                         <option value="rows">Rows (Along Roads)</option>
                         <option value="serpentine">Serpentine (Boustrophedon)</option>
                       </select>
@@ -1482,7 +1500,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                       <div className="flex gap-1.5 flex-wrap items-center bg-white/70 border border-emerald-100 p-2 rounded-lg">
                         {groups.map((g, i) => (
                           <span key={i} className="inline-flex items-center gap-1.5 bg-white border border-emerald-200 rounded-full px-3 py-1 text-xs font-semibold text-emerald-800 shadow-2xs">
-                            {SYMBOL_DEFS.find(d => d.type === g.type)?.label}{(g as any).isNonResidential ? ' (Non-Res)' : ''} ×{g.count}
+                            {SYMBOL_DEFS.find(d => d.type === g.type)?.label}{(g as any).isNonResidential ? ' (Non-Res)' : ''} ×{g.count}{g.unitCount && g.unitCount > 1 ? ` [${g.unitCount} flats]` : ''}
                             <button onClick={() => setGroups(gs => gs.filter((_, j) => j !== i))} className="text-red-500 font-bold hover:text-red-700 px-1 text-sm">×</button>
                           </span>
                         ))}

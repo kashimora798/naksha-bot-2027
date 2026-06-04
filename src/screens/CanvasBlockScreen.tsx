@@ -329,10 +329,10 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     setSwapFirst(null);
   };
 
-  const validateSymbolPosition = (id: string | null, c: Coordinate, type: SymbolType): { valid: boolean; reason?: string } => {
+  const validateSymbolPosition = (id: string | null, c: Coordinate, type: SymbolType, isDropPlacement = false): { valid: boolean; reason?: string } => {
     // 1. Check exclusions (fields, etc.)
     if (isHouseType(type) && exclusionPolys().some(ex => pointInPolygon(c, ex))) {
-      return { valid: false, reason: 'Houses can’t go inside a field.' };
+      return { valid: false, reason: "Houses can't go inside a field." };
     }
 
     // 2. Check overlap with other symbols
@@ -355,10 +355,13 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       if (!parentBlock) {
         return { valid: false, reason: 'Must be placed inside a block.' };
       }
-      // Check edge distance to block (road clearance)
-      const dist = minEdgeDistM(c, blockPoints(parentBlock));
-      if (dist < 2.0) {
-        return { valid: false, reason: 'Too close to the road or block boundary.' };
+      // For drag-and-drop placement, only require being inside the polygon (not strict road clearance).
+      // For arrange-mode dragging, keep a small clearance rule.
+      if (!isDropPlacement) {
+        const dist = minEdgeDistM(c, blockPoints(parentBlock));
+        if (dist < 0.5) {
+          return { valid: false, reason: 'Too close to the road or block boundary.' };
+        }
       }
     } else {
       // Check edge distance to boundary
@@ -391,10 +394,16 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     const map = mapRef.current, cont = containerRef.current;
     if (!map || !cont) return;
     const rect = cont.getBoundingClientRect();
+    // If the drop lands below the map container (e.g. on the panel), reject gracefully
+    if (clientY > rect.bottom || clientY < rect.top || clientX < rect.left || clientX > rect.right) {
+      setBlkMsg('Drop the symbol onto the map (not the panel).');
+      return;
+    }
     const ll = map.containerPointToLatLng(L.point(clientX - rect.left, clientY - rect.top));
     const c = { lat: ll.lat, lng: ll.lng };
     
-    const res = validateSymbolPosition(null, c, type);
+    // isDropPlacement=true: relax edge clearance so symbols can be placed near block boundaries
+    const res = validateSymbolPosition(null, c, type, true);
     if (!res.valid) {
       setBlkMsg(res.reason || 'Invalid position.');
       return;
@@ -418,6 +427,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       label: customLabel,
     };
     onUpdateMapData({ symbols: renumber([...symbols, sym]) });
+    setBlkMsg(`${SYMBOL_DEFS.find(d => d.type === type)?.label ?? type} placed on map.`);
   };
 
   // ─── MAP INIT ───────────────────────────────────────────────
@@ -539,6 +549,33 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   const renderHouses = useCallback(() => {
     const g = houseGrp.current; g.clearLayers();
     const interactive = arrangeMode || swapMode || manualNumMode;
+
+    // Pre-compute a per-block cell size so symbols scale to fill the block.
+    // For each block, get the cellMeters from the placement grid and convert to px at current zoom.
+    const blockCellMap = new Map<string, number>();
+    if (mapRef.current) {
+      const map = mapRef.current;
+      for (const blk of blocks) {
+        const housesSym = symbols.filter(s => isHouseType(s.symbol_type));
+        const inBlk = housesSym.filter(s => {
+          try { return pointInPolygon({ lat: s.lat, lng: s.lng }, blockPoints(blk)); } catch { return false; }
+        }).length;
+        if (inBlk === 0) continue;
+        const { cellMeters } = blockGrid(blk, inBlk, blk.layoutMode ?? 'grid', []);
+        if (cellMeters > 0) {
+          // Convert cellMeters to pixel size at current zoom
+          const lat = blk.south + (blk.north - blk.south) / 2;
+          const mPerDeg = 111320 * Math.cos(lat * Math.PI / 180);
+          const degPerCell = cellMeters / mPerDeg;
+          const p1 = map.latLngToContainerPoint([lat, 0]);
+          const p2 = map.latLngToContainerPoint([lat, degPerCell]);
+          const cellPx = Math.abs(p2.x - p1.x);
+          // Clamp: min 14px (readable), max 40px (not overwhelming)
+          blockCellMap.set(blk.id, Math.max(14, Math.min(40, cellPx * 0.88)));
+        }
+      }
+    }
+
     symbols.forEach(s => {
       const hl = swapMode && swapFirst === s.id;
       let lbl = '';
@@ -548,28 +585,38 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
           ? (u > 1 ? `${s.number}(${u})` : String(s.number))
           : (u > 1 ? `${s.number}-${s.number + u - 1}` : String(s.number));
       }
-      const svg = getSmallSymbolSVG(s.symbol_type, hl, lbl || undefined);
       const isLandmark = !isHouseType(s.symbol_type);
-      // For landmark-type symbols: show name label below the icon
       const displayLabel = s.label || (isLandmark ? LANDMARK_TYPE_LABELS[s.symbol_type] : undefined);
       let angle = getBlockOrientation(s, blocks);
-      if (angle === null) {
-        angle = findNearestRoadBearing(s, roads);
-      }
-      // Normalize angle to [-PI/2, PI/2] to ensure the building number is upright and readable
+      if (angle === null) angle = findNearestRoadBearing(s, roads);
+      // Normalize angle to [-PI/2, PI/2]
       if (angle > Math.PI / 2) angle -= Math.PI;
       if (angle < -Math.PI / 2) angle += Math.PI;
       const angleDeg = (angle * 180) / Math.PI;
+
+      // Compute adaptive icon size for house symbols based on block density
+      let iconPx = 24;
+      if (!isLandmark) {
+        for (const [bid, cellPx] of blockCellMap) {
+          const blk = blocks.find(b => b.id === bid);
+          if (blk && pointInPolygon({ lat: s.lat, lng: s.lng }, blockPoints(blk))) {
+            iconPx = cellPx;
+            break;
+          }
+        }
+      }
+      const iconPxI = Math.round(iconPx);
+
+      const svg = getSmallSymbolSVG(s.symbol_type, hl, lbl || undefined);
       const labelHtml = displayLabel
           ? `<div style="white-space:nowrap;font:bold 9px sans-serif;color:#111;background:rgba(255,255,255,0.9);padding:0 3px;border-radius:2px;text-align:center;margin-top:1px;pointer-events:none">${displayLabel}</div>`
           : '';
-      // Landmark symbols are NOT rotated (icons look wrong rotated); house symbols are rotated
       const iconHtml = isLandmark
         ? `<div style="display:flex;flex-direction:column;align-items:center">${svg}${labelHtml}</div>`
-        : `<div style="transform: rotate(${angleDeg}deg); transform-origin: center center; width: 24px; height: 24px;">${svg}</div>`;
-      const iconH = isLandmark && displayLabel ? 30 : (isLandmark ? 18 : 24);
+        : `<div style="transform: rotate(${angleDeg}deg); transform-origin: center center; width: ${iconPxI}px; height: ${iconPxI}px; display:flex;align-items:center;justify-content:center;"><svg width="${iconPxI}" height="${iconPxI}" viewBox="0 0 24 24" style="display:block;overflow:visible">${svg.replace(/^<svg[^>]*>/, '').replace('</svg>', '')}</svg></div>`;
+      const iconH = isLandmark && displayLabel ? 30 : (isLandmark ? 18 : iconPxI);
       const m = L.marker([s.lat, s.lng], {
-        icon: L.divIcon({ html: iconHtml, className: '', iconSize: [isLandmark ? 60 : 24, iconH], iconAnchor: [isLandmark ? 30 : 12, isLandmark && displayLabel ? 15 : 12] }),
+        icon: L.divIcon({ html: iconHtml, className: '', iconSize: [isLandmark ? 60 : iconPxI, iconH], iconAnchor: [isLandmark ? 30 : iconPxI / 2, isLandmark && displayLabel ? 15 : iconPxI / 2] }),
         interactive,
         draggable: arrangeMode,
       });
@@ -1130,8 +1177,12 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       {/* Bottom panel */}
       <div 
         className={`absolute bottom-0 left-0 right-0 z-[1001] bg-white/95 backdrop-blur border-t border-black/5 flex flex-col transition-all duration-300 shadow-lg ${
-          panelExpanded ? 'max-h-[48%] overflow-y-auto p-3.5 pb-safe' : 'h-[52px] p-2.5 overflow-hidden'
+          panelExpanded ? 'max-h-[52%] overflow-y-auto p-3.5' : 'overflow-hidden'
         }`}
+        style={panelExpanded
+          ? { paddingBottom: 'max(14px, env(safe-area-inset-bottom, 14px))' }
+          : { height: 'calc(52px + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
+        }
       >
         {/* Panel Header bar with minimize/expand controls */}
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 flex-shrink-0">
@@ -1445,20 +1496,20 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                           {SYMBOL_DEFS.filter(d => !d.isHouse).map(d => <option key={`lmk-${d.type}`} value={d.type}>{d.label}</option>)}
                         </optgroup>
                       </select>
-                      {/* Flats / census-houses per building — for any house type */}
-                      {isHouseType(popType) && (
+                      {/* Flats / census-houses per building — apartments only */}
+                      {popType === 'apartment' && (
                         <div className="flex items-center gap-1.5 bg-white border border-emerald-200 rounded-lg px-2 py-1" style={{ minHeight: '36px' }}>
                           <span className="text-[11px] font-bold text-emerald-900 whitespace-nowrap">🏢 Flats:</span>
                           <input
                             type="number"
-                            min={1}
+                            min={2}
                             max={99}
                             value={popUnitCount}
-                            onChange={e => setPopUnitCount(Math.max(1, Math.min(99, parseInt(e.target.value) || 1)))}
+                            onChange={e => setPopUnitCount(Math.max(2, Math.min(99, parseInt(e.target.value) || 2)))}
                             className="border border-emerald-200 rounded px-1.5 py-0.5 w-12 text-xs bg-white font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-center"
-                            title="Number of flats / census houses within each building"
+                            title="Number of flats/units within each apartment building"
                           />
-                          {popUnitCount > 1 && <span className="text-[10px] text-emerald-600 font-bold">/bldg</span>}
+                          <span className="text-[10px] text-emerald-600 font-bold">flats/bldg</span>
                         </div>
                       )}
                       {/* Non-residential toggle — only for house types */}

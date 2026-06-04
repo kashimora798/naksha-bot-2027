@@ -7,6 +7,7 @@ import { getSmallSymbolSVG } from '../lib/symbols';
 import { detectBlocks, mergeBlocks, splitBlock, relabelBlocks, blockPoints } from '../lib/blocks';
 import { placeGroupsInBlock, blockGrid, minEdgeDistM, type LayoutMode, type SymGroup } from '../lib/placement-blocks';
 import { renderMapToCanvas, findNearestRoadBearing, getBlockOrientation } from '../lib/pdf-export';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   mapData: MapData;
@@ -115,6 +116,60 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   const [groups, setGroups] = useState<SymGroup[]>([]);
   const [roadWidth, setRoadWidth] = useState(7);
   const [blkMsg, setBlkMsg] = useState('');
+  const [savingDraft, setSavingDraft] = useState(false);
+
+  function clearAllNumbers() {
+    if (!confirm('Are you sure you want to erase all house numbers on the map?')) return;
+    const updated = symbols.map(s => isHouseType(s.symbol_type) ? { ...s, number: null } : s);
+    onUpdateMapData({ symbols: updated });
+    setNextManualNum(1);
+    setBlkMsg('Erase completed. All house numbers have been cleared.');
+  }
+
+  function clearSelectedBlockNumbers() {
+    if (selIds.length !== 1) return;
+    const blockId = selIds[0];
+    const blk = blocks.find(b => b.id === blockId);
+    if (!blk) return;
+    if (!confirm(`Are you sure you want to erase all house numbers inside Block ${blk.label}?`)) return;
+    const ring = blockPoints(blk);
+    const updated = symbols.map(s => {
+      if (isHouseType(s.symbol_type) && pointInPolygon({ lat: s.lat, lng: s.lng }, ring)) {
+        return { ...s, number: null };
+      }
+      return s;
+    });
+    onUpdateMapData({ symbols: updated });
+    setBlkMsg(`Cleared all house numbers inside Block ${blk.label}.`);
+  }
+
+  async function saveDraftAction() {
+    if (!mapData.projectId) {
+      alert('No active project found to save. Please make sure you started from an SMS or manual location.');
+      return;
+    }
+    setSavingDraft(true);
+    setBlkMsg('Saving draft...');
+    try {
+      const name = `HLB ${mapData.hlbNumber || 'Draft'}`;
+      const getCleanData = (d: MapData) => {
+        const { projectId, paymentStatus, exportCount, ...rest } = d as any;
+        return rest;
+      };
+      const dataToSave = getCleanData(mapData);
+      const { error } = await supabase
+        .from('projects')
+        .update({ name, data: dataToSave, updated_at: new Date().toISOString() })
+        .eq('id', mapData.projectId);
+      if (error) throw error;
+      setBlkMsg('Draft saved successfully to dashboard! ✓');
+    } catch (err: any) {
+      console.error(err);
+      setBlkMsg('Failed to save draft. Please check your network connection.');
+    } finally {
+      setSavingDraft(false);
+    }
+  }
   // Selected road ID
   const [selRoadId, setSelRoadId] = useState<string | null>(null);
   // LocationIQ route-drawing mode
@@ -1284,12 +1339,43 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                         const maxAssigned = symbols.reduce((m, s) => Math.max(m, s.number ?? 0), 0);
                         setNextManualNum(maxAssigned + 1);
                       }}
-                      className="px-3 py-1.5 bg-yellow-600 text-white rounded-lg text-xs font-bold hover:bg-yellow-700 transition-colors shadow-xs"
+                      className="px-3 py-1.5 bg-yellow-600 text-white rounded-lg text-xs font-bold hover:bg-yellow-700 transition-colors shadow-xs cursor-pointer"
                       style={{ minHeight: '36px' }}
                     >
                       Reset to Max+1
                     </button>
-                    <span className="text-[10px] text-yellow-800 font-semibold">💡 Tap a house on the map to number or clear it.</span>
+                    
+                    <button
+                      onClick={clearAllNumbers}
+                      className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors shadow-xs cursor-pointer"
+                      style={{ minHeight: '36px' }}
+                    >
+                      🗑️ Erase All Numbers
+                    </button>
+
+                    <button
+                      onClick={clearSelectedBlockNumbers}
+                      className={`px-3 py-1.5 border rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer ${
+                        selIds.length === 1
+                          ? 'bg-orange-600 hover:bg-orange-700 border-orange-600 text-white'
+                          : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                      }`}
+                      style={{ minHeight: '36px' }}
+                      title={selIds.length === 1 ? undefined : 'Select a block on the map first'}
+                    >
+                      🧹 Erase Block Numbers {selIds.length === 1 ? `(Block ${blocks.find(b => b.id === selIds[0])?.label ?? ''})` : ''}
+                    </button>
+
+                    <button
+                      onClick={saveDraftAction}
+                      disabled={savingDraft}
+                      className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed transition-colors shadow-xs cursor-pointer"
+                      style={{ minHeight: '36px' }}
+                    >
+                      {savingDraft ? '⏳ Saving...' : '💾 Save as Draft'}
+                    </button>
+
+                    <span className="text-[10px] text-yellow-800 font-semibold w-full">💡 Tap a house on the map to number or clear it. Select a block to enable "Erase Block Numbers".</span>
                   </div>
                 )}
 

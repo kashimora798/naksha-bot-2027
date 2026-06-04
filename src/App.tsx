@@ -10,6 +10,7 @@ import PreviewScreen from './screens/PreviewScreen';
 import AIMapStep from './screens/AIMapStep';
 import DashboardScreen from './screens/DashboardScreen';
 import LiveSurveyScreen from './screens/LiveSurveyScreen';
+import CanvasBlockScreen from './screens/CanvasBlockScreen';
 import SessionsDashboard from './screens/SessionsDashboard';
 import SessionDetailScreen from './screens/SessionDetailScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
@@ -42,6 +43,8 @@ export default function App() {
   // To track when we should actually save vs initial load
   const isInitialLoad = useRef(true);
   const [resumeSessionId, setResumeSessionId] = useState<string | null>(null);
+  // Which step launched PreviewScreen (7 = desk AIMapStep, 11 = canvas block screen)
+  const [previewSource, setPreviewSource] = useState(7);
 
   const update = useCallback((u: Partial<MapData>) => setMapData(p => ({ ...p, ...u })), []);
   // inMap: true for all map-workspace steps (3–6). MapWorkspace is ALWAYS mounted
@@ -490,13 +493,14 @@ export default function App() {
           }}
           onResumeLiveSurvey={(id) => { setResumeSessionId(id); setStep(10); }}
           onDemoMap={() => { setMapData(DEFAULT_MAP_DATA); setProjectId(null); setIsDemoMode(true); setStep(2); }}
+          onCanvasBlockMap={() => { setMapData({ ...DEFAULT_MAP_DATA, mode: 'canvas' }); setProjectId(null); setIsDemoMode(false); isInitialLoad.current = true; setStep(1); }}
         />
       </div>;
     }
 
     if (step === 1) {
       return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
-        <SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); setStep(3); }} onBack={() => setStep(0)} isDemoMode={isDemoMode} />
+        <SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} />
       </div>;
     }
 
@@ -527,12 +531,18 @@ export default function App() {
           setIsDemoMode(false);
           setMapData({ ...DEFAULT_MAP_DATA, ...profileMapDefaults(), ...data, projectId: id, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
-           // Determine where to resume based on data
-          if (data.blocks && data.blocks.length > 0) setStep(8);
-          else if (data.symbols && data.symbols.length > 0) setStep(5);
-          else if (data.roads && data.roads.length > 0) setStep(4);
-          else if (data.boundaryClosed) setStep(3);
-          else setStep(3);
+          // Canvas-mode projects always go to the canvas screen
+          if ((data as any).mode === 'canvas') {
+            setPreviewSource(11);
+            setStep(11);
+          } else {
+            // Determine where to resume based on data
+            if (data.blocks && data.blocks.length > 0) setStep(8);
+            else if (data.symbols && data.symbols.length > 0) setStep(5);
+            else if (data.roads && data.roads.length > 0) setStep(4);
+            else if (data.boundaryClosed) setStep(3);
+            else setStep(3);
+          }
         }}
         onNewProject={(initialData) => {
           setMapData({ ...DEFAULT_MAP_DATA, ...profileMapDefaults(), ...initialData, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
@@ -556,6 +566,14 @@ export default function App() {
           setIsDemoMode(true);
           setStep(2);
         }}
+        onCanvasBlockMap={() => {
+          setMapData({ ...DEFAULT_MAP_DATA, ...profileMapDefaults(), enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor', mode: 'canvas' });
+          setProjectId(null);
+          setIsDemoMode(false);
+          isInitialLoad.current = true;
+          setPreviewSource(11);
+          setStep(2);
+        }}
       />
     );
   }
@@ -574,7 +592,7 @@ export default function App() {
       )}
       <div className="flex-1 relative overflow-hidden min-h-0">
         <ErrorBoundary>
-        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); setStep(3); }} onBack={() => setStep(0)} isDemoMode={isDemoMode} /></div>}
+        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} /></div>}
         {/* MapWorkspace is kept permanently mounted (never conditionally removed)
             once the user enters the map flow. We toggle visibility with display:none
             so the Leaflet map instance stays alive across tab switches, preventing
@@ -604,6 +622,7 @@ export default function App() {
             onJumpToPreview={() => setStep(8)}
             isDemoMode={isDemoMode}
             onDemoComplete={() => setIsDemoMode(false)}
+            numberingSystem={mapData.numberingSystem}
           />}
         </div>
         {(step === 7) && (
@@ -623,7 +642,8 @@ export default function App() {
               mapData={mapData}
               isDemoMode={isDemoMode}
               justPaid={justPaid}
-              onBack={() => setStep(7)}
+              onBack={() => setStep(previewSource)}
+              onUpdateMapData={update}
               onExitToDashboard={() => { forceSave(); setJustPaid(false); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
             />
           </div>
@@ -632,6 +652,17 @@ export default function App() {
         {step === 10 && (
           <ErrorBoundary>
             <LiveSurveyScreen onExit={() => { setStep(0); setResumeSessionId(null); }} resumeSessionId={resumeSessionId || undefined} />
+          </ErrorBoundary>
+        )}
+        {step === 11 && (
+          <ErrorBoundary>
+            <CanvasBlockScreen
+              mapData={mapData}
+              onUpdateMapData={update}
+              onExitToDashboard={() => { forceSave(); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
+              onJumpToPreview={() => { setPreviewSource(11); setStep(8); }}
+              isDemoMode={isDemoMode}
+            />
           </ErrorBoundary>
         )}
       </div>

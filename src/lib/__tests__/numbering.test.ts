@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { getUnitCount, isHouseType, buildingShape, isNonResidential, isBuildingSymbol } from '../../types';
 import type { PlacedSymbol } from '../../types';
+import { getSerpentineOrder } from '../geo';
+import { buildRegisterRows } from '../register-export';
 
 function mk(partial: Partial<PlacedSymbol>): PlacedSymbol {
   return {
@@ -105,5 +107,49 @@ describe('house-numbering arithmetic (regression for string-number bug)', () => 
 
   it('unnumbered symbol shows empty label', () => {
     expect(rangeLabel(mk({ number: null }))).toBe('');
+  });
+});
+
+describe('Census Houselisting (U-Loop) System', () => {
+  it('correctly orders houses in a U-loop inside a block', () => {
+    const syms: PlacedSymbol[] = [
+      mk({ id: 'h1', lat: 26.4501, lng: 80.3311, symbol_type: 'pucca_house' }), // NW
+      mk({ id: 'h2', lat: 26.4501, lng: 80.3315, symbol_type: 'pucca_house' }), // NE
+      mk({ id: 'h3', lat: 26.4499, lng: 80.3315, symbol_type: 'pucca_house' }), // SE
+      mk({ id: 'h4', lat: 26.4499, lng: 80.3311, symbol_type: 'pucca_house' }), // SW
+    ];
+    const blocks = [{
+      id: 'blk1', label: 'A',
+      south: 26.4498, north: 26.4502, west: 80.3310, east: 80.3316
+    }];
+    
+    const uLoopOrder = getSerpentineOrder(syms, blocks, 'census_u_loop');
+    expect(uLoopOrder).toEqual(['h1', 'h2', 'h3', 'h4']);
+  });
+
+  it('correctly expands multi-unit buildings into separate rows in register', () => {
+    const syms: PlacedSymbol[] = [
+      mk({ id: 'h1', symbol_type: 'pucca_house', number: 1 }),
+      mk({ id: 'h2', symbol_type: 'apartment', unit_count: 3, number: 2 }),
+      mk({ id: 'h3', symbol_type: 'kutcha_house', number: 5 }),
+    ];
+    
+    // Census U-loop mode: building 2 with 3 units becomes 2(1), 2(2), 2(3)
+    const rowsU = buildRegisterRows(syms, 'census_u_loop');
+    expect(rowsU.length).toBe(5); // 1 normal + 3 apartment units + 1 normal = 5 lines
+    expect(rowsU[0][1]).toBe(1); expect(rowsU[0][2]).toBe('1');
+    expect(rowsU[1][1]).toBe(2); expect(rowsU[1][2]).toBe('2(1)');
+    expect(rowsU[2][1]).toBe(2); expect(rowsU[2][2]).toBe('2(2)');
+    expect(rowsU[3][1]).toBe(2); expect(rowsU[3][2]).toBe('2(3)');
+    expect(rowsU[4][1]).toBe(5); expect(rowsU[4][2]).toBe('5');
+    
+    // Serpentine mode: building 2 with 3 units becomes house numbers 2, 3, 4
+    const rowsS = buildRegisterRows(syms, 'serpentine');
+    expect(rowsS.length).toBe(5);
+    expect(rowsS[0][1]).toBe(1); expect(rowsS[0][2]).toBe('1');
+    expect(rowsS[1][1]).toBe(2); expect(rowsS[1][2]).toBe('2');
+    expect(rowsS[2][1]).toBe(2); expect(rowsS[2][2]).toBe('3');
+    expect(rowsS[3][1]).toBe(2); expect(rowsS[3][2]).toBe('4');
+    expect(rowsS[4][1]).toBe(5); expect(rowsS[4][2]).toBe('5');
   });
 });

@@ -1,9 +1,9 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature } from '../types';
+import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature, Block } from '../types';
 import type { SurveySession, SurveySymbol, SurveyPoint, RoadSegment } from './idb';
 import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter, isHouseType, isNonResidential } from '../types';
-import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon, clusterByProximity, gridBlockOffsets, centroidXY } from './geo';
+import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon, clusterByProximity, gridBlockOffsets, centroidXY, getSerpentineOrder } from './geo';
 import { drawSymbolOnCanvas } from './symbols';
 import { declutterSymbols } from './declutter';
 import type { RenderEnv, CanvasLike, ImageLike } from './render-env';
@@ -20,6 +20,68 @@ function cleanLabel(s: string): string {
     .trim();
 }
 
+function drawStartEndBadge(ctx: CanvasRenderingContext2D, label: 'START' | 'END', x: number, y: number, size: number) {
+  ctx.save();
+  ctx.font = 'bold 7px sans-serif';
+  const textW = ctx.measureText(label).width;
+  const padX = 2.5, padY = 1.5;
+  const w = textW + padX * 2;
+  const h = 9;
+  const bx = x - w / 2;
+  const by = y - size / 2 - h - 1.5;
+
+  // Background color: Green for START, Red for END
+  ctx.fillStyle = label === 'START' ? '#2E7D32' : '#C62828';
+  
+  // Rounded rect
+  ctx.beginPath();
+  if ((ctx as any).roundRect) {
+    (ctx as any).roundRect(bx, by, w, h, 1.5);
+  } else {
+    ctx.rect(bx, by, w, h);
+  }
+  ctx.fill();
+
+  // White text
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, by + h / 2 + 0.3);
+  ctx.restore();
+}
+
+export function lngFromTile(x: number, z: number): number {
+  return (x / Math.pow(2, z)) * 360 - 180;
+}
+
+export function latFromTile(y: number, z: number): number {
+  const n = Math.PI - (2 * Math.PI * y) / Math.pow(2, z);
+  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+export function getProjection(
+  w: number,
+  h: number,
+  pW: number,
+  pE: number,
+  pS: number,
+  pN: number
+) {
+  const rLng = pE - pW || 0.001, rLat = pN - pS || 0.001;
+  const midLat = (pS + pN) / 2;
+  const cosLat = Math.cos(midLat * Math.PI / 180);
+  const w_proj = rLng * cosLat;
+  const h_proj = rLat;
+  const sc = Math.min(w / w_proj, h / h_proj);
+  const offsetX = (w - w_proj * sc) / 2;
+  const offsetY = (h - h_proj * sc) / 2;
+  const proj = (c: Coordinate): [number, number] => [
+    offsetX + (c.lng - pW) * cosLat * sc,
+    offsetY + (pN - c.lat) * sc
+  ];
+  return { proj, sc, offsetX, offsetY, w_proj, h_proj };
+}
+
 // ═══════════════════════════════════════════════════════════
 // RENDER MAP TO CANVAS
 // Key: ASPECT-FILL projection — X and Y scale INDEPENDENTLY
@@ -32,12 +94,15 @@ export function renderMapToCanvas(
     watermark?: boolean;
     transparentBg?: boolean;
     hideSymbols?: boolean;
+    hideBlocks?: boolean;
     focusBounds?: { south: number; west: number; north: number; east: number };
     includeOsmRoads?: boolean;
     osmRoads?: Coordinate[][];
     includeWalkedPath?: boolean;
     walkedPath?: Coordinate[];
     includeMappedRoads?: boolean;
+    satCanvas?: any;
+    inkMode?: 'color' | 'black' | 'blue';
   }
 ): void {
   const orient = data.orientation || 'portrait';
@@ -47,7 +112,47 @@ export function renderMapToCanvas(
   else { h = maxH; w = Math.round(maxH * aspect); }
 
   canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
+  const inkMode = options?.inkMode || (data as any).renderOptions?.inkMode || 'color';
+  const colorMap = (col: string | CanvasGradient | CanvasPattern): string | CanvasGradient | CanvasPattern => {
+    if (typeof col !== 'string') return col;
+    if (inkMode === 'color') return col;
+    if (inkMode === 'black') {
+      if (col === '#FFF' || col === '#FFFFFF' || col === '#ffffff' || col === 'rgba(255,255,255,0.85)' || col === 'rgba(255,255,255,0.9)') return '#FFFFFF';
+      if (col.startsWith('rgba(')) {
+        return col.replace(/rgba\(\d+\s*,\s*\d+\s*,\s*\d+/, 'rgba(0,0,0');
+      }
+      if (col === 'transparent') return 'transparent';
+      return '#000000';
+    }
+    if (inkMode === 'blue') {
+      if (col === '#FFF' || col === '#FFFFFF' || col === '#ffffff' || col === 'rgba(255,255,255,0.85)' || col === 'rgba(255,255,255,0.9)') return '#FFFFFF';
+      if (col.startsWith('rgba(')) {
+        return col.replace(/rgba\(\d+\s*,\s*\d+\s*,\s*\d+/, 'rgba(0,47,190');
+      }
+      if (col === 'transparent') return 'transparent';
+      return '#002fbe';
+    }
+    return col;
+  };
+
+  const rawCtx = canvas.getContext('2d')!;
+  const ctx = new Proxy(rawCtx, {
+    get(target, prop) {
+      const val = target[prop as keyof typeof target];
+      if (typeof val === 'function') {
+        return val.bind(target);
+      }
+      return val;
+    },
+    set(target, prop, value) {
+      if (prop === 'fillStyle' || prop === 'strokeStyle') {
+        value = colorMap(value);
+      }
+      (target as any)[prop] = value;
+      return true;
+    }
+  });
+
   if (!options?.transparentBg) {
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h);
   } else {
@@ -71,21 +176,34 @@ export function renderMapToCanvas(
   }
   const rLng = pE - pW || 0.001, rLat = pN - pS || 0.001;
 
-  // ASPECT FILL: independent X/Y scaling
-  const scX = w / rLng, scY = h / rLat;
-  const proj = (c: Coordinate): [number, number] => [
-    (c.lng - pW) * scX,
-    (pN - c.lat) * scY
-  ];
-  const avgSc = (scX + scY) / 2;
+  const { proj, sc, offsetX, offsetY, w_proj, h_proj } = getProjection(w, h, pW, pE, pS, pN);
+
+  // If a satellite background canvas is supplied, draw it aligned precisely
+  if (options?.satCanvas) {
+    ctx.save();
+    if (inkMode === 'black' || inkMode === 'blue') {
+      (ctx as any).filter = 'grayscale(100%)';
+    }
+    ctx.drawImage(options.satCanvas, offsetX, offsetY, w_proj * sc, h_proj * sc);
+    ctx.restore();
+    if (inkMode === 'blue') {
+      ctx.save();
+      (ctx as any).globalCompositeOperation = 'multiply';
+      ctx.fillStyle = '#002fbe';
+      ctx.fillRect(offsetX, offsetY, w_proj * sc, h_proj * sc);
+      ctx.restore();
+    }
+  }
+
   const numSymbols = data.symbols?.length || 1;
   // Symbol size from LOCAL spacing, not global count: measure the median nearest-
   // neighbour distance between symbols in canvas space and size boxes to ~70% of it,
   // so sparse areas stay large/legible and only genuinely tight pockets shrink.
+  const symbolSizes = new Map<string, number>();
   let symSz: number;
   {
     const globalScale = Math.max(0.4, Math.min(1, 100 / numSymbols));
-    const base = Math.max(16 * globalScale, Math.min(42 * globalScale, avgSc * 0.0002));
+    const base = Math.max(16 * globalScale, Math.min(42 * globalScale, sc * 0.0002));
     const pts = (data.symbols || []).map(s => proj(s));
     if (pts.length >= 2) {
       // Sample up to 60 symbols for nearest-neighbour spacing (O(n*k) but bounded).
@@ -107,7 +225,51 @@ export function renderMapToCanvas(
     } else {
       symSz = base;
     }
+
+    // Now calculate block-specific symbol sizes to prevent overlaps in congested blocks
+    if (data.blocks && data.blocks.length > 0) {
+      for (const blk of data.blocks) {
+        const blkPts = blk.points && blk.points.length >= 3 ? blk.points : [
+          { lat: blk.south, lng: blk.west },
+          { lat: blk.north, lng: blk.west },
+          { lat: blk.north, lng: blk.east },
+          { lat: blk.south, lng: blk.east },
+        ];
+        const blkSyms = (data.symbols || []).filter(s => {
+          if (blk.points && blk.points.length >= 3) {
+            return pointInPolygon(s, blk.points);
+          }
+          return s.lat >= blk.south && s.lat <= blk.north && s.lng >= blk.west && s.lng <= blk.east;
+        });
+        if (blkSyms.length >= 2) {
+          const bpts = blkSyms.map(s => proj(s));
+          const nn: number[] = [];
+          for (let i = 0; i < bpts.length; i++) {
+            let best = Infinity;
+            for (let j = 0; j < bpts.length; j++) {
+              if (i === j) continue;
+              const d = Math.hypot(bpts[i][0] - bpts[j][0], bpts[i][1] - bpts[j][1]);
+              if (d < best) best = d;
+            }
+            if (isFinite(best)) nn.push(best);
+          }
+          nn.sort((a, b) => a - b);
+          const blockMedianNN = nn.length ? nn[Math.floor(nn.length / 2)] : base;
+          // Box ~70% of local spacing inside this block, clamped to a legible range [9, base]
+          const blkSymSz = Math.max(9, Math.min(base, blockMedianNN * 0.7));
+          for (const s of blkSyms) {
+            symbolSizes.set(s.id, blkSymSz);
+          }
+        } else if (blkSyms.length === 1) {
+          symbolSizes.set(blkSyms[0].id, base);
+        }
+      }
+    }
   }
+
+  const getSymbolSize = (id: string): number => {
+    return symbolSizes.get(id) ?? symSz;
+  };
 
   // ─── LANDUSE AREAS ────────────────────────────────────────────
   const landusStyles: Record<string, { fill: string; stroke: string; width: number; dash: number[]; label: string }> = {
@@ -188,23 +350,28 @@ export function renderMapToCanvas(
   // ─── BLOCKS ─────────────────────────────────────────────
   const BF = ['rgba(231,76,60,0.08)', 'rgba(52,152,219,0.08)', 'rgba(39,174,96,0.08)', 'rgba(243,156,18,0.08)', 'rgba(155,89,182,0.08)', 'rgba(26,188,156,0.08)'];
   const BB = ['#E74C3C', '#3498DB', '#27AE60', '#F39C12', '#9B59B6', '#1ABC9C'];
-  (data.blocks || []).forEach((b, i) => {
-    const pts: Coordinate[] = b.points || [
-      { lat: b.south, lng: b.west }, { lat: b.north, lng: b.west },
-      { lat: b.north, lng: b.east }, { lat: b.south, lng: b.east },
-    ];
-    const pp = pts.map(p => proj(p));
-    ctx.fillStyle = BF[i % 6];
-    ctx.beginPath(); pp.forEach(([x, y], j) => j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = BB[i % 6]; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
-    ctx.beginPath(); pp.forEach(([x, y], j) => j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.stroke();
-    ctx.setLineDash([]);
-    const c = b.points ? polyCenter(b.points) : { lat: (b.south + b.north) / 2, lng: (b.west + b.east) / 2 };
-    const [cx, cy] = proj(c);
-    ctx.fillStyle = BB[i % 6]; ctx.font = `bold ${Math.max(10, symSz * 0.6)}px sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(`Block ${b.label}`, cx, cy);
-  });
+  // ─── BLOCKS ─────────────────────────────────────────────
+  if (!options?.hideBlocks) {
+    const BF = ['rgba(231,76,60,0.08)', 'rgba(52,152,219,0.08)', 'rgba(39,174,96,0.08)', 'rgba(243,156,18,0.08)', 'rgba(155,89,182,0.08)', 'rgba(26,188,156,0.08)'];
+    const BB = ['#E74C3C', '#3498DB', '#27AE60', '#F39C12', '#9B59B6', '#1ABC9C'];
+    (data.blocks || []).forEach((b, i) => {
+      const pts: Coordinate[] = b.points || [
+        { lat: b.south, lng: b.west }, { lat: b.north, lng: b.west },
+        { lat: b.north, lng: b.east }, { lat: b.south, lng: b.east },
+      ];
+      const pp = pts.map(p => proj(p));
+      ctx.fillStyle = BF[i % 6];
+      ctx.beginPath(); pp.forEach(([x, y], j) => j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = BB[i % 6]; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+      ctx.beginPath(); pp.forEach(([x, y], j) => j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.stroke();
+      ctx.setLineDash([]);
+      const c = b.points ? polyCenter(b.points) : { lat: (b.south + b.north) / 2, lng: (b.west + b.east) / 2 };
+      const [cx, cy] = proj(c);
+      ctx.fillStyle = BB[i % 6]; ctx.font = `bold ${Math.max(10, symSz * 0.6)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`Block ${b.label}`, cx, cy);
+    });
+  }
 
   // ─── BOUNDARY ───────────────────────────────────────────
   // Spec (ORGI §xiv): HLB boundary drawn as a dashed line; neighbouring HLB/
@@ -266,7 +433,7 @@ export function renderMapToCanvas(
       const rs = ['residential', 'unclassified', 'tertiary', 'service', 'living_street'].includes(road.highway);
       const kt = ['footway', 'path', 'track', 'pedestrian', 'steps'].includes(road.highway);
       let oW: number, iW: number;
-      if (pk) { oW = 16; iW = 8; } else if (rs) { oW = 12; iW = 6; } else if (kt) { oW = 10; iW = 5; } else { oW = 11; iW = 5.5; }
+      if (pk) { oW = 22; iW = 12; } else if (rs) { oW = 17; iW = 9; } else if (kt) { oW = 14; iW = 7; } else { oW = 15; iW = 8; }
       const dash = kt ? [8, 5] : [];
       const col = road.confirmed ? '#000' : '#555';
       
@@ -278,7 +445,7 @@ export function renderMapToCanvas(
       ctx.beginPath(); road.coords.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
 
       // ─── DRAW ROAD NAME ───
-      if (road.osm_id && (road as any).name) {
+      if ((road as any).name) {
         // Find the longest segment to place the name
         let maxLen = 0, bA = road.coords[0], bB = road.coords[1];
         for (let i = 0; i < road.coords.length - 1; i++) {
@@ -336,177 +503,191 @@ export function renderMapToCanvas(
     ctx.setLineDash([]); // Reset line dash
   }
 
-  // ─── SERPENTINE ─────────────────────────────────────────
+  // ─── INTELLIGENT FLOATING MID-GAP ARROWS (ORGI Annexure-4 §xii) ─────────
+  // Design principle: arrows NEVER cut through house symbols.
+  // Each arrow is a short chevron floating in the GAP between consecutive houses:
+  //   • Centered at midpoint of gap, length = 38% of gap
+  //   • Starts at symbol-A edge, ends at symbol-B edge (offset by symSz/2)
+  //   • Intra-block: solid dark-red arrow (bold, clear)
+  //   • Inter-block jump: single bezier curve arc (thin grey, distinct)
+  //   • Row-turn: slightly enlarged arrowhead marks serpentine reversal
+  //   • Skipped when houses are too close (gap < 1.2 × symSz) to avoid clutter
   if (!options?.hideSymbols) {
     const serp = generateSerpentinePath(data.symbols, data.blocks?.length > 0 ? data.blocks : undefined);
     if (serp.length >= 2) {
-      ctx.strokeStyle = 'rgba(220,50,50,0.2)'; ctx.lineWidth = 2; ctx.setLineDash([8, 5]);
-      ctx.beginPath(); serp.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
-      ctx.setLineDash([]);
-
-      // ─── NUMBERING-DIRECTION ARROWS (ORGI Annexure-4 §xii) ───
-      // Draw an arrowhead wherever the numbering path changes heading beyond a
-      // threshold (a "jump"), plus the very first step so the start direction is clear.
+      const blocks2 = data.blocks && data.blocks.length > 0 ? data.blocks : [];
+      const blockOf = (c: Coordinate): string | null => {
+        for (const b of blocks2) {
+          const pts = b.points && b.points.length >= 3 ? b.points : null;
+          if (pts ? pointInPolygon(c, pts) : (c.lat >= b.south && c.lat <= b.north && c.lng >= b.west && c.lng <= b.east)) return b.id;
+        }
+        return null;
+      };
+      const membership = serp.map(c => blockOf(c));
       const projPts = serp.map(c => proj(c));
-      const headingAt = (i: number) => Math.atan2(projPts[i + 1][1] - projPts[i][1], projPts[i + 1][0] - projPts[i][0]);
-      const drawArrow = (x: number, y: number, ang: number) => {
-        const len = Math.max(7, symSz * 0.5);
-        ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
-        ctx.strokeStyle = '#C0392B'; ctx.fillStyle = '#C0392B'; ctx.lineWidth = 2; ctx.setLineDash([]);
-        ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(0, 0); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-len * 0.5, -len * 0.35); ctx.lineTo(-len * 0.5, len * 0.35); ctx.closePath(); ctx.fill();
+
+      // ── HELPER: draw a clean filled arrowhead at (tx, ty) pointing in direction `ang` ──
+      const arrowHead = (tx: number, ty: number, ang: number, size: number) => {
+        const hw = size * 0.42; // half-width of arrowhead
+        ctx.save();
+        ctx.translate(tx, ty);
+        ctx.rotate(ang);
+        ctx.fillStyle = 'rgba(176,34,24,0.88)';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-size, -hw);
+        ctx.lineTo(-size * 0.6, 0);
+        ctx.lineTo(-size, hw);
+        ctx.closePath();
+        ctx.fill();
         ctx.restore();
       };
-      let prevAng = headingAt(0);
-      // First-step arrow at the start of the path
-      drawArrow(projPts[1][0], projPts[1][1], prevAng);
-      for (let i = 1; i < projPts.length - 1; i++) {
-        const ang = headingAt(i);
-        let d = Math.abs(ang - prevAng);
-        if (d > Math.PI) d = 2 * Math.PI - d;
-        // Heading changed by > ~50° → mark the jump with an arrow at the turn.
-        if (d > 0.9) drawArrow(projPts[i + 1][0], projPts[i + 1][1], ang);
-        prevAng = ang;
+
+      // ── HELPER: draw a short floating mid-gap arrow from A→B ──
+      // Returns the angle of the arrow (for turn detection)
+      const drawMidArrow = (
+        x1: number, y1: number, x2: number, y2: number,
+        isBlockJump: boolean, isTurn: boolean
+      ): number => {
+        const dx = x2 - x1, dy = y2 - y1;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 0.001) return 0;
+        const ang = Math.atan2(dy, dx);
+        const ux = dx / dist, uy = dy / dist; // unit vector
+
+        // Skip if houses are too close (arrow would overlap symbols)
+        const minGap = symSz * 1.1;
+        if (dist < minGap && !isBlockJump) return ang;
+
+        if (isBlockJump) {
+          // ── INTER-BLOCK: single thin bezier arc, no floating stub ──
+          // Arc gently curves ~20% of distance perpendicularly for visual elegance
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+          const perp = dist * 0.18; // perpendicular offset for arc
+          const cpx = mx - uy * perp, cpy = my + ux * perp;
+          // Offset start/end from symbol edges
+          const r = symSz * 0.52;
+          const sx = x1 + ux * r, sy = y1 + uy * r;
+          const ex = x2 - ux * r, ey = y2 - uy * r;
+          ctx.strokeStyle = 'rgba(140,130,120,0.38)';
+          ctx.lineWidth = 1.1;
+          ctx.setLineDash([4, 5]);
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.quadraticCurveTo(cpx, cpy, ex, ey);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // Small arrowhead at destination edge
+          arrowHead(ex, ey, ang, Math.max(5, symSz * 0.32));
+        } else {
+          // ── INTRA-BLOCK: short floating chevron centered in gap ──
+          const r = symSz * 0.55; // offset from symbol edge
+          const arrowLen = Math.min(dist * 0.38, symSz * 1.8); // 38% of gap, capped
+          const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2; // midpoint
+          const hLen = arrowLen / 2;
+
+          // Arrow shaft: from (mid - hLen) to (mid + hLen), clipped to not enter symbols
+          const shaftStart = Math.max(r, dist / 2 - hLen);
+          const shaftEnd   = Math.min(dist - r, dist / 2 + hLen);
+          if (shaftEnd <= shaftStart) return ang;
+
+          const sx = x1 + ux * shaftStart, sy = y1 + uy * shaftStart;
+          const ex = x1 + ux * shaftEnd,   ey = y1 + uy * shaftEnd;
+
+          const headSize = isTurn
+            ? Math.max(8, symSz * 0.52)   // larger arrowhead at row turns
+            : Math.max(6, symSz * 0.40);
+
+          // Thin shaft line
+          ctx.strokeStyle = 'rgba(160,30,20,0.62)';
+          ctx.lineWidth = isTurn ? 2.0 : 1.5;
+          ctx.setLineDash([]);
+          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+
+          // Filled arrowhead at the tip
+          arrowHead(ex, ey, ang, headSize);
+
+          // ── TURN INDICATOR: small arc at the turning point ──
+          if (isTurn) {
+            ctx.strokeStyle = 'rgba(176,34,24,0.5)';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.arc(cx, cy, symSz * 0.28, ang - 0.7, ang + 0.7);
+            ctx.stroke();
+          }
+        }
+        return ang;
+      };
+
+      // ── PROCESS each consecutive pair in the path ──
+      let prevAng: number | null = null;
+
+      for (let i = 0; i < projPts.length - 1; i++) {
+        const [x1, y1] = projPts[i];
+        const [x2, y2] = projPts[i + 1];
+        const thisBlock = membership[i + 1];
+        const isJump = membership[i] !== thisBlock;
+
+        // Detect turn: heading change > ~38° within the same block
+        const ang = Math.atan2(y2 - y1, x2 - x1);
+        let isTurn = false;
+        if (!isJump && prevAng !== null) {
+          let d = Math.abs(ang - prevAng);
+          if (d > Math.PI) d = 2 * Math.PI - d;
+          isTurn = d > 0.66;
+        }
+
+        drawMidArrow(x1, y1, x2, y2, isJump, isTurn);
+        prevAng = isJump ? null : ang;
       }
+
       ctx.setLineDash([]);
     }
   }
 
+
+
   // ─── SYMBOLS — Upright viewport aligned ───────
+
+  // snappedSymbols is hoisted so landmark labels can reference it below.
+  let snappedSymbols: { x: number, y: number, sym: PlacedSymbol, idealX: number, idealY: number }[] = [];
   if (!options?.hideSymbols) {
-    // Phase 5: Canvas-Space Solar Grid Snapping
-    // Align symbols into a perfect non-overlapping grid on the high-res canvas
-    const gridSz = symSz * 1.25;
-    const occupied = new Set<string>();
-    const snappedSymbols: { x: number, y: number, sym: PlacedSymbol, idealX: number, idealY: number }[] = [];
-
-    // Precompute road segments in canvas space for collision avoidance.
-    const roadSegs: [number, number, number, number][] = [];
-    for (const road of data.roads || []) {
-      if (road.coords.length < 2) continue;
-      for (let i = 0; i < road.coords.length - 1; i++) {
-        const [x1, y1] = proj(road.coords[i]);
-        const [x2, y2] = proj(road.coords[i + 1]);
-        roadSegs.push([x1, y1, x2, y2]);
-      }
-    }
-    // Distance from point to a line segment (canvas px).
-    const ptSegDist = (px: number, py: number, x1: number, y1: number, x2: number, y2: number): number => {
-      const dx = x2 - x1, dy = y2 - y1;
-      const l2 = dx * dx + dy * dy;
-      let t = l2 ? ((px - x1) * dx + (py - y1) * dy) / l2 : 0;
-      t = Math.max(0, Math.min(1, t));
-      return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
-    };
-    // A cell center is "clear" if it's at least clearDist from every road segment.
-    const clearDist = symSz * 0.62;
-    const cellClearsRoads = (cx: number, cy: number): boolean => {
-      for (const [x1, y1, x2, y2] of roadSegs) {
-        if (ptSegDist(cx, cy, x1, y1, x2, y2) < clearDist) return false;
-      }
-      return true;
-    };
-
-    // Prioritize houses first to ensure they get the best grid spots
-    const sortedSymbols = [...data.symbols].sort((a, b) => {
-      const aH = isHouseType(a.symbol_type) ? -1 : 1;
-      const bH = isHouseType(b.symbol_type) ? -1 : 1;
-      return aH - bH;
-    });
-
-    // ─── DENSE-CLUSTER SCHEMATIC SPREAD (ORGI: map is not-to-scale) ───
-    // House symbols packed tighter than one grid cell are laid out as a neat block
-    // in numbering order near their real centroid, with a leader back to the cluster.
-    // Non-clustered symbols fall through to the spiral snap below.
-    const housePts = sortedSymbols
-      .map((s, i) => ({ s, i, p: proj(s) }))
-      .filter(o => isHouseType(o.s.symbol_type));
-    const clusterCell = gridSz; // schematic block spacing
-    const clusters = housePts.length >= 4
-      ? clusterByProximity(housePts.map(o => ({ x: o.p[0], y: o.p[1] })), gridSz * 0.9, 5)
-      : housePts.map((_, i) => [i]);
-    const prePlaced = new Map<string, { x: number; y: number; idealX: number; idealY: number }>();
-    for (const cl of clusters) {
-      if (cl.length < 5) continue; // only genuinely dense groups get spread
-      const members = cl.map(ci => housePts[ci]);
-      // Keep numbering order if already numbered, else spatial order.
-      members.sort((a, b) => (a.s.number ?? 1e9) - (b.s.number ?? 1e9));
-      const cen = centroidXY(members.map(m => ({ x: m.p[0], y: m.p[1] })));
-      const offs = gridBlockOffsets(members.length, cen.x, cen.y, clusterCell);
-      members.forEach((m, k) => {
-        const gx = Math.round(offs[k].x / gridSz), gy = Math.round(offs[k].y / gridSz);
-        occupied.add(`${gx},${gy}`);
-        prePlaced.set(m.s.id, { x: gx * gridSz, y: gy * gridSz, idealX: m.p[0], idealY: m.p[1] });
-      });
-    }
-
-    for (const sym of sortedSymbols) {
-      const pre = prePlaced.get(sym.id);
-      if (pre) { snappedSymbols.push({ ...pre, sym }); continue; }
+    // Render symbols exactly at their placed coordinates as in the editing window
+    for (const sym of data.symbols) {
       const [idealX, idealY] = proj(sym);
-      const gX0 = Math.round(idealX / gridSz);
-      const gY0 = Math.round(idealY / gridSz);
-      const free = (gx: number, gy: number) =>
-        !occupied.has(`${gx},${gy}`) && cellClearsRoads(gx * gridSz, gy * gridSz);
-
-      if (free(gX0, gY0)) {
-        occupied.add(`${gX0},${gY0}`);
-        snappedSymbols.push({ x: gX0 * gridSz, y: gY0 * gridSz, sym, idealX, idealY });
-      } else {
-        // Spiral search for the nearest cell that is empty AND clear of roads.
-        let found = false;
-        for (let ring = 1; ring <= 24 && !found; ring++) {
-          for (let dx = -ring; dx <= ring && !found; dx++) {
-            for (let dy = -ring; dy <= ring && !found; dy++) {
-              if (Math.abs(dx) === ring || Math.abs(dy) === ring) {
-                if (free(gX0 + dx, gY0 + dy)) {
-                  const gX = gX0 + dx, gY = gY0 + dy;
-                  occupied.add(`${gX},${gY}`);
-                  snappedSymbols.push({ x: gX * gridSz, y: gY * gridSz, sym, idealX, idealY });
-                  found = true;
-                }
-              }
-            }
-          }
-        }
-        if (!found) {
-          // Last resort: nearest empty cell ignoring roads, so we never drop a house.
-          for (let ring = 1; ring <= 24 && !found; ring++) {
-            for (let dx = -ring; dx <= ring && !found; dx++) {
-              for (let dy = -ring; dy <= ring && !found; dy++) {
-                if ((Math.abs(dx) === ring || Math.abs(dy) === ring) && !occupied.has(`${gX0 + dx},${gY0 + dy}`)) {
-                  const gX = gX0 + dx, gY = gY0 + dy;
-                  occupied.add(`${gX},${gY}`);
-                  snappedSymbols.push({ x: gX * gridSz, y: gY * gridSz, sym, idealX, idealY });
-                  found = true;
-                }
-              }
-            }
-          }
-        }
-        if (!found) snappedSymbols.push({ x: idealX, y: idealY, sym, idealX, idealY });
-      }
+      snappedSymbols.push({ x: idealX, y: idealY, sym, idealX, idealY });
     }
-
-    // Leader lines: when a box was nudged far from its true location, connect them
-    // so the number stays associated with the real house (standard cartographic practice).
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.8; ctx.setLineDash([3, 2]);
-    for (const { x, y, idealX, idealY } of snappedSymbols) {
-      if (Math.hypot(x - idealX, y - idealY) > gridSz * 1.5) {
-        ctx.beginPath(); ctx.moveTo(idealX, idealY); ctx.lineTo(x, y); ctx.stroke();
-        ctx.fillStyle = 'rgba(0,0,0,0.4)';
-        ctx.beginPath(); ctx.arc(idealX, idealY, 1.6, 0, Math.PI * 2); ctx.fill();
-      }
-    }
-    ctx.setLineDash([]);
 
     for (const { x, y, sym } of snappedSymbols) {
-      drawSymbolOnCanvas(ctx, sym, x, y, symSz);
+      let angle = getBlockOrientation(sym, data.blocks || []);
+      if (angle === null) {
+        angle = findNearestRoadBearing(sym, data.roads || []);
+      }
+      // Limit angle to [-PI/2, PI/2] to ensure the building number is always upright and readable
+      if (angle > Math.PI / 2) angle -= Math.PI;
+      if (angle < -Math.PI / 2) angle += Math.PI;
+      drawSymbolOnCanvas(ctx as any, sym, x, y, getSymbolSize(sym.id), angle, inkMode, data.numberingSystem);
+    }
+
+    const housesOrder = getSerpentineOrder(data.symbols, data.blocks, data.numberingSystem);
+    if (housesOrder.length > 0) {
+      const firstId = housesOrder[0];
+      const lastId = housesOrder[housesOrder.length - 1];
+      for (const { x, y, sym } of snappedSymbols) {
+        const size = getSymbolSize(sym.id);
+        if (sym.id === firstId) {
+          drawStartEndBadge(ctx, 'START', x, y, size);
+        } else if (sym.id === lastId && housesOrder.length >= 2) {
+          drawStartEndBadge(ctx, 'END', x, y, size);
+        }
+      }
     }
   }
+
 
   // ─── LANDMARK LABELS ────────────────────────────────────
   if (!options?.hideSymbols) {
+    // Labels from explicit landmark layer
     for (const lm of (data.landmarks || [])) {
       if (lm.selectedForPdf === false) continue;
       const [x, y] = proj({ lat: lm.lat, lng: lm.lng });
@@ -514,7 +695,29 @@ export function renderMapToCanvas(
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ctx.fillText(`• ${lm.name}`, x, y - 5);
     }
+    // Labels for landmark-type placed symbols (temple/school/mosque/hospital etc.)
+    const LANDMARK_SYMBOL_LABELS: Partial<Record<SymbolType, string>> = {
+      temple: 'Temple', mosque: 'Mosque', church: 'Church',
+      school: 'School', hospital: 'Hospital', well: 'Well',
+      post_office: 'Post Office', police_station: 'Police Station', pond: 'Pond',
+    };
+
+    for (const { x, y, sym } of (snappedSymbols || [])) {
+      const defaultLbl = LANDMARK_SYMBOL_LABELS[sym.symbol_type];
+      const name = sym.label || defaultLbl;
+      if (!name) continue;
+      const size = getSymbolSize(sym.id);
+      ctx.save();
+      ctx.font = `bold ${Math.max(9, size * 0.5)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+      ctx.strokeText(name, x, y - size / 2 - 2);
+      ctx.fillStyle = '#000000';
+      ctx.fillText(name, x, y - size / 2 - 2);
+      ctx.restore();
+    }
   }
+
 
   // ─── NORTH ARROW ────────────────────────────────────────
   const aX = w - 20, aY = 24;
@@ -529,19 +732,30 @@ export function renderMapToCanvas(
   if (!options?.hideSymbols) {
     const usedTypes = new Set<SymbolType>(data.symbols.map(s => s.symbol_type));
     if (usedTypes.size > 0) {
-      const lH = usedTypes.size * 15 + 8, lX = 8, lY = h - lH;
-      ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.fillRect(lX - 3, lY - 3, 118, lH);
-      ctx.strokeStyle = '#DDD'; ctx.lineWidth = 0.5; ctx.strokeRect(lX - 3, lY - 3, 118, lH);
-      let ly = lY + 2;
+      const itemH = 18, lX = 8;
+      const lH = usedTypes.size * itemH + 10;
+      const lY = h - lH - 2;
+      const lW = 145;
+      ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fillRect(lX - 4, lY - 4, lW, lH + 4);
+      ctx.strokeStyle = '#888'; ctx.lineWidth = 0.8; ctx.strokeRect(lX - 4, lY - 4, lW, lH + 4);
+      // Header
+      ctx.fillStyle = '#000'; ctx.font = `bold ${Math.max(9, symSz * 0.35)}px sans-serif`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('LEGEND / किंवदंती', lX + 2, lY + itemH * 0.35);
+      let ly = lY + itemH;
       usedTypes.forEach(t => {
         const d = SYMBOL_DEFS.find(dd => dd.type === t);
-        drawSymbolOnCanvas(ctx, { symbol_type: t }, lX + 8, ly, 9);
-        ctx.fillStyle = '#000'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.fillText(d?.labelHi || '', lX + 20, ly);
-        ly += 15;
+        drawSymbolOnCanvas(ctx as any, { symbol_type: t }, lX + 9, ly, 12, 0, inkMode, data.numberingSystem);
+        ctx.fillStyle = '#000';
+        ctx.font = `${Math.max(8, symSz * 0.32)}px sans-serif`;
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        const label = d?.labelHi ? `${d.labelHi} (${d.label})` : (d?.label || t);
+        ctx.fillText(label, lX + 22, ly);
+        ly += itemH;
       });
     }
   }
+
 
   // ─── WATERMARK ──────────────────────────────────────────
   if (options?.watermark) {
@@ -602,7 +816,7 @@ export function exportPDF(data: MapData, canvas?: CanvasLike, env: RenderEnv = b
 // ═══════════════════════════════════════════════════════════
 // HELPER: Find bearing of nearest road to align symbols
 // ═══════════════════════════════════════════════════════════
-function findNearestRoadBearing(sym: PlacedSymbol, roads: RoadFeature[]): number {
+export function findNearestRoadBearing(sym: PlacedSymbol, roads: RoadFeature[]): number {
   let bestDist = Infinity;
   let bestAngle = 0;
   for (const road of roads) {
@@ -618,6 +832,36 @@ function findNearestRoadBearing(sym: PlacedSymbol, roads: RoadFeature[]): number
     }
   }
   return bestAngle;
+}
+
+// ═══════════════════════════════════════════════════════════
+// HELPER: Find bearing of longest edge of the block containing the symbol
+// ═══════════════════════════════════════════════════════════
+export function getBlockOrientation(sym: Coordinate, blocks: Block[]): number | null {
+  for (const block of blocks) {
+    const pts = block.points && block.points.length >= 3 ? block.points : [
+      { lat: block.south, lng: block.west },
+      { lat: block.north, lng: block.west },
+      { lat: block.north, lng: block.east },
+      { lat: block.south, lng: block.east },
+    ];
+    if (pointInPolygon(sym, pts)) {
+      let bestLenSq = -1;
+      let bestAngle = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        const dy = b.lat - a.lat;
+        const dx = b.lng - a.lng;
+        const lenSq = dy * dy + dx * dx;
+        if (lenSq > bestLenSq) {
+          bestLenSq = lenSq;
+          bestAngle = Math.atan2(dy, dx);
+        }
+      }
+      return bestAngle;
+    }
+  }
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -644,19 +888,91 @@ async function captureSat(s: number, w: number, n: number, e: number, env: Rende
   const c = env.createCanvas(cw, ch);
   const ctx = c.getContext('2d')!;
   ctx.fillStyle = '#ddd'; ctx.fillRect(0, 0, c.width, c.height);
-  if ((x2 - x1 + 1) * (y2 - y1 + 1) > 36) return c;
-  for (let x = x1; x <= x2; x++) for (let y = y1; y <= y2; y++) {
-    try {
-      const img = await env.loadImage(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`);
-      ctx.drawImage(img, (x - x1) * T, (y - y1) * T, T, T);
-    } catch {}
+  if ((x2 - x1 + 1) * (y2 - y1 + 1) <= 36) {
+    for (let x = x1; x <= x2; x++) {
+      for (let y = y1; y <= y2; y++) {
+        try {
+          const img = await env.loadImage(`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`);
+          ctx.drawImage(img, (x - x1) * T, (y - y1) * T, T, T);
+        } catch {}
+      }
+    }
   }
-  return c;
+
+  // Crop to exact bounds (s, w, n, e)
+  const tileW = lngFromTile(x1, z);
+  const tileE = lngFromTile(x2 + 1, z);
+  const tileN = latFromTile(y1, z);
+  const tileS = latFromTile(y2 + 1, z);
+
+  const pxLeft = ((w - tileW) / (tileE - tileW)) * cw;
+  const pxRight = ((e - tileW) / (tileE - tileW)) * cw;
+  const pxTop = ((tileN - n) / (tileN - tileS)) * ch;
+  const pxBottom = ((tileN - s) / (tileN - tileS)) * ch;
+
+  const cropW = Math.max(1, Math.round(pxRight - pxLeft));
+  const cropH = Math.max(1, Math.round(pxBottom - pxTop));
+
+  const cropped = env.createCanvas(cropW, cropH);
+  const cropCtx = cropped.getContext('2d')!;
+  cropCtx.drawImage(
+    c as any,
+    pxLeft, pxTop, pxRight - pxLeft, pxBottom - pxTop,
+    0, 0, cropW, cropH
+  );
+
+  return cropped;
 }
 
-// ═══════════════════════════════════════════════════════════
-// BLOCK-WISE EXPORT with satellite reference
-// ═══════════════════════════════════════════════════════════
+function wrapDocColors(doc: jsPDF, inkMode: string) {
+  if (inkMode === 'color') return doc;
+  
+  const setTextColor = doc.setTextColor;
+  const setDrawColor = doc.setDrawColor;
+  const setFillColor = doc.setFillColor;
+
+  const isWhite = (args: any[]): boolean => {
+    if (args.length === 1 && typeof args[0] === 'string') {
+      const s = args[0].toLowerCase();
+      return s === '#fff' || s === '#ffffff' || s === 'white';
+    }
+    if (args.length === 3) {
+      return args[0] === 255 && args[1] === 255 && args[2] === 255;
+    }
+    if (args.length === 1 && typeof args[0] === 'number') {
+      return args[0] === 255;
+    }
+    return false;
+  };
+  
+  doc.setTextColor = function(this: jsPDF, ...args: any[]) {
+    if (isWhite(args)) return (setTextColor as any).apply(this, args as any);
+    if (inkMode === 'black') return (setTextColor as any).call(this, 0, 0, 0);
+    if (inkMode === 'blue') return (setTextColor as any).call(this, 0, 47, 190);
+    return (setTextColor as any).apply(this, args as any);
+  };
+
+  doc.setDrawColor = function(this: jsPDF, ...args: any[]) {
+    if (isWhite(args)) return (setDrawColor as any).apply(this, args as any);
+    if (inkMode === 'black') return (setDrawColor as any).call(this, 0, 0, 0);
+    if (inkMode === 'blue') return (setDrawColor as any).call(this, 0, 47, 190);
+    return (setDrawColor as any).apply(this, args as any);
+  };
+
+  doc.setFillColor = function(this: jsPDF, ...args: any[]) {
+    if (isWhite(args)) return (setFillColor as any).apply(this, args as any);
+    if (args.length === 3 && args[0] === 192 && args[1] === 57 && args[2] === 43) {
+      if (inkMode === 'black') return (setFillColor as any).call(this, 120, 120, 120);
+      if (inkMode === 'blue') return (setFillColor as any).call(this, 0, 47, 190);
+    }
+    if (inkMode === 'black') return (setFillColor as any).call(this, 0, 0, 0);
+    if (inkMode === 'blue') return (setFillColor as any).call(this, 0, 47, 190);
+    return (setFillColor as any).apply(this, args as any);
+  };
+  
+  return doc;
+}
+
 export async function exportBlockPDF(
   data: MapData,
   orient: 'landscape' | 'portrait',
@@ -679,15 +995,22 @@ export async function exportBlockPDF(
   const pw = Math.round((a4W * dpi) / 25.4);
   const ph = Math.round((a4H * dpi) / 25.4);
   const doc = new jsPDF({ orientation: orient, unit: 'mm', format: sheet, compress: true });
+  const inkMode = (data as any).renderOptions?.inkMode || 'color';
+  wrapDocColors(doc, inkMode);
 
   const blocks = data.blocks && data.blocks.length > 1 ? data.blocks : [];
+  const includeBlockSheets = (data as any).includeBlockSheets !== false;
   const selectedAiImages: string[] = (data as any).selectedAiImages || [];
   const aiImagesToPrint = selectedAiImages.length > 0 
     ? selectedAiImages 
     : (data.surveyMapBase64 ? [data.surveyMapBase64] : []);
 
-  let totalPages = blocks.length > 1 ? 1 + blocks.length * 2 : 1;
-  totalPages += aiImagesToPrint.length * 2;
+  // Overview has 1 layout page, plus 1 block index page if blocks exist
+  const overviewPages = blocks.length > 1 ? 2 : 1;
+  const blockDetailPages = (includeBlockSheets && blocks.length > 1) ? blocks.length * 2 : 0;
+  const satellitePage = (!includeBlockSheets || blocks.length <= 1) ? 1 : 0;
+  const aiPages = aiImagesToPrint.length * 2;
+  let totalPages = overviewPages + blockDetailPages + satellitePage + aiPages;
   let page = 0;
 
   const bb = getBbox(data.boundaryPins);
@@ -698,15 +1021,26 @@ export async function exportBlockPDF(
 
   const satCanvas = await captureSat(pS, pW, pN, pE, env);
 
-  // ─── PAGE 1: OVERVIEW (all blocks visible) ──────────────
-  onProgress(`Page ${++page}/${totalPages} — Overview`);
+  // ─── PAGE 1: OVERVIEW — LAYOUT MAP (clean, without blocks) ──────
+  onProgress(`Page ${++page}/${totalPages} — Layout Map`);
   await new Promise(r => setTimeout(r, 50));
   {
     const c = env.createCanvas(pw, ph);
-    renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, (data as any).renderOptions);
+    renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { ...((data as any).renderOptions || {}), hideBlocks: true });
     // Line-art sketch → PNG: lossless, crisp text, and smaller than JPEG for line work.
     doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
-    addOverlays(doc, data, a4W, a4H, 'OVERVIEW', { south: pS, west: pW, north: pN, east: pE });
+    addOverlays(doc, data, a4W, a4H, 'LAYOUT MAP', { south: pS, west: pW, north: pN, east: pE });
+  }
+
+  // ─── PAGE 2: OVERVIEW — BLOCK INDEX MAP (with blocks) — only if blocks exist ───
+  if (blocks.length > 1) {
+    onProgress(`Page ${++page}/${totalPages} — Block Index Map`);
+    await new Promise(r => setTimeout(r, 50));
+    doc.addPage();
+    const c = env.createCanvas(pw, ph);
+    renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { ...((data as any).renderOptions || {}), hideBlocks: false });
+    doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
+    addOverlays(doc, data, a4W, a4H, 'BLOCK INDEX MAP', { south: pS, west: pW, north: pN, east: pE });
   }
 
   // ─── AI COMPARISON & CLEAN MAP PAGES ────────────────────────
@@ -750,7 +1084,7 @@ export async function exportBlockPDF(
   }
 
   // ─── BLOCK PAGES ───────────────────────────────────────
-  if (blocks.length > 1) {
+  if (includeBlockSheets && blocks.length > 1) {
     for (let bi = 0; bi < blocks.length; bi++) {
       const blk = blocks[bi];
 
@@ -782,10 +1116,11 @@ export async function exportBlockPDF(
         const pLng = (blkBB.east - blkBB.west) * 0.15;
         const pLat = (blkBB.north - blkBB.south) * 0.15;
         const pW = blkBB.west - pLng;
+        const pE = blkBB.east + pLng;
+        const pS = blkBB.south - pLat;
         const pN = blkBB.north + pLat;
-        const rLng = (blkBB.east + pLng) - pW;
-        const rLat = pN - (blkBB.south - pLat);
-        const scX = w / rLng, scY = h / rLat;
+        
+        const { proj: blockProj } = getProjection(w, h, pW, pE, pS, pN);
 
         blocks.forEach((b, i) => {
           if (i === bi) return;
@@ -793,10 +1128,11 @@ export async function exportBlockPDF(
             { lat: b.south, lng: b.west }, { lat: b.north, lng: b.west },
             { lat: b.north, lng: b.east }, { lat: b.south, lng: b.east },
           ];
-          const pp = pts.map(p => [(p.lng - pW) * scX, (pN - p.lat) * scY]);
+          const pp: [number, number][] = pts.map((p: Coordinate) => blockProj(p));
           ctx.fillStyle = 'rgba(255,255,255,0.85)';
-          ctx.beginPath(); pp.forEach(([x, y], j) => j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
+          ctx.beginPath(); pp.forEach(([x, y]: [number, number], j: number) => j === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
         });
+
         doc.addPage();
         doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
         addOverlays(doc, data, a4W, a4H, `BLOCK ${blk.label}`, blkBB);
@@ -814,22 +1150,20 @@ export async function exportBlockPDF(
         const blockSatCanvas = await captureSat(blkBB.south - padLat, blkBB.west - padLng, blkBB.north + padLat, blkBB.east + padLng, env);
 
         doc.addPage();
-        doc.addImage(blockSatCanvas.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
         const c = env.createCanvas(pw, ph);
-        renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true, focusBounds: blkBB, ...(data as any).renderOptions });
-        doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
+        renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { satCanvas: blockSatCanvas, hideSymbols: true, focusBounds: blkBB, ...(data as any).renderOptions });
+        doc.addImage(c.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
         addOverlays(doc, data, a4W, a4H, `SATELLITE — Block ${blk.label}`, blkBB);
       }
     }
   } else {
-    // No blocks — just add satellite page
+    // No blocks OR block sheets disabled — just add satellite page
     onProgress(`Page ${++page}/${totalPages} — Satellite`);
     await new Promise(r => setTimeout(r, 50));
     doc.addPage();
-    doc.addImage(satCanvas.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
     const c = env.createCanvas(pw, ph);
-    renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { transparentBg: true, hideSymbols: true, ...(data as any).renderOptions });
-    doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
+    renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { satCanvas, hideSymbols: true, ...(data as any).renderOptions });
+    doc.addImage(c.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
     addOverlays(doc, data, a4W, a4H, 'SATELLITE REFERENCE', { south: pS, west: pW, north: pN, east: pE });
   }
 
@@ -885,7 +1219,11 @@ async function addClusterInsetPages(
       }
       if (m.number != null) {
         doc.setFontSize(7); doc.setTextColor(0, 0, 0);
-        doc.text(String(m.number), cx, cy + (isKutcha ? box * 0.18 : 0) + 1, { align: 'center' });
+        const u = getUnitCount(m);
+        const lbl = data.numberingSystem === 'census_u_loop'
+          ? (u > 1 ? `${m.number}(${u})` : String(m.number))
+          : (u > 1 ? `${m.number}-${m.number + u - 1}` : String(m.number));
+        doc.text(lbl, cx, cy + (isKutcha ? box * 0.18 : 0) + 1, { align: 'center' });
       }
     });
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
@@ -902,7 +1240,7 @@ function addOverlays(
 ) {
   drawNorthArrow(doc, w - 12, 16);
   drawTitleBlock(doc, data, w, subtitle);
-  if (bbox) drawScaleBar(doc, bbox, 8, h - 11, w);
+  if (bbox) drawScaleBar(doc, bbox, 8, h - 11, w, h);
   drawSignatureFooter(doc, data, w, h);
 }
 
@@ -949,14 +1287,17 @@ function drawNorthArrow(doc: jsPDF, cx: number, cy: number) {
 function drawScaleBar(
   doc: jsPDF,
   bbox: { south: number; west: number; north: number; east: number },
-  x: number, y: number, pageW: number
+  x: number, y: number, pageW: number, pageH: number
 ) {
   // Meters across the page width → choose a "nice" round bar length.
   const midLat = (bbox.south + bbox.north) / 2;
-  const mPerDegLng = 111320 * Math.cos((midLat * Math.PI) / 180);
-  const widthMeters = (bbox.east - bbox.west) * mPerDegLng;
-  if (!isFinite(widthMeters) || widthMeters <= 0) return;
-  const mmPerMeter = pageW / widthMeters;
+  const cosLat = Math.cos((midLat * Math.PI) / 180);
+  const rLng = bbox.east - bbox.west || 0.001;
+  const rLat = bbox.north - bbox.south || 0.001;
+  const w_proj = rLng * cosLat;
+  const h_proj = rLat;
+  const sc_mm = Math.min(pageW / w_proj, pageH / h_proj);
+  const mmPerMeter = sc_mm / 111320;
   const nice = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000];
   let barM = nice[0];
   for (const n of nice) { if (n * mmPerMeter <= pageW * 0.25) barM = n; }

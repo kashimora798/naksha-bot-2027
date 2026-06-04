@@ -9,6 +9,7 @@ import SymbolDrawer from '../components/SymbolDrawer';
 import GuidedTour from '../components/GuidedTour';
 import { DEMO_BOUNDARY, DEMO_CENTER } from '../data/demo';
 import { supabase } from '../lib/supabase';
+import { findNearestRoadBearing, getBlockOrientation } from '../lib/pdf-export';
 
 interface Props {
   step: number; center: Coordinate; boundaryPins: Coordinate[]; boundaryClosed: boolean;
@@ -28,6 +29,7 @@ interface Props {
   onStepComplete: () => void; onJumpToPreview: () => void;
   isDemoMode?: boolean;
   onDemoComplete?: () => void;
+  numberingSystem?: 'serpentine' | 'census_u_loop';
 }
 
 const BC = ['#E74C3C','#3498DB','#27AE60','#F39C12','#9B59B6','#1ABC9C','#E67E22','#2980B9','#C0392B','#16A085','#D35400','#8E44AD'];
@@ -37,7 +39,8 @@ export default function MapWorkspace({
   waterBodies, forests, landuseAreas, landmarks, areaStats,
   onUpdateBoundary, onUpdateRoads, onUpdateSymbols, onUpdateBlocks, onUpdateFarmland,
   onUpdateWater, onUpdateForests, onUpdateLandmarks, onUpdateStats, onUpdateOrientation,
-  onStepComplete, onJumpToPreview, onUpdateMapData, isDemoMode, onDemoComplete
+  onStepComplete, onJumpToPreview, onUpdateMapData, isDemoMode, onDemoComplete,
+  numberingSystem
 }: Props) {
   const existingMax = symbols.reduce((m, s) => Math.max(m, s.number ?? 0), 0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -103,7 +106,13 @@ export default function MapWorkspace({
     const ps=sugId; setSugId(ns||null);
     if(ps&&ps!==ns){const p=upd.find(s=>s.id===ps);if(p)refreshMk(p);}
     if(ns){const n=upd.find(s=>s.id===ns);if(n)refreshMk(n);}
-    setNextNum(n=>n+units); onUpdateSymbols(upd);
+    let nextVal = num + (numberingSystem === 'census_u_loop' ? 1 : units);
+    const assigned = new Set(upd.map(s => s.number).filter(n => n !== null));
+    while (assigned.has(nextVal)) {
+      nextVal += 1;
+    }
+    setNextNum(nextVal);
+    onUpdateSymbols(upd);
   };
 
   const mapClickRef = useRef<(c: Coordinate) => void>(() => {});
@@ -342,7 +351,7 @@ export default function MapWorkspace({
     }
   }, [step]);
   useEffect(() => { if(boundaryClosed&&boundaryPins.length>=4) onUpdateOrientation(getBestOrientation(boundaryPins)); }, [boundaryClosed]);
-  useEffect(() => { if(step===6&&symbols.length>0){const p=generateSerpentinePath(symbols,blocks.length>0?blocks:undefined);const o=getSerpentineOrder(symbols,blocks.length>0?blocks:undefined);setSerpPath(p);setSerpOrd(o);setShowGuide(true);const f=o.find(id=>{const s=symbols.find(x=>x.id===id);return s&&isHouseType(s.symbol_type)&&s.number===null;});if(f)setSugId(f);} }, [step]);
+  useEffect(() => { if(step===6&&symbols.length>0){const p=generateSerpentinePath(symbols,blocks.length>0?blocks:undefined,numberingSystem);const o=getSerpentineOrder(symbols,blocks.length>0?blocks:undefined,numberingSystem);setSerpPath(p);setSerpOrd(o);setShowGuide(true);const f=o.find(id=>{const s=symbols.find(x=>x.id===id);return s&&isHouseType(s.symbol_type)&&s.number===null;});if(f)setSugId(f);} }, [step, numberingSystem]);
 
 
 
@@ -548,10 +557,17 @@ export default function MapWorkspace({
     mks.current.set(sym.id,m);
   }
   function mkIcon(sym:PlacedSymbol):L.DivIcon{
-    const isS=sym.id===sugId;const u=getUnitCount(sym);const nl=sym.number!==null?(u>1?`${sym.number}-${sym.number+u-1}`:String(sym.number)):'';
+    const isS=sym.id===sugId;const u=getUnitCount(sym);
+    const nl=sym.number!==null?(numberingSystem === 'census_u_loop'?(u>1?`${sym.number}(${u})`:String(sym.number)):(u>1?`${sym.number}-${sym.number+u-1}`:String(sym.number))):'';
     const rh=isS?`<div style="position:absolute;top:-8px;left:-8px;width:44px;height:44px;border:3px solid #0066FF;border-radius:50%;pointer-events:none;animation:guidePulse 1.5s infinite"></div>`:'';
-    // Road-aligned rotation for house types
-    const rot = rotMap.current.get(sym.id) || 0;
+    // Road/Block-aligned rotation for house types
+    let angle = getBlockOrientation(sym, blocks || []);
+    if (angle === null) {
+      angle = findNearestRoadBearing(sym, roads || []);
+    }
+    if (angle > Math.PI / 2) angle -= Math.PI;
+    if (angle < -Math.PI / 2) angle += Math.PI;
+    const rot = (angle * 180) / Math.PI;
     const rotStyle = rot !== 0 ? `transform:rotate(${rot}deg);` : '';
     return L.divIcon({html:`<div style="position:relative;cursor:pointer;${rotStyle}">${getSmallSymbolSVG(sym.symbol_type, false, nl)}${rh}</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]});
   }
@@ -582,7 +598,21 @@ export default function MapWorkspace({
   function undoPolyPt(){const pts=polyPts.slice(0,-1);setPolyPts(pts);renderDrawPoly(pts);}
   function closePolyDraw(){if(polyPts.length<3)return;if(drawMode==='farmland'){onUpdateFarmland([...farmlandBlocks,{id:crypto.randomUUID(),label:farmLbl,points:[...polyPts]}]);setFarmLbl(String.fromCharCode(farmLbl.charCodeAt(0)+1));}else{const bb=getBbox(polyPts);onUpdateBlocks([...blocks,{id:crypto.randomUUID(),label:blkLbl,south:bb.south,north:bb.north,west:bb.west,east:bb.east,points:[...polyPts]}]);setBlkLbl(String.fromCharCode(blkLbl.charCodeAt(0)+1));setShowBlk(true);}setDrawMode('none');setPolyPts([]);setPanelOpen(true);drwGrp.current.clearLayers();}
   function cancelDraw(){setDrawMode('none');setPolyPts([]);setPanelOpen(true);drwGrp.current.clearLayers();}
-  function autoNum(){const o=getSerpentineOrder(symbols,blocks.length>0?blocks:undefined);const u=symbols.map(s=>({...s}));let n=1;for(const id of o){const s=u.find(x=>x.id===id);if(!s)continue;s.number=n;n+=getUnitCount(s);}onUpdateSymbols(u);setNextNum(n);numHist.current=o;setTimeout(()=>u.forEach(s=>refreshMk(s)),10);}
+  function autoNum(){
+    const o=getSerpentineOrder(symbols,blocks.length>0?blocks:undefined,numberingSystem);
+    const u=symbols.map(s=>({...s}));
+    let n=1;
+    for(const id of o){
+      const s=u.find(x=>x.id===id);
+      if(!s)continue;
+      s.number=n;
+      n+=(numberingSystem === 'census_u_loop' ? 1 : getUnitCount(s));
+    }
+    onUpdateSymbols(u);
+    setNextNum(n);
+    numHist.current=o;
+    setTimeout(()=>u.forEach(s=>refreshMk(s)),10);
+  }
   function clearNum(){const u=symbols.map(s=>({...s,number:null}));onUpdateSymbols(u);setNextNum(1);numHist.current=[];setSugId(null);setTimeout(()=>u.forEach(s=>refreshMk(s)),10);}
   function undoNum(){
     if(!numHist.current.length)return;
@@ -591,7 +621,7 @@ export default function MapWorkspace({
     if(!sym)return; // Symbol was deleted, skip undo
     const u=symbols.map(s=>s.id===id?{...s,number:null}:s);
     refreshMk(u.find(s=>s.id===id)!);
-    setNextNum(n=>n-getUnitCount(sym));
+    setNextNum(n=>n-(numberingSystem === 'census_u_loop' ? 1 : getUnitCount(sym)));
     onUpdateSymbols(u);
     setTimeout(()=>u.forEach(s=>refreshMk(s)),10);
   }
@@ -863,6 +893,42 @@ export default function MapWorkspace({
           : <p className="text-xs text-gray-600 text-center mb-3"><span className="font-bold text-blue-600">{numDone}</span> of {totH} numbered. {editMode ? 'Tap a house on the map to clear its number.' : 'Tap a house to number it, or use Auto-Number below.'}</p>}
 
         <div className="space-y-2">
+          <div className="bg-white rounded-xl p-3 border border-gray-100 space-y-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Numbering System</label>
+              <select
+                value={numberingSystem || 'serpentine'}
+                onChange={(e) => {
+                  const val = e.target.value as 'serpentine' | 'census_u_loop';
+                  if (onUpdateMapData) {
+                    onUpdateMapData({ numberingSystem: val });
+                  }
+                }}
+                className="w-full border border-gray-200 rounded-lg p-2 text-xs bg-gray-50 text-gray-700 font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--color-saffron)]"
+              >
+                <option value="serpentine">🐍 Diagonal Serpentine</option>
+                <option value="census_u_loop">🏛️ Census Houselisting (U-Loop)</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Next Number to Assign</label>
+              <input
+                type="number"
+                min="1"
+                value={nextNum}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val) && val > 0) {
+                    setNextNum(val);
+                  }
+                }}
+                className="w-full border border-gray-200 rounded-lg p-2 text-xs bg-gray-50 text-gray-700 font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--color-saffron)]"
+              />
+              {symbols.some(s => s.number === nextNum) && (
+                <p className="text-[10px] text-red-500 font-medium">⚠️ Number {nextNum} is already assigned to a house.</p>
+              )}
+            </div>
+          </div>
           {serpPath.length>1 && (
             <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2 border border-gray-100">
               <span className="text-xs font-bold text-red-700">🐍 Serpentine guide</span>

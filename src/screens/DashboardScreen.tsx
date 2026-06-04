@@ -24,10 +24,11 @@ interface Props {
   onLiveSurvey?: (initialData?: Partial<MapData>) => void;
   onResumeLiveSurvey?: (sessionId: string) => void;
   onDemoMap?: () => void;
+  onCanvasBlockMap?: () => void;
   onProfileUpdated?: (profile: any) => void;
 }
 
-export default function DashboardScreen({ user, userProfile, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap, onProfileUpdated }: Props) {
+export default function DashboardScreen({ user, userProfile, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap, onCanvasBlockMap, onProfileUpdated }: Props) {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,7 +176,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
         )}
 
         {/* ── Primary action cards ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
           <button
             onClick={() => onNewProject(undefined)}
             className="group text-left p-5 rounded-2xl bg-[var(--color-saffron-container)] text-white shadow-[var(--shadow-warm-2)] hover:brightness-105 active:scale-[0.99] transition-all"
@@ -183,6 +184,14 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center text-2xl mb-3">🗺️</div>
             <p className="font-bold text-base font-public-sans">Create New Map</p>
             <p className="text-xs text-white/80 mt-0.5">Build an HLB map from satellite imagery</p>
+          </button>
+          <button
+            onClick={() => onCanvasBlockMap?.()}
+            className="group text-left p-5 rounded-2xl bg-white border border-emerald-100 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
+          >
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-2xl mb-3">🧩</div>
+            <p className="font-bold text-base font-public-sans text-[var(--color-charcoal)]">Canvas Blocks <span className="text-[10px] align-top text-emerald-600 font-bold">NEW</span></p>
+            <p className="text-xs text-gray-500 mt-0.5">Auto-detect blocks from roads &amp; place houses</p>
           </button>
           <button
             onClick={() => navigate('/live-dashboard')}
@@ -289,29 +298,17 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
         )}
 
         {/* ── Maps Section ── */}
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">Your Maps</h2>
-          {projects.length > 0 && <span className="text-xs text-gray-400 font-semibold">{projects.length} total</span>}
-        </div>
+        {(() => {
+          const canvasProjects = projects.filter((p: any) => p.data?.mode === 'canvas');
+          const deskProjects = projects.filter((p: any) => p.data?.mode !== 'canvas');
 
-        {projects.length === 0 ? (
-          <div className="bg-white rounded-[24px] p-10 sm:p-12 text-center shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10">
-            <div className="w-16 h-16 rounded-2xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-4xl mx-auto mb-4">🗺️</div>
-            <h3 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)] mb-2">No maps yet</h3>
-            <p className="text-sm text-gray-600 max-w-sm mx-auto mb-6">Create your first census map, or take the 2-minute guided tour to see how it works.</p>
-            <div className="flex flex-wrap gap-3 justify-center">
-              <button onClick={onDemoMap} className="px-5 py-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]">🎓 Take the Tour</button>
-              <button onClick={() => onNewProject(undefined)} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
-            </div>
-          </div>
-        ) : (() => {
-          const renderCard = (project: any) => (
+          const renderCard = (project: any, isCanvas = false) => (
             <div
               key={project.id}
               onClick={() => onLoadProject(project.id, { ...project.data, paymentStatus: project.payment_status, exportCount: project.export_count })}
-              className="bg-white rounded-2xl p-5 shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10 cursor-pointer hover:shadow-[var(--shadow-warm-2)] hover:-translate-y-0.5 transition-all group relative overflow-hidden"
+              className={`bg-white rounded-2xl p-5 shadow-[var(--shadow-warm-1)] cursor-pointer hover:shadow-[var(--shadow-warm-2)] hover:-translate-y-0.5 transition-all group relative overflow-hidden border ${isCanvas ? 'border-emerald-100' : 'border-[var(--color-saffron)]/10'}`}
             >
-              <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${project.payment_status === 'paid' ? 'bg-green-500' : 'bg-[var(--color-india-green)]'}`} />
+              <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${project.payment_status === 'paid' ? 'bg-green-500' : isCanvas ? 'bg-emerald-400' : 'bg-[var(--color-india-green)]'}`} />
               <button
                 onClick={(e) => handleDeleteUI(e, project)}
                 className="absolute top-2 right-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all min-h-[36px]"
@@ -324,11 +321,11 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               <div className="pl-2">
                 <div className="flex items-start justify-between mb-3 pr-6">
                   <h3 className="text-base font-bold font-public-sans text-[var(--color-charcoal)] group-hover:text-[var(--color-saffron)] transition-colors truncate">
-                    {project.name || 'Untitled Map'}
+                    {isCanvas && <span className="mr-1">🧩</span>}{project.name || 'Untitled Map'}
                   </h3>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 mb-3">
-                  <span className="text-[11px] font-bold bg-[var(--color-india-green)]/10 text-[var(--color-india-green)] px-2 py-1 rounded-full font-jetbrains-mono">{project.data?.blocks?.length || 0} Blocks</span>
+                  <span className={`text-[11px] font-bold px-2 py-1 rounded-full font-jetbrains-mono ${isCanvas ? 'bg-emerald-50 text-emerald-700' : 'bg-[var(--color-india-green)]/10 text-[var(--color-india-green)]'}`}>{project.data?.blocks?.length || 0} Blocks</span>
                   <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-jetbrains-mono">HLB {project.data?.hlbNumber || '—'}</span>
                   {project.payment_status === 'paid'
                     ? <span className="text-[11px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">✓ Paid · tap to download</span>
@@ -341,22 +338,64 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               </div>
             </div>
           );
-          const paid = projects.filter((p: any) => p.payment_status === 'paid');
-          const drafts = projects.filter((p: any) => p.payment_status !== 'paid');
+
           return (
-            <div className="space-y-6">
-              {paid.length > 0 && (
-                <div>
-                  <h3 className="text-xs font-bold text-green-700 uppercase tracking-wide mb-2">✓ Paid — ready to download ({paid.length})</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{paid.map(renderCard)}</div>
+            <div className="space-y-8">
+              {/* ── Regular Desk Maps ── */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">🗺️ Your Maps</h2>
+                  {deskProjects.length > 0 && <span className="text-xs text-gray-400 font-semibold">{deskProjects.length} total</span>}
                 </div>
-              )}
-              {drafts.length > 0 && (
-                <div>
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Drafts ({drafts.length})</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{drafts.map(renderCard)}</div>
+                {deskProjects.length === 0 ? (
+                  <div className="bg-white rounded-[24px] p-10 sm:p-12 text-center shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10">
+                    <div className="w-16 h-16 rounded-2xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-4xl mx-auto mb-4">🗺️</div>
+                    <h3 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)] mb-2">No maps yet</h3>
+                    <p className="text-sm text-gray-600 max-w-sm mx-auto mb-6">Create your first census map, or take the 2-minute guided tour to see how it works.</p>
+                    <div className="flex flex-wrap gap-3 justify-center">
+                      <button onClick={onDemoMap} className="px-5 py-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]">🎓 Take the Tour</button>
+                      <button onClick={() => onNewProject(undefined)} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
+                    </div>
+                  </div>
+                ) : (() => {
+                  const paid = deskProjects.filter((p: any) => p.payment_status === 'paid');
+                  const drafts = deskProjects.filter((p: any) => p.payment_status !== 'paid');
+                  return (
+                    <div className="space-y-6">
+                      {paid.length > 0 && (
+                        <div>
+                          <h3 className="text-xs font-bold text-green-700 uppercase tracking-wide mb-2">✓ Paid — ready to download ({paid.length})</h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{paid.map(p => renderCard(p, false))}</div>
+                        </div>
+                      )}
+                      {drafts.length > 0 && (
+                        <div>
+                          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Drafts ({drafts.length})</h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{drafts.map(p => renderCard(p, false))}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* ── Canvas Block Maps ── */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">🧩 Canvas Block Maps</h2>
+                  <button onClick={() => onCanvasBlockMap?.()} className="px-3.5 py-2 bg-emerald-500 text-white rounded-xl font-bold text-xs shadow active:scale-95 transition-all">+ New Canvas Map</button>
                 </div>
-              )}
+                {canvasProjects.length === 0 ? (
+                  <div className="bg-emerald-50 rounded-[24px] p-8 text-center border border-emerald-100">
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center text-3xl mx-auto mb-3">🧩</div>
+                    <h3 className="text-base font-bold font-public-sans text-emerald-800 mb-1">No canvas maps yet</h3>
+                    <p className="text-sm text-emerald-700 max-w-xs mx-auto mb-4">Use Canvas Blocks mode to auto-detect blocks from roads and place houses with mixed types.</p>
+                    <button onClick={() => onCanvasBlockMap?.()} className="px-5 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-sm shadow hover:bg-emerald-600 transition-colors">Start Canvas Map</button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{canvasProjects.map(p => renderCard(p, true))}</div>
+                )}
+              </div>
             </div>
           );
         })()}

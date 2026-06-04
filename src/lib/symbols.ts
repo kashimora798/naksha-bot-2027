@@ -28,6 +28,8 @@ export function getSymbolSVG(type: SymbolType): string {
       return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" fill="none"><circle cx="16" cy="16" r="11" stroke="black" stroke-width="2" fill="none"/><circle cx="16" cy="16" r="3" fill="black"/></svg>`;
     case 'post_office':
       return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" fill="none"><rect x="4" y="9" width="24" height="16" stroke="black" stroke-width="2" fill="none"/><text x="16" y="22" text-anchor="middle" font-size="10" font-weight="bold" font-family="sans-serif" fill="black">PO</text></svg>`;
+    case 'police_station':
+      return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" fill="none"><rect x="4" y="8" width="24" height="18" stroke="black" stroke-width="2" fill="none"/><text x="16" y="22" text-anchor="middle" font-size="10" font-weight="bold" font-family="sans-serif" fill="black">PS</text></svg>`;
     case 'pond':
       return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" fill="none"><ellipse cx="16" cy="18" rx="13" ry="9" stroke="black" stroke-width="2" fill="none"/><path d="M6,15 Q10,12 16,15 Q22,18 26,15" stroke="black" stroke-width="1.2" fill="none"/><path d="M6,19 Q10,16 16,19 Q22,22 26,19" stroke="black" stroke-width="1.2" fill="none"/></svg>`;
     default:
@@ -74,6 +76,8 @@ export function getSmallSymbolSVG(type: SymbolType, highlight?: boolean, num?: s
       return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="1.8" fill="none"/></svg>`;
     case 'post_office':
       return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="12" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="${color}">PO</text></svg>`;
+    case 'police_station':
+      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="12" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="${color}">PS</text></svg>`;
     case 'pond':
       return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="14" rx="10" ry="7" stroke="${color}" stroke-width="1.8" fill="none"/></svg>`;
     default:
@@ -84,10 +88,18 @@ export function getSmallSymbolSVG(type: SymbolType, highlight?: boolean, num?: s
 export function drawSymbolOnCanvas(
   ctx: CanvasRenderingContext2D,
   sym: Pick<PlacedSymbol, 'symbol_type'> & Partial<PlacedSymbol>,
-  x: number, y: number, size: number
+  x: number, y: number, size: number,
+  angle: number = 0,
+  inkMode: 'color' | 'black' | 'blue' = 'color',
+  numberingSystem?: 'serpentine' | 'census_u_loop'
 ) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+
   const type = sym.symbol_type;
-  ctx.strokeStyle = '#000000'; ctx.lineWidth = 1.5; ctx.fillStyle = '#000000';
+  const themeColor = inkMode === 'blue' ? '#002fbe' : '#000000';
+  ctx.strokeStyle = themeColor; ctx.lineWidth = 1.5; ctx.fillStyle = themeColor;
   const w = size, h = size * 0.7;
 
   // Building number written INSIDE the box (spec). For an apartment we still show
@@ -96,14 +108,16 @@ export function drawSymbolOnCanvas(
     const num = sym.number;
     if (num === null || num === undefined) return;
     const units = getUnitCount(sym as PlacedSymbol);
-    const lbl = units > 1 ? `${num}-${num + units - 1}` : String(num);
+    const lbl = numberingSystem === 'census_u_loop'
+      ? (units > 1 ? `${num}(${units})` : String(num))
+      : (units > 1 ? `${num}-${num + units - 1}` : String(num));
     ctx.font = `bold ${Math.max(11, size * 0.6)}px sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     // White halo for readability over roads
     ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4; ctx.lineJoin = 'round';
     ctx.strokeText(lbl, nx, ny);
-    ctx.fillStyle = '#000000'; ctx.fillText(lbl, nx, ny);
-    ctx.strokeStyle = '#000000'; ctx.lineWidth = 1.5;
+    ctx.fillStyle = themeColor; ctx.fillText(lbl, nx, ny);
+    ctx.strokeStyle = themeColor; ctx.lineWidth = 1.5;
   };
 
   // Census-house sub-numbers below the box, e.g. "5(1)-5(4)" (spec Annexure-4 §xii).
@@ -114,8 +128,8 @@ export function drawSymbolOnCanvas(
       const lbl = `${num}(1)-${num}(${n})`;
       ctx.font = `${Math.max(7, size * 0.34)}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillStyle = '#000000';
-      ctx.fillText(lbl, x, cy);
+      ctx.fillStyle = themeColor;
+      ctx.fillText(lbl, 0, cy);
     }
   };
 
@@ -128,14 +142,14 @@ export function drawSymbolOnCanvas(
     const buildPath = () => {
       ctx.beginPath();
       if (shape === 'triangle') {
-        // Equilateral-ish triangle centered on (x,y)
-        ctx.moveTo(x, y - size / 2);
-        ctx.lineTo(x + size / 2, y + size / 2);
-        ctx.lineTo(x - size / 2, y + size / 2);
+        // Equilateral-ish triangle centered on (0,0)
+        ctx.moveTo(0, -size / 2);
+        ctx.lineTo(size / 2, size / 2);
+        ctx.lineTo(-size / 2, size / 2);
         ctx.closePath();
       } else {
         // True square
-        ctx.rect(x - size / 2, y - size / 2, size, size);
+        ctx.rect(-size / 2, -size / 2, size, size);
       }
     };
 
@@ -144,28 +158,29 @@ export function drawSymbolOnCanvas(
       ctx.save();
       buildPath();
       ctx.clip();
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = themeColor;
       ctx.lineWidth = 0.8;
       const step = Math.max(2.5, size / 5);
       for (let d = -size; d <= size; d += step) {
         ctx.beginPath();
-        ctx.moveTo(x - size / 2 + d, y - size / 2);
-        ctx.lineTo(x - size / 2 + d + size, y + size / 2);
+        ctx.moveTo(-size / 2 + d, -size / 2);
+        ctx.lineTo(-size / 2 + d + size, size / 2);
         ctx.stroke();
       }
       ctx.restore();
     }
 
     // Outline
-    ctx.strokeStyle = '#000000'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = themeColor; ctx.lineWidth = 1.5;
     buildPath();
     ctx.stroke();
 
     // Number inside (nudge down a touch for a triangle so it sits in the body)
-    drawNum(x, shape === 'triangle' ? y + size * 0.12 : y);
+    drawNum(0, shape === 'triangle' ? size * 0.12 : 0);
     // Census-house sub-numbers below the box
-    drawCensusHouses(y + size / 2 + 2);
+    drawCensusHouses(size / 2 + 2);
     ctx.setLineDash([]); ctx.textAlign = 'left';
+    ctx.restore();
     return;
   }
 
@@ -173,48 +188,65 @@ export function drawSymbolOnCanvas(
   switch (type) {
     case 'farmland': {
       const fw = size * 1.2, fh = size * 0.9;
-      ctx.strokeRect(x - fw / 2, y - fh / 2, fw, fh);
+      ctx.strokeRect(-fw / 2, -fh / 2, fw, fh);
       ctx.setLineDash([3, 2]);
       for (let i = 1; i <= 3; i++) {
-        const ly = y - fh / 2 + (fh * i) / 4;
-        ctx.beginPath(); ctx.moveTo(x - fw / 2 + 1, ly); ctx.lineTo(x + fw / 2 - 1, ly); ctx.stroke();
+        const ly = -fh / 2 + (fh * i) / 4;
+        ctx.beginPath(); ctx.moveTo(-fw / 2 + 1, ly); ctx.lineTo(fw / 2 - 1, ly); ctx.stroke();
       }
-      ctx.setLineDash([]);
       break;
     }
     case 'mosque':
-      ctx.strokeRect(x - w / 2.5, y, w / 1.25, h * 0.6);
-      ctx.beginPath(); ctx.arc(x, y, w / 3, Math.PI, 0); ctx.stroke();
+      ctx.strokeRect(-w / 2.5, 0, w / 1.25, h * 0.6);
+      ctx.beginPath(); ctx.arc(0, 0, w / 3, Math.PI, 0); ctx.stroke();
       break;
     case 'temple':
-      ctx.strokeRect(x - w / 2.5, y, w / 1.25, h * 0.6);
-      ctx.beginPath(); ctx.moveTo(x - w / 2.5, y); ctx.lineTo(x, y - h * 0.5); ctx.lineTo(x + w / 2.5, y); ctx.stroke();
+      ctx.strokeRect(-w / 2.5, 0, w / 1.25, h * 0.6);
+      ctx.beginPath(); ctx.moveTo(-w / 2.5, 0); ctx.lineTo(0, -h * 0.5); ctx.lineTo(w / 2.5, 0); ctx.stroke();
       break;
     case 'church':
-      ctx.strokeRect(x - w / 2.5, y - h * 0.1, w / 1.25, h * 0.7);
-      ctx.beginPath(); ctx.moveTo(x - w / 2.5, y - h * 0.1); ctx.lineTo(x, y - h * 0.6); ctx.lineTo(x + w / 2.5, y - h * 0.1); ctx.stroke();
+      ctx.strokeRect(-w / 2.5, -h * 0.1, w / 1.25, h * 0.7);
+      ctx.beginPath(); ctx.moveTo(-w / 2.5, -h * 0.1); ctx.lineTo(0, -h * 0.6); ctx.lineTo(w / 2.5, -h * 0.1); ctx.stroke();
       break;
     case 'school':
-      ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
       ctx.font = `bold ${size * 0.45}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('S', x, y);
+      ctx.fillText('S', 0, 0);
       break;
     case 'hospital':
-      ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
       ctx.font = `bold ${size * 0.45}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('H', x, y);
+      ctx.fillText('H', 0, 0);
       break;
     case 'well':
-      ctx.beginPath(); ctx.arc(x, y, w / 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, w / 3, 0, Math.PI * 2); ctx.stroke();
       break;
     case 'post_office':
-      ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
       ctx.font = `bold ${size * 0.35}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('PO', x, y);
+      ctx.fillText('PO', 0, 0);
+      break;
+    case 'police_station':
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
+      ctx.font = `bold ${size * 0.35}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('PS', 0, 0);
       break;
     case 'pond':
-      ctx.beginPath(); ctx.ellipse(x, y, w / 2, h / 3, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, 0, w / 2, h / 3, 0, 0, Math.PI * 2); ctx.stroke();
       break;
   }
+  
+  // Draw building/landmark number for non-building symbols below the icon
+  if (sym.number !== null && sym.number !== undefined) {
+    const lbl = String(sym.number);
+    ctx.font = `bold ${Math.max(9, size * 0.5)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+    ctx.strokeText(lbl, 0, size / 2 + 1);
+    ctx.fillStyle = themeColor;
+    ctx.fillText(lbl, 0, size / 2 + 1);
+  }
+  
   ctx.setLineDash([]); ctx.textAlign = 'left';
+  ctx.restore();
 }

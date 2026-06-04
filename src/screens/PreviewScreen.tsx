@@ -50,6 +50,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [sheetSize, setSheetSize] = useState<'a4' | 'a3'>(mapData.sheetSize || 'a4');
   const [showSidebar, setShowSidebar] = useState(false);
   const [tourOpen, setTourOpen] = useState(true);
+  const [includeBlocks, setIncludeBlocks] = useState(true);
+  const [inkMode, setInkMode] = useState<'color' | 'black' | 'blue'>('color');
 
   // Tab system
   const [activeTab, setActiveTab] = useState<ViewTab>('sketch');
@@ -162,9 +164,9 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     const isL = orient === 'landscape';
     const long = isPaid ? 2000 : 700;
     const short = isPaid ? 1400 : 490;
-    renderMapToCanvas(c, { ...mapData, orientation: orient }, isL ? long : short, isL ? short : long, { watermark: true });
+    renderMapToCanvas(c, { ...mapData, orientation: orient }, isL ? long : short, isL ? short : long, { watermark: true, inkMode });
     setMapImg(c.toDataURL('image/jpeg', isPaid ? 0.9 : 0.7));
-  }, [mapData, orient, isPaid]);
+  }, [mapData, orient, isPaid, inkMode]);
 
   useEffect(() => { if (mapImg) { setZoom(1); setRotate(0); setPanX(0); setPanY(0); } }, [mapImg]);
 
@@ -292,6 +294,11 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
   function buildExportData() {
     const exportData = { ...mapData, sheetSize, orientation: orient };
+    (exportData as any).includeBlockSheets = includeBlocks;
+    (exportData as any).renderOptions = {
+      ...((mapData as any).renderOptions || {}),
+      inkMode
+    };
     if (aiChunks && aiChunks.length > 0) {
       exportData.aiMapChunks = aiChunks;
     } else if (aiImg) {
@@ -382,14 +389,14 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
         setExportProgress('Generating HLO Register PDF…');
         await new Promise(r => setTimeout(r, 100));
         const { exportRegisterPDF } = await import('../lib/register-export');
-        exportRegisterPDF(mapData.locationName || 'Live Survey', mapData.hlbNumber || 'LIVE', mapData.symbols);
+        exportRegisterPDF(mapData.locationName || 'Live Survey', mapData.hlbNumber || 'LIVE', mapData.symbols, mapData.numberingSystem);
         setExportStep('done');
       } else if (exportType === 'register_xlsx') {
         setExportStep('register');
         setExportProgress('Generating HLO Register XLSX…');
         await new Promise(r => setTimeout(r, 100));
         const { exportRegisterXLSX } = await import('../lib/register-export');
-        exportRegisterXLSX(mapData.locationName || 'Live Survey', mapData.hlbNumber || 'LIVE', mapData.symbols);
+        exportRegisterXLSX(mapData.locationName || 'Live Survey', mapData.hlbNumber || 'LIVE', mapData.symbols, mapData.numberingSystem);
         setExportStep('done');
       }
       setExported(true);
@@ -438,7 +445,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const hasBlocks = blocks.length > 1;
   const aspect = orient === 'landscape' ? 297 / 210 : 210 / 297;
   const selectedAiCount = pdfSelectedImageIds.size;
-  const totalPages = hasBlocks ? blocks.length * 2 + 1 : 2;
+  const totalPages = (hasBlocks ? 2 : 1) + (includeBlocks && hasBlocks ? blocks.length * 2 : 0) + (selectedAiCount > 0 ? selectedAiCount * 2 : (aiImg ? 2 : 0));
   const displayImg = getDisplayImage();
   const regenRemaining = Math.max(0, regenAllowance - regenUsed);
 
@@ -526,10 +533,16 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
       <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex flex-col items-center justify-start px-4 py-8 overflow-auto">
         <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mb-4 shadow-lg"><span className="text-white text-3xl">✓</span></div>
         <h2 className="text-xl font-bold text-gray-800 font-[Baloo_2] mb-1">नक्शा तैयार है!</h2>
-        <p className="text-sm text-gray-500 mb-4">PDF downloaded — {totalPages + (selectedAiCount > 0 ? selectedAiCount * 2 : (aiImg ? 2 : 0))} pages</p>
+        <p className="text-sm text-gray-500 mb-4">PDF downloaded — {totalPages} pages</p>
         <div className="w-full max-w-xs bg-white rounded-2xl shadow-lg p-5 text-center space-y-3">
           <p className="text-sm text-gray-600">HLB_{mapData.hlbNumber}_Naksha_2027.pdf</p>
-          {hasBlocks && <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-2">{blocks.length} blocks × 2 pages + overview = {totalPages} pages</p>}
+          {hasBlocks && (
+            includeBlocks ? (
+              <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-2">{blocks.length} blocks × 2 pages + overview = {totalPages} pages</p>
+            ) : (
+              <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-2">Overview only = {totalPages} pages</p>
+            )
+          )}
           {selectedAiCount > 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ {selectedAiCount} AI Survey Map{selectedAiCount > 1 ? 's' : ''} included</p>}
           {aiImg && selectedAiCount === 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ AI Survey Map included</p>}
           <div className="bg-amber-50 rounded-lg p-2"><p className="text-xs text-amber-700">💡 Print at cyber café — A4 {orient}</p></div>
@@ -597,8 +610,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           </button>
         </div>
 
-        <button onClick={() => setShowSidebar(true)} className="pointer-events-auto bg-white/90 backdrop-blur p-2 rounded-xl shadow-sm border border-slate-200/50 text-gray-600 hover:text-gray-900 transition-colors">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" /></svg>
+        <button onClick={() => setShowSidebar(true)} className="pointer-events-auto bg-white/90 backdrop-blur px-3 py-2 rounded-xl shadow-sm border border-slate-200/50 text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1.5 text-xs font-bold">
+          <span>⚙️ Settings & Options</span>
         </button>
       </div>
 
@@ -683,6 +696,38 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                 <button onClick={() => setSheetSize('a3')} className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${sheetSize === 'a3' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>A3</button>
               </div>
               <p className="text-[11px] text-gray-400 mt-2">A3 is the official preference for layout maps; A4 prints on common printers.</p>
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-gray-400 tracking-wider mb-2" style={{ textTransform: 'uppercase' }}>Print Options</h3>
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer bg-gray-50 rounded-xl px-4 py-3 border border-slate-200/50 hover:bg-gray-100 transition-colors">
+                  <input type="checkbox" checked={includeBlocks} onChange={e => setIncludeBlocks(e.target.checked)} className="rounded text-orange-500 w-4 h-4" />
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">Print Block Sheets</p>
+                    <p className="text-[10px] text-slate-500">Include separate pages for each block</p>
+                  </div>
+                </label>
+
+                <div>
+                  <p className="text-xs font-bold text-slate-500 mb-1.5">Ink Color Mode</p>
+                  <div className="flex gap-2">
+                    {(['color', 'black', 'blue'] as const).map(mode => (
+                      <button
+                        key={mode}
+                        onClick={() => setInkMode(mode)}
+                        className={`flex-1 py-2 rounded-xl text-[10px] font-bold capitalize transition-all ${
+                          inkMode === mode
+                            ? 'bg-orange-500 text-white shadow-md'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                        style={{ minHeight: '32px' }}
+                      >
+                        {mode === 'color' ? '🎨 Color' : mode === 'black' ? '⬛ Black' : '🟦 Blue'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
             <div>
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Rotation</h3>

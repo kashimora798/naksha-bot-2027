@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { pointInPolygon, polygonArea, isPolygonSelfIntersecting } from '../geo';
-import type { Coordinate } from '../../types';
+import { pointInPolygon, polygonArea, isPolygonSelfIntersecting, generateSerpentinePath, getSerpentineOrder } from '../geo';
+import type { Coordinate, Block, PlacedSymbol } from '../../types';
 
 // A simple ~unit square near Kanpur (0.001 deg ≈ 111m)
 const square: Coordinate[] = [
@@ -66,3 +66,43 @@ describe('isPolygonSelfIntersecting', () => {
     expect(isPolygonSelfIntersecting(bowtie)).toBe(true);
   });
 });
+
+describe('serpentine path and ordering', () => {
+  it('sorts blocks from NW to SE diagonal score', () => {
+    // NW block: lat: 26.002, lng: 80.000 -> score = -26.002 + 80.000 = 53.998
+    // SE block: lat: 26.000, lng: 80.002 -> score = -26.000 + 80.002 = 54.002
+    // Lower score is NW -> NW block should be processed first
+    const blockNW: Block = {
+      id: 'blk_nw', label: 'NW Block',
+      south: 26.002, north: 26.003, west: 80.000, east: 80.001,
+    };
+    const blockSE: Block = {
+      id: 'blk_se', label: 'SE Block',
+      south: 26.000, north: 26.001, west: 80.002, east: 80.003,
+    };
+
+    const houseNW: PlacedSymbol = {
+      id: 'house_nw', symbol_type: 'pucca_house',
+      lat: 26.0025, lng: 80.0005,
+      number: null, placed_at: '2026-01-01T00:00:00Z',
+    };
+    const houseSE: PlacedSymbol = {
+      id: 'house_se', symbol_type: 'pucca_house',
+      lat: 26.0005, lng: 80.0025,
+      number: null, placed_at: '2026-01-01T00:00:00Z',
+    };
+
+    const path = generateSerpentinePath([houseSE, houseNW], [blockSE, blockNW]);
+    expect(path).toHaveLength(2);
+    // House in NW block should be first in the path
+    expect(path[0].lat).toBeCloseTo(26.0025, 5);
+    expect(path[0].lng).toBeCloseTo(80.0005, 5);
+    // House in SE block should be second in the path
+    expect(path[1].lat).toBeCloseTo(26.0005, 5);
+    expect(path[1].lng).toBeCloseTo(80.0025, 5);
+
+    const order = getSerpentineOrder([houseSE, houseNW], [blockSE, blockNW]);
+    expect(order).toEqual(['house_nw', 'house_se']);
+  });
+});
+

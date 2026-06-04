@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { PlacedSymbol } from '../types';
+import { PlacedSymbol, getUnitCount } from '../types';
 import { HLO_SCHEDULE, migrateLegacySymbolData, getFieldByCol } from './hlo-schedule';
 
 /**
@@ -17,7 +17,7 @@ function getDisplayVal(key: string, val: any): string {
  * Builds the data rows for export.
  * Groups symbols and maps them sequentially.
  */
-function buildRegisterRows(symbols: PlacedSymbol[]): any[][] {
+export function buildRegisterRows(symbols: PlacedSymbol[], numberingSystem?: 'serpentine' | 'census_u_loop'): any[][] {
   const buildingSymbols = symbols.filter(s =>
     ['pucca_house', 'kutcha_house', 'apartment', 'non_residential'].includes(s.symbol_type)
   );
@@ -30,49 +30,96 @@ function buildRegisterRows(symbols: PlacedSymbol[]): any[][] {
 
   buildingSymbols.forEach(sym => {
     const data = migrateLegacySymbolData(sym);
-    
-    // Auto-fill building no. and house no. if not set
+    const u = getUnitCount(sym);
     const bldNo = data.col_2_building_no || sym.number || '';
-    const houseNo = data.col_3_house_no || (sym.number ? String(sym.number) : '');
     
-    const row = [
-      lineNo++,                                      // Col 1: Line number
-      bldNo,                                         // Col 2: Building number
-      houseNo,                                       // Col 3: Census house number
-      getDisplayVal('col_4_floor', data.col_4_floor), // Col 4: Floor material
-      getDisplayVal('col_5_wall', data.col_5_wall),   // Col 5: Wall material
-      getDisplayVal('col_6_roof', data.col_6_roof),   // Col 6: Roof material
-      getDisplayVal('col_7_use', data.col_7_use),     // Col 7: Use of house
-      getDisplayVal('col_8_condition', data.col_8_condition), // Col 8: Condition
-      getDisplayVal('col_9_household_no', data.col_9_household_no), // Col 9: Household number
-      getDisplayVal('col_10_persons', data.col_10_persons),   // Col 10: Total persons
-      getDisplayVal('col_11_head_name', data.col_11_head_name), // Col 11: Head name
-      getDisplayVal('col_12_sex', data.col_12_sex),           // Col 12: Sex
-      getDisplayVal('col_13_caste', data.col_13_caste),       // Col 13: Caste SC/ST
-      getDisplayVal('col_14_ownership', data.col_14_ownership), // Col 14: Ownership
-      getDisplayVal('col_15_rooms', data.col_15_rooms),       // Col 15: Dwelling rooms
-      getDisplayVal('col_16_couples', data.col_16_couples),   // Col 16: Married couples
-      getDisplayVal('col_17_water_source', data.col_17_water_source), // Col 17: Drinking water source
-      getDisplayVal('col_18_water_location', data.col_18_water_location), // Col 18: Water location
-      getDisplayVal('col_19_lighting', data.col_19_lighting), // Col 19: Lighting source
-      getDisplayVal('col_20_latrine', data.col_20_latrine),   // Col 20: Latrine access
-      getDisplayVal('col_21_latrine_type', data.col_21_latrine_type), // Col 21: Latrine type
-      getDisplayVal('col_22_drainage', data.col_22_drainage), // Col 22: Drainage connection
-      getDisplayVal('col_23_bathing', data.col_23_bathing),   // Col 23: Bathing facility
-      getDisplayVal('col_24_kitchen', data.col_24_kitchen),   // Col 24: Kitchen availability
-      getDisplayVal('col_25_fuel', data.col_25_fuel),         // Col 25: Cooking fuel
-      getDisplayVal('col_26_radio', data.col_26_radio),       // Col 26: Radio/transistor
-      getDisplayVal('col_27_tv', data.col_27_tv),             // Col 27: Television
-      getDisplayVal('col_28_internet', data.col_28_internet), // Col 28: Internet access
-      getDisplayVal('col_29_computer', data.col_29_computer), // Col 29: Laptop/computer
-      getDisplayVal('col_30_phone', data.col_30_phone),       // Col 30: Phone availability
-      getDisplayVal('col_31_vehicle_2w', data.col_31_vehicle_2w), // Col 31: 2-wheeler
-      getDisplayVal('col_32_car', data.col_32_car),           // Col 32: Car/jeep/van
-      getDisplayVal('col_33_cereal', data.col_33_cereal),     // Col 33: Cereal consumed
-      getDisplayVal('col_34_mobile', data.col_34_mobile),     // Col 34: Mobile number
-    ];
-
-    rows.push(row);
+    if (sym.number !== null && u > 1) {
+      for (let k = 1; k <= u; k++) {
+        let houseNo = '';
+        if (numberingSystem === 'census_u_loop') {
+          houseNo = `${sym.number}(${k})`;
+        } else {
+          houseNo = String(sym.number + k - 1);
+        }
+        
+        const row = [
+          lineNo++,                                      // Col 1: Line number
+          bldNo,                                         // Col 2: Building number
+          houseNo,                                       // Col 3: Census house number
+          getDisplayVal('col_4_floor', data.col_4_floor), // Col 4: Floor material
+          getDisplayVal('col_5_wall', data.col_5_wall),   // Col 5: Wall material
+          getDisplayVal('col_6_roof', data.col_6_roof),   // Col 6: Roof material
+          getDisplayVal('col_7_use', data.col_7_use),     // Col 7: Use of house
+          getDisplayVal('col_8_condition', data.col_8_condition), // Col 8: Condition
+          getDisplayVal('col_9_household_no', k),         // Col 9: Household number
+          getDisplayVal('col_10_persons', data.col_10_persons),   // Col 10: Total persons
+          getDisplayVal('col_11_head_name', k === 1 ? data.col_11_head_name : ''), // Col 11: Head name
+          getDisplayVal('col_12_sex', data.col_12_sex),           // Col 12: Sex
+          getDisplayVal('col_13_caste', data.col_13_caste),       // Col 13: Caste SC/ST
+          getDisplayVal('col_14_ownership', data.col_14_ownership), // Col 14: Ownership
+          getDisplayVal('col_15_rooms', data.col_15_rooms),       // Col 15: Dwelling rooms
+          getDisplayVal('col_16_couples', data.col_16_couples),   // Col 16: Married couples
+          getDisplayVal('col_17_water_source', data.col_17_water_source), // Col 17: Drinking water source
+          getDisplayVal('col_18_water_location', data.col_18_water_location), // Col 18: Water location
+          getDisplayVal('col_19_lighting', data.col_19_lighting), // Col 19: Lighting source
+          getDisplayVal('col_20_latrine', data.col_20_latrine),   // Col 20: Latrine access
+          getDisplayVal('col_21_latrine_type', data.col_21_latrine_type), // Col 21: Latrine type
+          getDisplayVal('col_22_drainage', data.col_22_drainage), // Col 22: Drainage connection
+          getDisplayVal('col_23_bathing', data.col_23_bathing),   // Col 23: Bathing facility
+          getDisplayVal('col_24_kitchen', data.col_24_kitchen),   // Col 24: Kitchen availability
+          getDisplayVal('col_25_fuel', data.col_25_fuel),         // Col 25: Cooking fuel
+          getDisplayVal('col_26_radio', data.col_26_radio),       // Col 26: Radio/transistor
+          getDisplayVal('col_27_tv', data.col_27_tv),             // Col 27: Television
+          getDisplayVal('col_28_internet', data.col_28_internet), // Col 28: Internet access
+          getDisplayVal('col_29_computer', data.col_29_computer), // Col 29: Laptop/computer
+          getDisplayVal('col_30_phone', data.col_30_phone),       // Col 30: Phone availability
+          getDisplayVal('col_31_vehicle_2w', data.col_31_vehicle_2w), // Col 31: 2-wheeler
+          getDisplayVal('col_32_car', data.col_32_car),           // Col 32: Car/jeep/van
+          getDisplayVal('col_33_cereal', data.col_33_cereal),     // Col 33: Cereal consumed
+          getDisplayVal('col_34_mobile', data.col_34_mobile),     // Col 34: Mobile number
+        ];
+        rows.push(row);
+      }
+    } else {
+      const houseNo = data.col_3_house_no || (sym.number ? String(sym.number) : '');
+      const row = [
+        lineNo++,                                      // Col 1: Line number
+        bldNo,                                         // Col 2: Building number
+        houseNo,                                       // Col 3: Census house number
+        getDisplayVal('col_4_floor', data.col_4_floor), // Col 4: Floor material
+        getDisplayVal('col_5_wall', data.col_5_wall),   // Col 5: Wall material
+        getDisplayVal('col_6_roof', data.col_6_roof),   // Col 6: Roof material
+        getDisplayVal('col_7_use', data.col_7_use),     // Col 7: Use of house
+        getDisplayVal('col_8_condition', data.col_8_condition), // Col 8: Condition
+        getDisplayVal('col_9_household_no', data.col_9_household_no), // Col 9: Household number
+        getDisplayVal('col_10_persons', data.col_10_persons),   // Col 10: Total persons
+        getDisplayVal('col_11_head_name', data.col_11_head_name), // Col 11: Head name
+        getDisplayVal('col_12_sex', data.col_12_sex),           // Col 12: Sex
+        getDisplayVal('col_13_caste', data.col_13_caste),       // Col 13: Caste SC/ST
+        getDisplayVal('col_14_ownership', data.col_14_ownership), // Col 14: Ownership
+        getDisplayVal('col_15_rooms', data.col_15_rooms),       // Col 15: Dwelling rooms
+        getDisplayVal('col_16_couples', data.col_16_couples),   // Col 16: Married couples
+        getDisplayVal('col_17_water_source', data.col_17_water_source), // Col 17: Drinking water source
+        getDisplayVal('col_18_water_location', data.col_18_water_location), // Col 18: Water location
+        getDisplayVal('col_19_lighting', data.col_19_lighting), // Col 19: Lighting source
+        getDisplayVal('col_20_latrine', data.col_20_latrine),   // Col 20: Latrine access
+        getDisplayVal('col_21_latrine_type', data.col_21_latrine_type), // Col 21: Latrine type
+        getDisplayVal('col_22_drainage', data.col_22_drainage), // Col 22: Drainage connection
+        getDisplayVal('col_23_bathing', data.col_23_bathing),   // Col 23: Bathing facility
+        getDisplayVal('col_24_kitchen', data.col_24_kitchen),   // Col 24: Kitchen availability
+        getDisplayVal('col_25_fuel', data.col_25_fuel),         // Col 25: Cooking fuel
+        getDisplayVal('col_26_radio', data.col_26_radio),       // Col 26: Radio/transistor
+        getDisplayVal('col_27_tv', data.col_27_tv),             // Col 27: Television
+        getDisplayVal('col_28_internet', data.col_28_internet), // Col 28: Internet access
+        getDisplayVal('col_29_computer', data.col_29_computer), // Col 29: Laptop/computer
+        getDisplayVal('col_30_phone', data.col_30_phone),       // Col 30: Phone availability
+        getDisplayVal('col_31_vehicle_2w', data.col_31_vehicle_2w), // Col 31: 2-wheeler
+        getDisplayVal('col_32_car', data.col_32_car),           // Col 32: Car/jeep/van
+        getDisplayVal('col_33_cereal', data.col_33_cereal),     // Col 33: Cereal consumed
+        getDisplayVal('col_34_mobile', data.col_34_mobile),     // Col 34: Mobile number
+      ];
+      rows.push(row);
+    }
   });
 
   return rows;
@@ -81,7 +128,12 @@ function buildRegisterRows(symbols: PlacedSymbol[]): any[][] {
 /**
  * Exports the HLO Register as an A3 Landscape PDF.
  */
-export function exportRegisterPDF(sessionName: string, hlbNumber: string, symbols: PlacedSymbol[]): void {
+export function exportRegisterPDF(
+  sessionName: string,
+  hlbNumber: string,
+  symbols: PlacedSymbol[],
+  numberingSystem?: 'serpentine' | 'census_u_loop'
+): void {
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
@@ -111,7 +163,7 @@ export function exportRegisterPDF(sessionName: string, hlbNumber: string, symbol
     ['Ln\n(1)', 'Bld\n(2)', 'Hse\n(3)', 'Flr\n(4)', 'Wal\n(5)', 'Ruf\n(6)', 'Use\n(7)', 'Cnd\n(8)', 'HH\n(9)', 'Per\n(10)', 'Head of Household Name\n(11)', 'Sex\n(12)', 'Cat\n(13)', 'Own\n(14)', 'Rom\n(15)', 'Cpl\n(16)', 'Wtr\n(17)', 'Loc\n(18)', 'Lig\n(19)', 'Lat\n(20)', 'Lty\n(21)', 'Drn\n(22)', 'Bth\n(23)', 'Ktc\n(24)', 'Fue\n(25)', 'Rad\n(26)', 'TV\n(27)', 'Net\n(28)', 'PC\n(29)', 'Phn\n(30)', 'Veh\n(31)', 'Car\n(32)', 'Crl\n(33)', 'Mobile Number\n(34)']
   ];
 
-  const data = buildRegisterRows(symbols);
+  const data = buildRegisterRows(symbols, numberingSystem);
 
   (doc as any).autoTable({
     startY: 25,
@@ -175,10 +227,15 @@ export function exportRegisterPDF(sessionName: string, hlbNumber: string, symbol
  * Exports the HLO Register as a SheetJS XLSX file.
  * Includes Sheet 1 (Register data) and Sheet 2 (Codes glossary).
  */
-export function exportRegisterXLSX(sessionName: string, hlbNumber: string, symbols: PlacedSymbol[]): void {
+export function exportRegisterXLSX(
+  sessionName: string,
+  hlbNumber: string,
+  symbols: PlacedSymbol[],
+  numberingSystem?: 'serpentine' | 'census_u_loop'
+): void {
   // --- SHEET 1: HLO REGISTER DATA ---
   const headers = HLO_SCHEDULE.map(f => `Col ${f.col}: ${f.labelEn} (${f.labelHi})`);
-  const dataRows = buildRegisterRows(symbols);
+  const dataRows = buildRegisterRows(symbols, numberingSystem);
   
   // Format sheet content
   const wsData = [

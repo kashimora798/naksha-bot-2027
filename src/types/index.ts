@@ -3,7 +3,7 @@ export interface Coordinate { lat: number; lng: number; }
 export type SymbolType =
   | 'pucca_house' | 'kutcha_house' | 'apartment' | 'non_residential'
   | 'mosque' | 'temple' | 'church' | 'school' | 'hospital'
-  | 'well' | 'post_office' | 'pond' | 'farmland';
+  | 'well' | 'post_office' | 'police_station' | 'pond' | 'farmland';
 
 export interface PlacedSymbol {
   id: string; symbol_type: SymbolType; lat: number; lng: number;
@@ -99,6 +99,15 @@ export interface Block {
   id: string; label: string;
   south: number; north: number; west: number; east: number;
   points?: Coordinate[];
+  // ─── Canvas Block Mapping mode (optional, backward-compatible) ───
+  /** Layout used when auto-placing houses in this block. */
+  layoutMode?: 'rows' | 'grid' | 'serpentine';
+  /** Number of houses the user asked to auto-place. */
+  houseCount?: number;
+  /** House symbol type used for auto-placement. */
+  houseType?: SymbolType;
+  /** True if produced by road-intersection detection (vs hand-edited/merged/split). */
+  autoDetected?: boolean;
 }
 
 export interface FarmlandBlock {
@@ -165,6 +174,9 @@ export interface MapData {
   sheetSize?: 'a4' | 'a3';
   /** Neighbouring HLB/village names by compass side, drawn outside the boundary. */
   neighbours?: { north?: string; south?: string; east?: string; west?: string };
+  /** Project creation mode: 'canvas' = Canvas Block screen, 'desk' (default) = Desk flow */
+  mode?: 'canvas' | 'desk';
+  numberingSystem?: 'serpentine' | 'census_u_loop';
 }
 
 export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; isHouse: boolean }[] = [
@@ -179,6 +191,7 @@ export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; is
   { type: 'hospital', label: 'Hospital', labelHi: 'अस्पताल', isHouse: false },
   { type: 'well', label: 'Well / Handpump', labelHi: 'कुंआ', isHouse: false },
   { type: 'post_office', label: 'Post Office', labelHi: 'डाकघर', isHouse: false },
+  { type: 'police_station', label: 'Police Station', labelHi: 'पुलिस स्टेशन', isHouse: false },
   { type: 'pond', label: 'Pond', labelHi: 'तालाब', isHouse: false },
   { type: 'farmland', label: 'Farmland', labelHi: 'खेत', isHouse: false },
 ];
@@ -197,18 +210,30 @@ export type BuildingShape = 'square' | 'triangle';
 
 /** Shape per census rule: pucca/apartment → square, kutcha → triangle. */
 export function buildingShape(s: PlacedSymbol): BuildingShape {
-  return s.symbol_type === 'kutcha_house' ? 'triangle' : 'square';
+  if (s.symbol_type === 'kutcha_house') return 'triangle';
+  if (s.symbol_type === 'pucca_house' || s.symbol_type === 'apartment') return 'square';
+  
+  // Fallback: check 34-column HLO 2027 wall and roof materials
+  const wall = s.col_5_wall ?? s.col_6_wall_material;
+  const roof = s.col_6_roof ?? s.col_7_roof_material;
+  if (wall !== undefined && roof !== undefined) {
+    const isKutchaWall = [1, 2, 3, 4, 5].includes(wall);
+    const isKutchaRoof = [1, 2].includes(roof);
+    if (isKutchaWall && isKutchaRoof) return 'triangle';
+  }
+  return 'square';
 }
 
 /**
  * Whether the building is wholly non-residential (→ hatched shape).
  * Precedence: explicit `is_residential` flag, else census col_4_use_type
- * (1=Residence, 2=Res+Shop are residential/partly), else the legacy
- * `non_residential` symbol type.
+ * (1=Residence, 2=Res+Shop are residential/partly), else col_7_use (HLO 2027),
+ * else the legacy `non_residential` symbol type.
  */
 export function isNonResidential(s: PlacedSymbol): boolean {
   if (s.is_residential !== undefined) return s.is_residential === false;
   if (s.col_4_use_type !== undefined) return ![1, 2].includes(s.col_4_use_type);
+  if (s.col_7_use !== undefined) return ![1, 2].includes(s.col_7_use);
   return s.symbol_type === 'non_residential';
 }
 

@@ -510,10 +510,10 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       // Landmark symbols are NOT rotated (icons look wrong rotated); house symbols are rotated
       const iconHtml = isLandmark
         ? `<div style="display:flex;flex-direction:column;align-items:center">${svg}${labelHtml}</div>`
-        : `<div style="transform: rotate(${angleDeg}deg); transform-origin: center center; width: 18px; height: 18px;">${svg}</div>`;
-      const iconH = isLandmark && displayLabel ? 30 : 18;
+        : `<div style="transform: rotate(${angleDeg}deg); transform-origin: center center; width: 24px; height: 24px;">${svg}</div>`;
+      const iconH = isLandmark && displayLabel ? 30 : (isLandmark ? 18 : 24);
       const m = L.marker([s.lat, s.lng], {
-        icon: L.divIcon({ html: iconHtml, className: '', iconSize: [isLandmark ? 60 : 18, iconH], iconAnchor: [isLandmark ? 30 : 9, 9] }),
+        icon: L.divIcon({ html: iconHtml, className: '', iconSize: [isLandmark ? 60 : 24, iconH], iconAnchor: [isLandmark ? 30 : 12, isLandmark && displayLabel ? 15 : 12] }),
         interactive,
         draggable: arrangeMode,
       });

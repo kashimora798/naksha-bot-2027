@@ -559,7 +559,7 @@ export default function MapWorkspace({
   function mkIcon(sym:PlacedSymbol):L.DivIcon{
     const isS=sym.id===sugId;const u=getUnitCount(sym);
     const nl=sym.number!==null?(numberingSystem === 'census_u_loop'?(u>1?`${sym.number}(${u})`:String(sym.number)):(u>1?`${sym.number}-${sym.number+u-1}`:String(sym.number))):'';
-    const rh=isS?`<div style="position:absolute;top:-8px;left:-8px;width:44px;height:44px;border:3px solid #0066FF;border-radius:50%;pointer-events:none;animation:guidePulse 1.5s infinite"></div>`:'';
+    const rh=isS?`<div style="position:absolute;top:-10px;left:-10px;width:44px;height:44px;border:3px solid #0066FF;border-radius:50%;pointer-events:none;animation:guidePulse 1.5s infinite"></div>`:'';
     // Road/Block-aligned rotation for house types
     let angle = getBlockOrientation(sym, blocks || []);
     if (angle === null) {
@@ -569,7 +569,7 @@ export default function MapWorkspace({
     if (angle < -Math.PI / 2) angle += Math.PI;
     const rot = (angle * 180) / Math.PI;
     const rotStyle = rot !== 0 ? `transform:rotate(${rot}deg);` : '';
-    return L.divIcon({html:`<div style="position:relative;cursor:pointer;${rotStyle}">${getSmallSymbolSVG(sym.symbol_type, false, nl)}${rh}</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]});
+    return L.divIcon({html:`<div style="position:relative;cursor:pointer;${rotStyle}">${getSmallSymbolSVG(sym.symbol_type, false, nl)}${rh}</div>`,className:'',iconSize:[24,24],iconAnchor:[12,12]});
   }
   function refreshMk(sym:PlacedSymbol){const m=mks.current.get(sym.id);if(m)m.setIcon(mkIcon(sym));}
 

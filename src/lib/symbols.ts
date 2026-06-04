@@ -39,20 +39,20 @@ export function getSymbolSVG(type: SymbolType): string {
 
 export function getSmallSymbolSVG(type: SymbolType, highlight?: boolean, num?: string): string {
   const color = highlight ? '#0066FF' : 'black';
-  const s = 16;
+  const s = 24;
   
-  const drawNum = (yOffset: number = 13) => {
+  const drawNum = (yOffset: number = 12.5) => {
     if (!num) return '';
-    return `<text x="12" y="${yOffset}" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="bold" fill="${color}" font-family="sans-serif">${num}</text>`;
+    return `<text x="12" y="${yOffset}" text-anchor="middle" dominant-baseline="middle" font-size="8.5" font-weight="bold" fill="${color}" font-family="sans-serif">${num}</text>`;
   };
 
   switch (type) {
     case 'pucca_house':
       // Spec: Pucca = square
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(13)}</svg>`;
+      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(12.5)}</svg>`;
     case 'kutcha_house':
       // Spec: Kutcha = triangle (closed path strokes reliably across renderers)
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><path d="M12 3 L21 20 L3 20 Z" stroke="${color}" stroke-width="1.8" fill="none" stroke-linejoin="round"/>${drawNum(16)}</svg>`;
+      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><path d="M12 3 L21 20 L3 20 Z" stroke="${color}" stroke-width="1.8" fill="none" stroke-linejoin="round"/>${drawNum(14.5)}</svg>`;
     case 'apartment':
       // Apartment is pucca → square, with floor lines to distinguish in the palette
       return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="4" y="2" width="16" height="20" stroke="${color}" stroke-width="1.8" fill="none"/><line x1="4" y1="9" x2="20" y2="9" stroke="${color}" stroke-width="1"/><line x1="4" y1="16" x2="20" y2="16" stroke="${color}" stroke-width="1"/><line x1="12" y1="2" x2="12" y2="22" stroke="${color}" stroke-width="1"/>${drawNum(12)}</svg>`;
@@ -61,7 +61,7 @@ export function getSmallSymbolSVG(type: SymbolType, highlight?: boolean, num?: s
     case 'non_residential':
       // Spec: wholly non-residential pucca = hatched square. Explicit diagonal lines
       // (clipped to the square) are more robust across webviews than an SVG <pattern>.
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><defs><clipPath id="cp${highlight?'b':'k'}"><rect x="4" y="4" width="16" height="16"/></clipPath></defs><g clip-path="url(#cp${highlight?'b':'k'})"><line x1="4" y1="12" x2="12" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="4" y1="20" x2="20" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="8" y1="20" x2="20" y2="8" stroke="${color}" stroke-width="0.9"/><line x1="16" y1="20" x2="20" y2="16" stroke="${color}" stroke-width="0.9"/></g><rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(13)}</svg>`;
+      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><defs><clipPath id="cp${highlight?'b':'k'}"><rect x="4" y="4" width="16" height="16"/></clipPath></defs><g clip-path="url(#cp${highlight?'b':'k'})"><line x1="4" y1="12" x2="12" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="4" y1="20" x2="20" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="8" y1="20" x2="20" y2="8" stroke="${color}" stroke-width="0.9"/><line x1="16" y1="20" x2="20" y2="16" stroke="${color}" stroke-width="0.9"/></g><rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(12.5)}</svg>`;
     case 'mosque':
       return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="5" y="14" width="14" height="7" stroke="${color}" stroke-width="1.8" fill="none"/><path d="M5,14 Q5,5 12,3 Q19,5 19,14" stroke="${color}" stroke-width="1.8" fill="none"/></svg>`;
     case 'temple':

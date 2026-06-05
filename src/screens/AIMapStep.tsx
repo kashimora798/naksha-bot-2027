@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { generateSurveyMapFromBoundary, captureFullSatellite, PREDEFINED_PROMPTS } from '../lib/survey-api';
 import type { MapData, Coordinate } from '../types';
-import { load } from '@cashfreepayments/cashfree-js';
 import ImageComparisonSlider from '../components/ImageComparisonSlider';
 
 interface Props {
@@ -13,62 +12,57 @@ interface Props {
   isDemoMode?: boolean;
 }
 
-// Predefined reference gallery maps
 const REFERENCE_MAPS = [
   { url: '/images/hlb-map-census-2027-example.jpg', title: 'Official 2027 Format' },
   { url: '/images/hlo-map-pdf-sample.jpg', title: 'Completed AI Survey Map' },
   { url: '/images/nazri-naksha-rural-up.jpg', title: 'Rural Topo Sheet Style' },
-  { url: '/images/nazri-naksha-sample-urban-kanpur.jpg', title: 'Urban Settlement Style' }
+  { url: '/images/nazri-naksha-sample-urban-kanpur.jpg', title: 'Urban Settlement Style' },
 ];
 
+const DAILY_LIMIT = 6;
+
 export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMapData, isDemoMode }: Props) {
-  // Satellite image
   const [satImg, setSatImg] = useState<string>('');
   const [satLoading, setSatLoading] = useState(false);
 
-  // AI image generation state
   const [aiImg, setAiImg] = useState<string | null>(mapData.surveyMapBase64 || null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiProgress, setAiProgress] = useState('');
 
-  // Prompts and options
   const [selectedPromptId, setSelectedPromptId] = useState<string>('soi_topo');
   const [customPrompt, setCustomPrompt] = useState('');
 
-  // Rate limit / regen tracking
-  const [regenAllowance, setRegenAllowance] = useState<number>(1);
-  const [regenUsed, setRegenUsed] = useState<number>(0);
-  const [regenLoading, setRegenLoading] = useState(false);
+  // Daily usage (across all projects for this user today)
+  const [dailyUsed, setDailyUsed] = useState<number>(0);
+  const [usageLoading, setUsageLoading] = useState(false);
 
-  // Payment popup
-  const [paying, setPaying] = useState(false);
-  const [showPaywall, setShowPaywall] = useState(false);
+  useEffect(() => { captureSatellite(); }, [mapData.boundaryPins]);
 
-  // Load satellite image on mount
   useEffect(() => {
-    captureSatellite();
-  }, [mapData.boundaryPins]);
+    if (isDemoMode) return;
+    fetchDailyUsage();
+  }, [isDemoMode]);
 
-  // Load regen counters
-  useEffect(() => {
-    if (!mapData.projectId || isDemoMode) return;
-    refreshRegenCount();
-  }, [mapData.projectId, isDemoMode]);
-
-  async function refreshRegenCount() {
-    if (!mapData.projectId) return;
-    setRegenLoading(true);
-    const { data } = await supabase
-      .from('projects')
-      .select('regen_allowance, regen_used')
-      .eq('id', mapData.projectId)
-      .single();
-    if (data) {
-      setRegenAllowance(data.regen_allowance ?? 1);
-      setRegenUsed(data.regen_used ?? 0);
-    }
-    setRegenLoading(false);
+  async function fetchDailyUsage() {
+    setUsageLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { setUsageLoading(false); return; }
+      const todayStart = new Date().toISOString().split('T')[0] + 'T00:00:00.000Z';
+      const [{ count: projCount }, { count: liveCount }] = await Promise.all([
+        supabase.from('image_generations')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', session.user.id)
+          .gte('created_at', todayStart),
+        supabase.from('live_image_generations')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', session.user.id)
+          .gte('created_at', todayStart),
+      ]);
+      setDailyUsed((projCount ?? 0) + (liveCount ?? 0));
+    } catch { /* silently ignore */ }
+    setUsageLoading(false);
   }
 
   async function captureSatellite() {
@@ -84,16 +78,14 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
     setSatLoading(false);
   }
 
-  // Generate AI Map
   async function handleGenerateAI() {
     if (mapData.boundaryPins.length < 3) return;
-    
+
     if (isDemoMode) {
       setAiError('');
       setAiLoading(true);
       setAiProgress('Generating AI survey map (Demo mode)…');
       await new Promise(r => setTimeout(r, 1200));
-      // Re-use demo image
       const demoUrl = 'https://access.vheer.com/results/NHkzh0xq_1780294046688.jpg';
       setAiImg(demoUrl);
       onUpdateMapData({ surveyMapBase64: demoUrl, aiMapChunks: [] });
@@ -102,8 +94,8 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
       return;
     }
 
-    if (regenUsed >= regenAllowance) {
-      setShowPaywall(true);
+    if (dailyUsed >= DAILY_LIMIT) {
+      setAiError(`You've used all ${DAILY_LIMIT} free AI generations for today. Your quota resets at midnight (UTC). Come back tomorrow!`);
       return;
     }
 
@@ -111,20 +103,16 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
     setAiError('');
     setAiProgress('Preparing satellite imagery...');
 
-    // Assemble final prompt
-    let finalPrompt = '';
-    if (selectedPromptId === 'custom') {
-      finalPrompt = customPrompt;
-    } else {
-      finalPrompt = PREDEFINED_PROMPTS.find(p => p.id === selectedPromptId)?.prompt || PREDEFINED_PROMPTS[0].prompt;
-    }
+    let finalPrompt = selectedPromptId === 'custom'
+      ? customPrompt
+      : (PREDEFINED_PROMPTS.find(p => p.id === selectedPromptId)?.prompt || PREDEFINED_PROMPTS[0].prompt);
 
     try {
       const result = await generateSurveyMapFromBoundary(
         mapData,
         mapData.orientation || 'portrait',
         (msg) => setAiProgress(msg),
-        undefined, // Skip preview popup since we are already on the step page!
+        undefined,
         finalPrompt
       );
 
@@ -132,10 +120,12 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
         setAiImg(result.imageUrl);
         onUpdateMapData({ surveyMapBase64: result.imageUrl, aiMapChunks: [] });
         setAiProgress('');
-        await refreshRegenCount();
+        // Refresh daily count after successful generation
+        await fetchDailyUsage();
       } else {
-        if (result.error === 'regen_limit') {
-          setShowPaywall(true);
+        if (result.error === 'daily_limit') {
+          setAiError(`Daily limit of ${DAILY_LIMIT} AI generations reached. Your quota resets at midnight (UTC).`);
+          setDailyUsed(DAILY_LIMIT);
         } else {
           setAiError(result.error || 'Failed to generate AI survey map');
         }
@@ -147,31 +137,9 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
     }
   }
 
-  // Payment for more regens
-  async function handlePayment() {
-    setPaying(true);
-    try {
-      if (!mapData.projectId) throw new Error('Project ID is missing.');
-      const { data, error } = await supabase.functions.invoke('create-cashfree-payment', {
-        body: { projectId: mapData.projectId, kind: 'regen' }
-      });
-      if (error) throw error;
-      if (data && data.paymentSessionId) {
-        const cashfree = await load({ mode: (import.meta.env.VITE_CASHFREE_MODE === 'production' ? 'production' : 'sandbox') });
-        if (cashfree) {
-          cashfree.checkout({ paymentSessionId: data.paymentSessionId, redirectTarget: '_self' });
-        }
-      } else {
-        throw new Error('No payment session returned');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Payment failed to initialize.');
-    }
-    setPaying(false);
-  }
-
   const aspect = mapData.orientation === 'landscape' ? 297 / 210 : 210 / 297;
+  const remaining = Math.max(0, DAILY_LIMIT - dailyUsed);
+  const limitReached = !isDemoMode && dailyUsed >= DAILY_LIMIT;
 
   return (
     <div className="h-full bg-slate-950 text-slate-100 flex flex-col overflow-y-auto">
@@ -197,7 +165,7 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
 
       {/* Main Grid */}
       <div className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-        
+
         {/* Column 1: Satellite Source & Comparison Slider */}
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 flex flex-col min-h-[400px] lg:col-span-1">
           <div className="flex justify-between items-center mb-3">
@@ -212,7 +180,7 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
               {satLoading ? 'Loading...' : '🔄 Recapture'}
             </button>
           </div>
-          
+
           <div className="flex-1 min-h-[220px] bg-slate-950 rounded-xl overflow-hidden border border-slate-850 flex items-center justify-center relative">
             {satLoading ? (
               <div className="flex flex-col items-center gap-2">
@@ -249,8 +217,7 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
         <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 flex flex-col justify-between">
           <div>
             <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4">✨ AI Prompt Settings</h2>
-            
-            {/* Prompt Selector Dropdown */}
+
             <div className="space-y-1 mb-4">
               <label className="text-[11px] font-bold text-slate-400 uppercase">Map Style Preset</label>
               <select
@@ -259,15 +226,12 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
                 className="w-full bg-slate-950 border border-slate-850 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 font-sans"
               >
                 {PREDEFINED_PROMPTS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
+                  <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
                 <option value="custom">Custom Styling Prompt</option>
               </select>
             </div>
 
-            {/* Prompt Display/Textarea */}
             {selectedPromptId !== 'custom' ? (
               <div className="bg-slate-950 rounded-xl p-3 border border-slate-850 max-h-48 overflow-y-auto text-[10px] text-slate-400 leading-relaxed font-mono">
                 {PREDEFINED_PROMPTS.find((p) => p.id === selectedPromptId)?.prompt}
@@ -290,29 +254,27 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
           </div>
 
           <div className="mt-6 space-y-3 shrink-0">
-            {/* Usage Counter */}
+            {/* Daily usage counter */}
             {!isDemoMode && (
-              <div className="flex items-center justify-between text-xs text-slate-400 bg-slate-950/80 px-3.5 py-2.5 rounded-xl border border-slate-900">
-                <span className="font-semibold text-slate-300">Generations Limit:</span>
-                <span className="font-bold text-purple-400">
-                  {regenUsed} / {regenAllowance} used ({Math.max(0, regenAllowance - regenUsed)} left)
+              <div className="flex items-center justify-between text-xs bg-slate-950/80 px-3.5 py-2.5 rounded-xl border border-slate-900">
+                <span className="font-semibold text-slate-300">Free AI generations today:</span>
+                <span className={`font-bold ${remaining === 0 ? 'text-rose-400' : remaining <= 2 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {usageLoading ? '…' : `${remaining} / ${DAILY_LIMIT} remaining`}
                 </span>
               </div>
             )}
 
-            {/* Generate Action Button */}
+            {/* Generate / Limit reached */}
             {aiLoading ? (
               <div className="w-full bg-purple-600/30 text-purple-300 py-3.5 rounded-xl border border-purple-500/20 flex items-center justify-center gap-2">
                 <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
                 <span className="text-xs font-bold font-mono">{aiProgress || 'Generating topographic map...'}</span>
               </div>
-            ) : regenUsed >= regenAllowance && !isDemoMode ? (
-              <button
-                onClick={() => setShowPaywall(true)}
-                className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xs rounded-xl shadow-lg hover:-translate-y-0.5 transition-transform"
-              >
-                ✨ Limit Reached! Buy 5 Generations (₹5)
-              </button>
+            ) : limitReached ? (
+              <div className="w-full py-3.5 bg-slate-800 border border-slate-700 rounded-xl text-center">
+                <p className="text-xs font-bold text-amber-400">Daily limit reached</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">6 free generations per day — resets at midnight UTC</p>
+              </div>
             ) : (
               <button
                 onClick={handleGenerateAI}
@@ -336,7 +298,6 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
           <p className="text-[10px] text-slate-400 mb-4 leading-relaxed">
             See actual completed outputs in various Census regional styles. Drag/click to review what the AI tries to reproduce.
           </p>
-          
           <div className="flex-1 grid grid-cols-2 gap-3 overflow-y-auto max-h-[450px] pr-1">
             {REFERENCE_MAPS.map((map, i) => (
               <div key={i} className="group relative bg-slate-950 rounded-xl overflow-hidden border border-slate-850 hover:border-slate-700 transition-all">
@@ -351,19 +312,18 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
 
       </div>
 
-      {/* Bottom Panel: Generated Preview (when available) */}
+      {/* Bottom Panel: Generated Preview */}
       {aiImg && (
         <div className="bg-slate-900 border-t border-slate-800 px-6 py-5 flex flex-col md:flex-row gap-5 items-center justify-between shrink-0">
           <div className="text-center md:text-left">
             <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">✓ Generation Succeeded</span>
             <span className="text-xs text-white font-bold block">Preview map loaded in comparison slider above</span>
           </div>
-
           <div className="flex gap-3 w-full md:w-auto">
             <button
               onClick={() => { setAiImg(null); handleGenerateAI(); }}
-              disabled={aiLoading}
-              className="flex-1 md:flex-none px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl transition-colors border border-slate-750"
+              disabled={aiLoading || limitReached}
+              className="flex-1 md:flex-none px-5 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 font-semibold text-xs rounded-xl transition-colors border border-slate-750"
             >
               🔄 Regenerate Map
             </button>
@@ -373,49 +333,6 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
             >
               Looks Good → Print Preview
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Paywall Overlay */}
-      {showPaywall && (
-        <div className="fixed inset-0 z-[6500] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden text-slate-800">
-            <div className="bg-gradient-to-br from-purple-600 to-indigo-600 px-6 py-6 text-white text-center">
-              <div className="text-4xl mb-1">✨</div>
-              <h3 className="text-xl font-black font-[Baloo_2]">Need More AI Generations?</h3>
-              <p className="text-xs text-white/80 mt-1">Get 5 extra generations for this project</p>
-              <div className="mt-4 flex items-end justify-center gap-2">
-                <span className="text-white/70 line-through text-base">₹10</span>
-                <span className="text-4xl font-black leading-none">₹5</span>
-                <span className="text-white/90 text-xs mb-1">pack of 5</span>
-              </div>
-            </div>
-            <div className="p-6 space-y-4 text-xs">
-              <p className="text-slate-650 leading-relaxed">
-                Paid maps already include 5 generations. If you want to refine your topo sheet design further, buying a refill pack grants you <strong>5 more attempts</strong> instantly.
-              </p>
-              <div className="bg-purple-50 rounded-xl p-3 border border-purple-100 flex items-center gap-3">
-                <span className="text-base">🚀</span>
-                <span className="text-purple-950 font-medium">Valid for this project. Keep generating until it matches your standard.</span>
-              </div>
-            </div>
-            <div className="px-6 pb-6 pt-1 flex gap-2">
-              <button
-                onClick={() => setShowPaywall(false)}
-                disabled={paying}
-                className="flex-1 py-3 border border-slate-200 text-slate-500 rounded-xl font-bold text-xs hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handlePayment}
-                disabled={paying}
-                className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs rounded-xl shadow hover:opacity-90 active:scale-95 transition-all"
-              >
-                {paying ? 'Loading...' : 'Pay ₹5'}
-              </button>
-            </div>
           </div>
         </div>
       )}

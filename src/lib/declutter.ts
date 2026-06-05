@@ -1,5 +1,5 @@
 import type { Coordinate, PlacedSymbol, RoadFeature } from '../types';
-import { isHouseType } from '../types';
+import { isHouseType, isNumberableSymbol } from '../types';
 
 // ═══════════════════════════════════════════════════════════
 // COORDINATE HELPERS
@@ -46,10 +46,10 @@ function snapToGrid(
   const occupied = new Set<string>();
   const result: PlacedSymbol[] = [];
 
-  // Houses first (they need clean spacing for numbering)
+  // Numbered symbols first (they need clean spacing for numbering)
   const sorted = [...symbols].sort((a, b) => {
-    if (isHouseType(a.symbol_type) && !isHouseType(b.symbol_type)) return -1;
-    if (!isHouseType(a.symbol_type) && isHouseType(b.symbol_type)) return 1;
+    if (isNumberableSymbol(a.symbol_type) && !isNumberableSymbol(b.symbol_type)) return -1;
+    if (!isNumberableSymbol(a.symbol_type) && isNumberableSymbol(b.symbol_type)) return 1;
     return 0;
   });
 

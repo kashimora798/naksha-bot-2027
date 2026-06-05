@@ -1,10 +1,8 @@
-// Server-side AI map generation. Centralizing this here gives us, in one place:
-//   • abuse control — the AI API is only reachable through an authed, counted call
-//   • regen limits — server-enforced (paid map = 5 regens; +₹5 = 5 more)
-//   • caching — the result is stored in Supabase Storage + image_generations, so
-//     the AI API is never hit again for an image the user already has
-//   • lossless compression — removed server-side @napi-rs/canvas compilation dependency.
-//     Now directly proxies and stores the generated image to avoid native C++ crashes on Vercel.
+// Server-side AI map generation with per-user daily rate limiting (6/day).
+// Centralizing here gives us:
+//   • abuse control — the AI API is only reachable through an authed call
+//   • daily limit — 6 generations per user per calendar day (UTC), free
+//   • caching — result stored in Supabase Storage + image_generations
 import { createClient } from '@supabase/supabase-js';
 
 export const config = { maxDuration: 60 };
@@ -13,6 +11,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL |
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const AI_BASE = process.env.VITE_API_BASE || 'https://pixelster.vercel.app';
 const BUCKET = 'ai-maps';
+const DAILY_LIMIT = 6;
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
@@ -35,60 +34,66 @@ export default async function handler(req: any, res: any) {
     if (userErr || !userData?.user) { res.status(401).json({ error: 'Invalid session' }); return; }
     const userId = userData.user.id;
 
-    let regenAllowance = 1;
-    let regenUsed = 0;
-    let project: any = null;
+    // ── Daily rate limit: 6 AI generations per user per UTC calendar day ──
+    const todayUTC = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
+    const todayStart = `${todayUTC}T00:00:00.000Z`;
 
-    if (isLive) {
-      const { data: liveExport, error: liveErr } = await admin
-        .from('live_exports')
-        .select('session_id, regen_allowance, regen_used')
-        .eq('session_id', projectId)
+    // Count today's generations across both project and live tables
+    const [{ count: projCount }, { count: liveCount }] = await Promise.all([
+      admin.from('image_generations')
+        .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
-        .maybeSingle();
+        .gte('created_at', todayStart),
+      admin.from('live_image_generations')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('created_at', todayStart),
+    ]);
+    const usedToday = (projCount ?? 0) + (liveCount ?? 0);
+    const remaining = Math.max(0, DAILY_LIMIT - usedToday);
 
-      if (liveErr) { res.status(500).json({ error: 'Database check failed' }); return; }
-
-      if (!liveExport) {
-        // First generation before payment — insert draft row
-        const { error: insErr } = await admin
-          .from('live_exports')
-          .insert({
-            session_id: projectId,
-            user_id: userId,
-            payment_status: 'unpaid',
-            regen_allowance: 1,
-            regen_used: 0
-          });
-        if (insErr) {
-          res.status(500).json({ error: 'Failed to initialize live export limits' });
-          return;
-        }
-      } else {
-        regenAllowance = liveExport.regen_allowance ?? 1;
-        regenUsed = liveExport.regen_used ?? 0;
-      }
-    } else {
-      // Owned project + server-controlled regen counters.
-      const { data: proj, error: projErr } = await admin
-        .from('projects')
-        .select('id, regen_allowance, regen_used')
-        .eq('id', projectId).eq('user_id', userId).single();
-      if (projErr || !proj) { res.status(404).json({ error: 'Project not found' }); return; }
-      project = proj;
-      regenAllowance = project.regen_allowance ?? 1;
-      regenUsed = project.regen_used ?? 0;
-    }
-
-    if (regenUsed >= regenAllowance) {
-      res.status(402).json({
-        error: 'regen_limit',
-        used: regenUsed, allowance: regenAllowance,
+    if (usedToday >= DAILY_LIMIT) {
+      res.status(429).json({
+        error: 'daily_limit',
+        used: usedToday,
+        limit: DAILY_LIMIT,
+        remaining: 0,
+        resetsAt: `${todayUTC}T23:59:59Z`,
       });
       return;
     }
 
-    // 1) Call the AI image API (the ONLY place this is reachable from).
+    // Verify project ownership (or create live_exports draft row)
+    if (isLive) {
+      const { data: liveExport } = await admin
+        .from('live_exports')
+        .select('session_id')
+        .eq('session_id', projectId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (!liveExport) {
+        const { error: insErr } = await admin.from('live_exports').insert({
+          session_id: projectId,
+          user_id: userId,
+          payment_status: 'free',
+          regen_allowance: DAILY_LIMIT,
+          regen_used: 0,
+        });
+        if (insErr) {
+          res.status(500).json({ error: 'Failed to initialize live export record' });
+          return;
+        }
+      }
+    } else {
+      const { data: proj, error: projErr } = await admin
+        .from('projects')
+        .select('id')
+        .eq('id', projectId).eq('user_id', userId).single();
+      if (projErr || !proj) { res.status(404).json({ error: 'Project not found' }); return; }
+    }
+
+    // 1) Call the AI image API
     const aiResp = await fetch(`${AI_BASE}/api/pti`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -98,41 +103,35 @@ export default async function handler(req: any, res: any) {
     const aiData = await aiResp.json();
     if (!aiData?.success || !aiData?.imageUrl) { res.status(502).json({ error: 'AI returned no image' }); return; }
 
-    // 2) Download image buffer directly (avoid @napi-rs/canvas runtime dependency).
+    // 2) Download image buffer
     const imgResp = await fetch(aiData.imageUrl);
-    if (!imgResp.ok) { res.status(502).json({ error: 'Failed to fetch generated image from URL' }); return; }
-    
+    if (!imgResp.ok) { res.status(502).json({ error: 'Failed to fetch generated image' }); return; }
     const arrayBuffer = await imgResp.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    
-    // Determine content type and extension
     const contentType = imgResp.headers.get('content-type') || 'image/jpeg';
     let ext = 'jpg';
     if (contentType.includes('webp')) ext = 'webp';
     else if (contentType.includes('png')) ext = 'png';
 
-    // 3) Store in Supabase Storage (public bucket "ai-maps").
+    // 3) Store in Supabase Storage
     try {
       const { data: bucketExists } = await admin.storage.getBucket(BUCKET);
       if (!bucketExists) {
-        const { error: createErr } = await admin.storage.createBucket(BUCKET, {
+        await admin.storage.createBucket(BUCKET, {
           public: true,
           allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
-          fileSizeLimit: 52428800
+          fileSizeLimit: 52428800,
         });
-        if (createErr) console.error('Failed to create ai-maps bucket:', createErr);
       }
-    } catch (err) {
-      console.warn('Error checking/creating bucket, trying upload:', err);
-    }
+    } catch { /* bucket may already exist */ }
 
     const ts = Date.now();
     const path = `${userId}/${projectId}/${ts}.${ext}`;
     const up = await admin.storage.from(BUCKET).upload(path, buffer, { contentType, upsert: true });
-    if (up.error) { console.error('storage upload', up.error); res.status(500).json({ error: 'Storage upload failed' }); return; }
+    if (up.error) { res.status(500).json({ error: 'Storage upload failed' }); return; }
     const publicUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 
-    // 4) Record it (default-select the newest; deselect older ones).
+    // 4) Record in image_generations / live_image_generations
     if (isLive) {
       await admin.from('live_image_generations').update({ selected: false }).eq('session_id', projectId);
       await admin.from('live_image_generations').insert({
@@ -147,20 +146,11 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 5) Count the regeneration (atomic, server-only RPC).
-    let used = 0;
-    if (isLive) {
-      const { data: usedVal } = await admin.rpc('increment_live_regen_used', { sess_id: projectId });
-      used = usedVal ?? (regenUsed + 1);
-    } else {
-      const { data: usedVal } = await admin.rpc('increment_regen_used', { proj_id: projectId });
-      used = usedVal ?? (project.regen_used + 1);
-    }
-
     res.status(200).json({
       url: publicUrl,
-      used,
-      allowance: regenAllowance,
+      used: usedToday + 1,
+      limit: DAILY_LIMIT,
+      remaining: remaining - 1,
       bytes: buffer.length,
     });
   } catch (err: any) {

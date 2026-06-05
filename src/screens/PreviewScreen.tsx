@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { load } from '@cashfreepayments/cashfree-js';
 import type { MapData, Block, Coordinate } from '../types';
 import { supabase } from '../lib/supabase';
 import { renderMapToCanvas, exportBlockPDF } from '../lib/pdf-export';
@@ -7,7 +6,7 @@ import { captureSatelliteForBoundary, captureFullSatellite, generateSurveyMapFro
 import { getBbox } from '../lib/geo';
 import { DEMO_AI_IMAGE_URL } from '../data/demo';
 
-interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; onUpdateMapData?: (data: Partial<MapData>) => void; isDemoMode?: boolean; justPaid?: boolean; }
+interface Props { mapData: MapData; onBack: () => void; onExitToDashboard?: () => void; onUpdateMapData?: (data: Partial<MapData>) => void; isDemoMode?: boolean; }
 
 type ViewTab = 'sketch' | 'satellite' | 'ai';
 
@@ -22,7 +21,6 @@ interface SavedAiImage {
 
 // Steps for the export progress modal
 const EXPORT_STEPS = [
-  { key: 'verify', label: 'Verifying payment' },
   { key: 'satellite', label: 'Capturing satellite view' },
   { key: 'overview', label: 'Drawing map overview' },
   { key: 'blocks', label: 'Rendering block sheets' },
@@ -32,12 +30,12 @@ const EXPORT_STEPS = [
   { key: 'done', label: 'Download ready!' },
 ];
 
-export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUpdateMapData, isDemoMode, justPaid }: Props) {
+export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUpdateMapData, isDemoMode }: Props) {
   const [exported, setExported] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [paying, setPaying] = useState(false);
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [showCelebrate, setShowCelebrate] = useState(!!justPaid);
+  const [showDonation, setShowDonation] = useState(false);
+  const [donationStage, setDonationStage] = useState<'ask' | 'appreciate' | 'share'>('ask');
+  const [donationHindi, setDonationHindi] = useState(true);
   const [exportProgress, setExportProgress] = useState('');
   const [exportStep, setExportStep] = useState(''); // current step key for modal
   const [aiOpacity, setAiOpacity] = useState(1);
@@ -156,17 +154,17 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const lastP = useRef({ x: 0, y: 0 });
   const frameRef = useRef<HTMLDivElement>(null);
 
-  const isPaid = isDemoMode || mapData.paymentStatus === 'paid';
+  const isPaid = true; // App is now free — always allow full quality & export
   const regenLimitReached = !isDemoMode && regenUsed >= regenAllowance;
 
   useEffect(() => {
     const c = document.createElement('canvas');
     const isL = orient === 'landscape';
-    const long = isPaid ? 2000 : 700;
-    const short = isPaid ? 1400 : 490;
-    renderMapToCanvas(c, { ...mapData, orientation: orient }, isL ? long : short, isL ? short : long, { watermark: true, inkMode });
-    setMapImg(c.toDataURL('image/jpeg', isPaid ? 0.9 : 0.7));
-  }, [mapData, orient, isPaid, inkMode]);
+    const long = 2000;
+    const short = 1400;
+    renderMapToCanvas(c, { ...mapData, orientation: orient }, isL ? long : short, isL ? short : long, { watermark: false, inkMode });
+    setMapImg(c.toDataURL('image/jpeg', 0.9));
+  }, [mapData, orient, inkMode]);
 
   useEffect(() => { if (mapImg) { setZoom(1); setRotate(0); setPanX(0); setPanY(0); } }, [mapImg]);
 
@@ -211,7 +209,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
       return;
     }
     if (regenLimitReached) {
-      setShowPaywall(true); // reuse paywall but with regen kind
+      setAiError('Daily AI generation limit reached. Your quota resets at midnight UTC.');
       return;
     }
     setAiLoading(true);
@@ -285,12 +283,12 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   }
 
   useEffect(() => {
-    if (mapData.autoExport && mapData.paymentStatus === 'paid' && !exported && !exporting) {
+    if (mapData.autoExport && !exported && !exporting) {
       mapData.autoExport = false;
       const timer = setTimeout(() => { handleExport(); }, 500);
       return () => clearTimeout(timer);
     }
-  }, [mapData.autoExport, mapData.paymentStatus, exported, exporting]);
+  }, [mapData.autoExport, exported, exporting]);
 
   function buildExportData() {
     const exportData = { ...mapData, sheetSize, orientation: orient };
@@ -315,7 +313,6 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   // Map progress message to a step key for the modal
   function progressToStep(msg: string): string {
     const m = msg.toLowerCase();
-    if (m.includes('verif')) return 'verify';
     if (m.includes('satellite') || m.includes('tile') || m.includes('capturing')) return 'satellite';
     if (m.includes('overview') || m.includes('overview') || m.includes('render')) return 'overview';
     if (m.includes('block') || m.includes('page')) return 'blocks';
@@ -351,32 +348,17 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
       return;
     }
 
-    if (!isPaid) { handlePayment(); return; }
     if (!mapData.projectId) { alert('Project/Session is still saving — please wait a moment and try again.'); return; }
 
     setExporting(true);
-    setExportStep('verify');
-    setExportProgress('Verifying payment…');
+    setExportStep('satellite');
+    setExportProgress('Rendering print-ready PDF…');
     try {
       if (!mapData.isLive) {
         await supabase.from('projects').update({ data: buildExportData() }).eq('id', mapData.projectId);
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const verifyResp = await fetch('/api/verify-download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-        body: JSON.stringify({ projectId: mapData.projectId, kind: mapData.isLive ? 'live' : 'project' }),
-      });
-      if (!verifyResp.ok) {
-        if (verifyResp.status === 402) { handlePayment(); return; }
-        const errBody = await verifyResp.json().catch(() => ({}));
-        throw new Error(errBody.error || 'Payment verification failed (' + verifyResp.status + ')');
-      }
-
       if (exportType === 'map') {
-        setExportStep('satellite');
-        setExportProgress('Rendering print-ready PDF…');
         await new Promise(r => setTimeout(r, 100));
         await exportBlockPDF(buildExportData(), orient, progressFn);
         setExportStep('done');
@@ -407,28 +389,6 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     setExporting(false);
     setExportProgress('');
     setExportStep('');
-  }
-
-  async function handlePayment() {
-    setPaying(true);
-    try {
-      if (!mapData.projectId) throw new Error('Project/Session ID is missing, please reload.');
-      const payload = mapData.isLive
-        ? { sessionId: mapData.projectId, kind: 'live' }
-        : { projectId: mapData.projectId, kind: 'project' };
-      const { data, error } = await supabase.functions.invoke('create-cashfree-payment', { body: payload });
-      if (error) throw error;
-      if (data && data.paymentSessionId) {
-        const cashfree = await load({ mode: (import.meta.env.VITE_CASHFREE_MODE === 'production' ? 'production' : 'sandbox') });
-        if (cashfree) { cashfree.checkout({ paymentSessionId: data.paymentSessionId, redirectTarget: '_self' }); }
-      } else {
-        throw new Error('No payment session ID returned');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Payment initiation failed.');
-    }
-    setPaying(false);
   }
 
   async function submitFeedback() {
@@ -546,9 +506,193 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           {selectedAiCount > 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ {selectedAiCount} AI Survey Map{selectedAiCount > 1 ? 's' : ''} included</p>}
           {aiImg && selectedAiCount === 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ AI Survey Map included</p>}
           <div className="bg-amber-50 rounded-lg p-2"><p className="text-xs text-amber-700">💡 Print at cyber café — A4 {orient}</p></div>
-          <button onClick={() => onExitToDashboard ? onExitToDashboard() : window.location.reload()} className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-[Baloo_2] shadow" style={{ height: 52 }}>Return to Dashboard</button>
+          <button onClick={() => { setDonationStage('ask'); setShowDonation(true); }} className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-[Baloo_2] shadow" style={{ height: 52 }}>Return to Dashboard</button>
           <button onClick={() => handleExport()} className="w-full py-2 border-2 border-orange-300 text-orange-600 rounded-xl text-sm font-semibold">📥 Download Again</button>
         </div>
+
+        {/* Donation flow — 3 stages, Hindi-first with English toggle */}
+        {showDonation && (
+          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+
+            {/* Stage 1: Donate ask */}
+            {donationStage === 'ask' && (
+              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+                <div className="bg-gradient-to-br from-orange-500 to-amber-500 px-6 py-6 text-white text-center">
+                  <div className="text-4xl mb-2">🙏</div>
+                  {donationHindi ? (
+                    <>
+                      <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot बिल्कुल मुफ्त है</h3>
+                      <p className="text-sm text-white/85 mt-1">एक छात्र ने अकेले बनाया है</p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot is 100% Free</h3>
+                      <p className="text-sm text-white/85 mt-1">Built solo by a student</p>
+                    </>
+                  )}
+                </div>
+                <div className="px-6 py-5 space-y-3 text-sm text-slate-700">
+                  {donationHindi ? (
+                    <>
+                      <p className="leading-relaxed">
+                        मैं एक <strong>अकेला विद्यार्थी</strong> हूँ — कोई टीम नहीं, कोई फंडिंग नहीं। यह पूरा ऐप मैंने खुद बनाया है।
+                      </p>
+                      <p className="leading-relaxed">
+                        जो नक्शा आपने अभी बनाया, उसे हाथ से बनाने में <strong>3–4 घंटे</strong> लगते और cyber café में <strong>₹50–100</strong> का खर्च होता। NakshaBot ने यह मिनटों में किया।
+                      </p>
+                      <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
+                        <p className="text-xs text-orange-800 font-semibold">सर्वर का खर्च असली है। ₹10 भी बहुत मदद करता है।</p>
+                        <p className="text-[11px] text-orange-600 mt-0.5">हर रुपया इसे सबके लिए मुफ्त रखने में जाता है।</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="leading-relaxed">
+                        I'm a <strong>student who built this entire app solo</strong> — no team, no funding, no company behind it.
+                      </p>
+                      <p className="leading-relaxed">
+                        The map you just downloaded would take <strong>3–4 hours by hand</strong> and cost ₹50–100 at a cyber café. NakshaBot did it in minutes, free, for every enumerator in India.
+                      </p>
+                      <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
+                        <p className="text-xs text-orange-800 font-semibold">Server costs are real. Even ₹10 helps a lot.</p>
+                        <p className="text-[11px] text-orange-600 mt-0.5">Every rupee goes toward keeping NakshaBot free.</p>
+                      </div>
+                    </>
+                  )}
+                  <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
+                    {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
+                  </button>
+                </div>
+                <div className="px-6 pb-6 space-y-2">
+                  <a
+                    href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
+                    onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
+                    className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
+                  >
+                    {donationHindi ? 'UPI से Donate करें' : 'Donate via UPI'}
+                  </a>
+                  <p className="text-center text-[10px] text-slate-400">UPI: 8318810984-1@nyes</p>
+                  <button onClick={() => setDonationStage('appreciate')} className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors">
+                    {donationHindi ? 'बाद में' : 'Maybe later'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Stage 2: Appreciate — heartfelt, zero guilt */}
+            {donationStage === 'appreciate' && (
+              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+                <div className="bg-gradient-to-br from-slate-700 to-slate-800 px-6 py-7 text-white text-center">
+                  <div className="text-5xl mb-3">✨</div>
+                  {donationHindi ? (
+                    <>
+                      <h3 className="text-xl font-black font-[Baloo_2] leading-snug">आपने आज कुछ असली किया।</h3>
+                      <p className="text-sm text-white/80 mt-2 leading-relaxed">घंटों का काम मिनटों में — यही इस ऐप का मकसद है।</p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-xl font-black font-[Baloo_2] leading-snug">You built something real today.</h3>
+                      <p className="text-sm text-white/80 mt-2 leading-relaxed">Hours of work done in minutes — that's what this is for.</p>
+                    </>
+                  )}
+                </div>
+                <div className="px-6 py-5 text-sm text-slate-600 space-y-3">
+                  {donationHindi ? (
+                    <>
+                      <p className="leading-relaxed">
+                        मैंने महीनों इस ऐप को बनाने में लगाए — Class 12 की पढ़ाई के साथ-साथ। ताकि India के Census 2027 के ground workers के लिए काम आसान हो।
+                      </p>
+                      <p className="leading-relaxed text-slate-500">
+                        कोई दबाव नहीं। बस इतना जानिए — आपका हर डाउनलोड बताता है कि यह काम मायने रखता है। धन्यवाद।
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="leading-relaxed">
+                        I spent months building this alongside Class 12 studies — so India's Census 2027 ground workers have tools that actually work.
+                      </p>
+                      <p className="leading-relaxed text-slate-500">
+                        No pressure at all. Just know — every download tells me this work matters. Thank you for using it.
+                      </p>
+                    </>
+                  )}
+                  <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
+                    {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
+                  </button>
+                </div>
+                <div className="px-6 pb-6 space-y-2">
+                  <a
+                    href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
+                    onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
+                    className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
+                  >
+                    {donationHindi ? 'ठीक है, contribute करूँगा — UPI' : 'Okay, I\'ll contribute — UPI'}
+                  </a>
+                  <p className="text-center text-[10px] text-slate-400">UPI: 8318810984-1@nyes</p>
+                  <button onClick={() => setDonationStage('share')} className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors">
+                    {donationHindi ? 'बाद में' : 'Maybe later'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Stage 3: Share on WhatsApp */}
+            {donationStage === 'share' && (
+              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+                <div className="bg-gradient-to-br from-green-600 to-emerald-600 px-6 py-7 text-white text-center">
+                  <div className="text-5xl mb-3">📲</div>
+                  {donationHindi ? (
+                    <>
+                      <h3 className="text-xl font-black font-[Baloo_2] leading-snug">एक छोटी सी मदद?</h3>
+                      <p className="text-sm text-white/85 mt-2 leading-relaxed">जो अभी भी हाथ से नक्शा बना रहे हैं — उन्हें बता दीजिए।</p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-xl font-black font-[Baloo_2] leading-snug">One small favour?</h3>
+                      <p className="text-sm text-white/85 mt-2 leading-relaxed">Know someone still drawing maps by hand? Send them this.</p>
+                    </>
+                  )}
+                </div>
+                <div className="px-6 py-5 text-sm text-slate-600 space-y-3">
+                  {donationHindi ? (
+                    <p className="leading-relaxed">
+                      NakshaBot सबके लिए मुफ्त है। जितने ज़्यादा field workers इसे जानेंगे, Census 2027 का काम उतना बेहतर होगा।
+                    </p>
+                  ) : (
+                    <p className="leading-relaxed">
+                      NakshaBot is free for everyone. The more field workers who use it, the better India's Census 2027 data gets.
+                    </p>
+                  )}
+                  <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 text-xs text-green-900 font-medium leading-relaxed">
+                    "NakshaBot बना देता है HLB नक्शा मिनटों में — Census 2027 के लिए, बिल्कुल मुफ्त।<br/>
+                    👉 examsetu.dev"
+                  </div>
+                  <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
+                    {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
+                  </button>
+                </div>
+                <div className="px-6 pb-6 space-y-2">
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent('NakshaBot बना देता है HLB नक्शा मिनटों में — Census 2027 के लिए, बिल्कुल मुफ्त।\n👉 https://examsetu.dev')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
+                    className="block w-full py-3.5 bg-[#25D366] text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
+                  >
+                    {donationHindi ? 'WhatsApp पर Share करें' : 'Share on WhatsApp'}
+                  </a>
+                  <button
+                    onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
+                    className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors"
+                  >
+                    {donationHindi ? 'Dashboard पर जाएँ' : 'Go to Dashboard'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
 
         {showFeedback && (
           <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -639,22 +783,18 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           <button onClick={() => setZoom(z => Math.max(0.3, z - 0.2))} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors">−</button>
           <button onClick={resetView} className="w-10 h-10 bg-white/90 backdrop-blur rounded-full shadow-lg font-bold flex items-center justify-center text-gray-700 hover:text-orange-600 transition-colors mt-1 text-xs">Reset</button>
           <button
-            onClick={() => isPaid ? handleExport() : setShowPaywall(true)}
-            disabled={exporting || paying}
-            title={isPaid ? 'Download print-ready PDF' : 'Unlock the print (₹5)'}
-            className={`w-10 h-10 rounded-full shadow-lg font-bold flex items-center justify-center mt-3 transition-colors ${exporting || paying ? 'bg-gray-400 text-white' : isPaid ? 'bg-orange-500 text-white' : 'bg-emerald-600 text-white'}`}>
-            {exporting || paying ? '⏳' : isPaid ? '🖨️' : '🔒'}
+            onClick={() => handleExport()}
+            disabled={exporting}
+            title="Download print-ready PDF"
+            className={`w-10 h-10 rounded-full shadow-lg font-bold flex items-center justify-center mt-3 transition-colors ${exporting ? 'bg-gray-400 text-white' : 'bg-orange-500 text-white'}`}>
+            {exporting ? '⏳' : '🖨️'}
           </button>
         </div>
 
         {/* Prominent bottom CTA */}
         {!isDemoMode && !exporting && (
-          <div className="absolute left-0 right-0 bottom-4 z-[55] flex justify-center px-4 pointer-events-none">
-            {!isPaid ? (
-              <button onClick={() => setShowPaywall(true)} disabled={paying} className="pointer-events-auto w-full max-w-md py-4 rounded-2xl font-black text-base shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white">
-                🔓 Unlock Map & HLO Register — <span className="opacity-90">₹5</span>
-              </button>
-            ) : mapData.isLive ? (
+          <div className="absolute left-0 right-0 bottom-[calc(1.2rem+env(safe-area-inset-bottom,0px))] z-[55] flex justify-center px-4 pointer-events-none">
+            {mapData.isLive ? (
               <div className="pointer-events-auto w-full max-w-md flex flex-col gap-2">
                 <button onClick={() => handleExport('map')} className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black text-sm shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2">🖨️ Download Map PDF</button>
                 <div className="flex gap-2">
@@ -769,22 +909,16 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           <div className="px-4 pb-28 space-y-4">
 
             {/* Regen usage counter */}
-            {!isDemoMode && isPaid && (
+            {!isDemoMode && (
               <div className="bg-white/8 border border-white/10 rounded-2xl px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">✨</span>
                   <div>
-                    <p className="text-white text-xs font-bold">AI Generations</p>
-                    <p className="text-gray-400 text-[10px]">{regenUsed} used of {regenAllowance} included</p>
+                    <p className="text-white text-xs font-bold">AI Generations (today)</p>
+                    <p className="text-gray-400 text-[10px]">{regenUsed} used of {regenAllowance} — resets midnight UTC</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {/* Mini pill progress */}
-                  <div className="w-20 h-2 bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-purple-500 to-pink-400 rounded-full transition-all" style={{ width: `${Math.min(100, (regenUsed / regenAllowance) * 100)}%` }} />
-                  </div>
-                  <span className={`text-xs font-black ${regenLimitReached ? 'text-red-400' : 'text-purple-300'}`}>{regenRemaining} left</span>
-                </div>
+                <span className={`text-xs font-black ${regenLimitReached ? 'text-red-400' : 'text-purple-300'}`}>{regenRemaining} left</span>
               </div>
             )}
 
@@ -796,8 +930,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                 <p className="text-xs text-gray-400 text-center max-w-xs">Converts satellite imagery into a clean official survey map in the style of Survey of India topographic sheets.</p>
                 {regenLimitReached ? (
                   <div className="text-center space-y-2">
-                    <p className="text-xs text-red-400">You've used all {regenAllowance} AI generations for this map.</p>
-                    <button onClick={() => setShowPaywall(true)} className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-bold text-sm shadow-lg hover:opacity-90 active:scale-95 transition-all">✨ Buy 5 More for ₹5</button>
+                    <p className="text-xs text-amber-400">Daily limit reached — 6 free AI generations per day.</p>
+                    <p className="text-xs text-gray-500">Your quota resets at midnight UTC.</p>
                   </div>
                 ) : (
                   <button onClick={generateAI} className="px-6 py-3 bg-purple-500 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-purple-600 active:scale-95 transition-all">✨ Generate AI Survey Map</button>
@@ -827,9 +961,6 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   <div className="flex gap-2">
                     {!regenLimitReached && (
                       <button onClick={() => { setAiImg(null); setTimeout(generateAI, 100); }} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">🔄 Regenerate</button>
-                    )}
-                    {regenLimitReached && (
-                      <button onClick={() => setShowPaywall(true)} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-purple-500/30 to-pink-500/30 text-purple-300 border border-purple-500/30">✨ Buy More</button>
                     )}
                   </div>
                 </div>
@@ -928,14 +1059,6 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                 <span className="text-[9px] text-gray-500">{mapData.enumeratorName} | {mapData.district}, {mapData.state}</span>
               </div>
               <div className="absolute top-1 left-1 bg-orange-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded z-10 pointer-events-none">{orient}</div>
-              {activeTab === 'satellite' && <div className="absolute top-1 right-1 bg-blue-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded z-10 pointer-events-none">SAT</div>}
-              {!isPaid && (
-                <div className="absolute inset-0 pointer-events-none flex flex-wrap content-center justify-center opacity-20 select-none z-20 overflow-hidden mix-blend-multiply">
-                  {Array.from({ length: 30 }).map((_, i) => (
-                    <div key={i} className="text-2xl font-black text-slate-900 rotate-[-30deg] m-6 whitespace-nowrap">UNPAID PREVIEW</div>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -978,62 +1101,6 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
             <button onClick={() => { aiPreviewResolve?.(false); setAiPreviewImg(null); setAiPreviewResolve(null); setAiLoading(false); setAiProgress(''); setAiError('Generation cancelled by user.'); }} className="px-6 py-3 rounded-full bg-gray-600 text-white font-bold hover:bg-gray-700">Cancel</button>
             <button onClick={() => { aiPreviewResolve?.(true); setAiPreviewImg(null); setAiPreviewResolve(null); }} className="px-6 py-3 rounded-full bg-purple-500 text-white font-bold hover:bg-purple-600 shadow-lg">Confirm & Send to AI ✨</button>
           </div>
-        </div>
-      )}
-
-      {/* PAYWALL */}
-      {showPaywall && (
-        <div className="fixed inset-0 z-[4000] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-3" onClick={() => !paying && setShowPaywall(false)}>
-          <div className="w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="bg-gradient-to-br from-emerald-600 to-green-600 px-6 pt-6 pb-5 text-white text-center">
-              <div className="text-4xl mb-1">🗺️</div>
-              <h3 className="text-xl font-black font-[Baloo_2]">आपका नक्शा तैयार है!</h3>
-              <p className="text-sm text-white/90">Unlock the print-ready PDF for this HLB</p>
-              <div className="mt-3 flex items-end justify-center gap-2">
-                <span className="text-white/70 line-through text-lg">₹10</span>
-                <span className="text-5xl font-black leading-none">₹5</span>
-                <span className="text-white/90 text-sm mb-1">one-time</span>
-              </div>
-            </div>
-            <div className="px-6 py-5 space-y-2.5 text-sm">
-              {[
-                ['☕', <><b>Less than two cups of chai</b></>],
-                ['🖨️', <>Cyber cafés charge <b>₹50–100</b> to draw this by hand</>],
-                ['♾️', <>Re-download & reprint this map <b>unlimited times</b></>],
-                ['✨', <><b>5 AI</b> survey-map generations included</>],
-                ['📄', <>Official Census-2027 format, A4/A3, high-res</>],
-              ].map(([icon, text], i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <span className="text-lg leading-tight">{icon as any}</span>
-                  <span className="text-slate-700 leading-snug">{text as any}</span>
-                </div>
-              ))}
-            </div>
-            <div className="px-6 pb-6 pt-1">
-              <button onClick={() => { setShowPaywall(false); handlePayment(); }} disabled={paying} className="w-full py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-black text-base shadow-lg active:scale-[0.98] transition-all disabled:opacity-60">
-                {paying ? 'Opening payment…' : 'Get it now → Pay ₹5'}
-              </button>
-              <p className="text-center text-[11px] text-slate-400 mt-3">🔒 Secure UPI / card payment via Cashfree</p>
-              <button onClick={() => setShowPaywall(false)} disabled={paying} className="w-full mt-1 py-2 text-xs text-slate-400 font-semibold">Maybe later</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CELEBRATION */}
-      {showCelebrate && (
-        <div className="fixed inset-0 z-[4500] bg-gradient-to-b from-emerald-600 to-green-700 flex flex-col items-center justify-center p-6 text-center text-white overflow-y-auto">
-          <div className="text-7xl mb-3 animate-bounce">🎉</div>
-          <h2 className="text-3xl font-black font-[Baloo_2] mb-1">Payment Successful!</h2>
-          <p className="text-base text-white/90 mb-1">धन्यवाद! आपका नक्शा अनलॉक हो गया है</p>
-          <p className="text-sm text-white/80 mb-6">HLB {mapData.hlbNumber || '—'} · ✨ 5 AI generations included</p>
-          <div className="w-full max-w-xs space-y-3">
-            <button onClick={() => { setShowCelebrate(false); handleExport('map'); }} disabled={exporting} className="w-full py-4 rounded-2xl bg-white text-green-700 font-black text-base shadow-xl active:scale-[0.98] transition-all disabled:opacity-70">
-              {exporting ? 'Preparing…' : mapData.isLive ? '⬇️ Download Map PDF' : '⬇️ Download your PDF'}
-            </button>
-            <button onClick={() => setShowCelebrate(false)} className="w-full py-3 rounded-2xl bg-white/15 text-white font-bold border border-white/30 active:scale-[0.98] transition-all">View / edit the map first</button>
-          </div>
-          <p className="text-[11px] text-white/70 mt-6 max-w-xs">You can re-download this map any time — it stays in the "Paid" section of your dashboard.</p>
         </div>
       )}
     </div>

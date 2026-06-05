@@ -127,7 +127,7 @@ async function run() {
           const title = document.querySelector('title')?.textContent || '';
           const canonical = document.querySelector('link[rel="canonical"]')?.href || '';
           // Homepage is fine as-is; state pages must have their slug in canonical
-          return title.length > 10 && (canonical.includes('examsetu.dev') || canonical.includes('nakshabot.in'));
+          return title.length > 10 && canonical.includes('examsetu.dev');
         },
         { timeout: 5000 }
       ).catch(() => console.warn(`  ⚠️ Helmet may not have updated for ${route}`));

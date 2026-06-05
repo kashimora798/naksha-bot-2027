@@ -62,4 +62,30 @@ describe('placeHousesInBlock', () => {
       expect(edges.some(v => v.lat === h.lat && v.lng === h.lng)).toBe(false);
     }
   });
+
+  it('places houses across both legs of an L-shaped block', () => {
+    // L-shape block: horizontal leg on bottom, vertical leg on left.
+    // Vertical neck: lat [0.0003, 0.001], lng [0, 0.0003]
+    // Horizontal leg: lat [0, 0.0003], lng [0.0003, 0.001]
+    const lShape: Block = {
+      id: 'lshape', label: 'L', north: 0.001, south: 0, west: 0, east: 0.001,
+      points: [B(0, 0), B(0.001, 0), B(0.001, 0.0003), B(0.0003, 0.0003), B(0.0003, 0.001), B(0, 0.001)],
+    };
+
+    const houses = placeHousesInBlock(lShape, { count: 8, type: 'pucca_house', layout: 'grid' });
+    expect(houses.length).toBe(8);
+
+    // Verify all are inside the L-shape
+    for (const h of houses) {
+      expect(pointInPolygon({ lat: h.lat, lng: h.lng }, lShape.points!)).toBe(true);
+    }
+
+    // Verify some are in the vertical neck (lat > 0.0003)
+    const inNeck = houses.filter(h => h.lat > 0.0003 && h.lng <= 0.0003);
+    // Verify some are in the horizontal leg (lng > 0.0003)
+    const inLeg = houses.filter(h => h.lng > 0.0003 && h.lat <= 0.0003);
+
+    expect(inNeck.length).toBeGreaterThan(0);
+    expect(inLeg.length).toBeGreaterThan(0);
+  });
 });

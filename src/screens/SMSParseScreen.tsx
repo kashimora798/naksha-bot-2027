@@ -6,7 +6,6 @@ interface Props {
   onComplete: (hlb: string, center: Coordinate, district: string, state: string) => void;
   onBack: () => void;
   isDemoMode?: boolean;
-  paymentStatus?: string;
 }
 
 function parseCoordinatesFromURL(text: string): { lat: number; lng: number } | null {
@@ -37,7 +36,7 @@ const DEMO_LOCATIONS = [
   { hlb: '0812', lat: 19.0760, lng: 72.8777, district: 'Mumbai', state: 'Maharashtra' },
 ];
 
-export default function SMSParseScreen({ onComplete, onBack, isDemoMode, paymentStatus }: Props) {
+export default function SMSParseScreen({ onComplete, onBack, isDemoMode }: Props) {
   const [smsText, setSmsText] = useState('');
   const [manualMode, setManualMode] = useState(false);
   const [manualHLB, setManualHLB] = useState('');
@@ -143,12 +142,6 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode, payment
 
         {!isDemoMode && (
         <>
-        {paymentStatus === 'paid' && (
-          <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 flex gap-2 text-xs font-semibold mb-4">
-            <span className="shrink-0 text-sm">⚠️</span>
-            <span>Latitude, longitude, and boundary cannot be changed after payment.</span>
-          </div>
-        )}
         {/* SMS Paste Area */}
         <div>
           <label className="block text-sm font-semibold text-[var(--color-charcoal)] mb-1 font-noto-sans">
@@ -158,9 +151,7 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode, payment
             value={smsText}
             onChange={e => handleSMSTextChange(e.target.value)}
             placeholder="Paste your Census 2027 assignment message here...&#10;&#10;Example: HLB 0455 assigned to you. Location: https://maps.google.com/?q=26.4499,80.3319"
-            className="w-full border border-gray-300 rounded-[12px] px-4 py-3 text-lg focus:border-[var(--color-saffron-container)] focus:outline-none transition-colors font-noto-sans min-h-[120px] bg-white shadow-[var(--shadow-warm-inner)] disabled:opacity-60"
-            rows={5}
-            disabled={paymentStatus === 'paid'}
+            className="w-full border border-gray-300 rounded-[12px] px-4 py-3 text-lg focus:border-[var(--color-saffron-container)] focus:outline-none transition-colors font-noto-sans min-h-[120px] bg-white shadow-[var(--shadow-warm-inner)]"
           />
           <p className="text-xs text-gray-500 mt-1 font-noto-sans">
             Paste your Census 2027 assignment message here
@@ -238,8 +229,7 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode, payment
                   value={manualHLB}
                   onChange={e => setManualHLB(e.target.value.replace(/\D/g, '').slice(0, 4))}
                   placeholder="e.g. 0455"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-3 text-lg focus:border-[var(--color-saffron-container)] focus:outline-none font-jetbrains-mono bg-white disabled:opacity-60"
-                  disabled={paymentStatus === 'paid'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-3 text-lg focus:border-[var(--color-saffron-container)] focus:outline-none font-jetbrains-mono bg-white"
                 />
               </div>
               <div className="flex gap-3">
@@ -250,8 +240,7 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode, payment
                     value={manualLat}
                     onChange={e => setManualLat(e.target.value)}
                     placeholder="26.4499"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-3 text-sm focus:border-[var(--color-saffron-container)] focus:outline-none font-jetbrains-mono bg-white disabled:opacity-60"
-                    disabled={paymentStatus === 'paid'}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-3 text-sm focus:border-[var(--color-saffron-container)] focus:outline-none font-jetbrains-mono bg-white"
                   />
                 </div>
                 <div className="flex-1">
@@ -261,14 +250,13 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode, payment
                     value={manualLng}
                     onChange={e => setManualLng(e.target.value)}
                     placeholder="80.3319"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-3 text-sm focus:border-[var(--color-saffron-container)] focus:outline-none font-jetbrains-mono bg-white disabled:opacity-60"
-                    disabled={paymentStatus === 'paid'}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-3 text-sm focus:border-[var(--color-saffron-container)] focus:outline-none font-jetbrains-mono bg-white"
                   />
                 </div>
               </div>
               <button
                 onClick={handleManualProceed}
-                disabled={!manualHLB.trim() || isNaN(parseFloat(manualLat)) || isNaN(parseFloat(manualLng)) || paymentStatus === 'paid'}
+                disabled={!manualHLB.trim() || isNaN(parseFloat(manualLat)) || isNaN(parseFloat(manualLng))}
                 className="w-full py-4 mt-2 rounded-full bg-[var(--color-saffron-container)] text-white font-bold text-lg font-public-sans hover:bg-[var(--color-saffron)] shadow-[var(--shadow-warm-1)] transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed min-h-[52px]"
               >
                 Open Map →
@@ -285,7 +273,7 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode, payment
               <button
                 key={loc.hlb}
                 onClick={() => handleDemoLocation(loc)}
-                disabled={paymentStatus === 'paid'}
+                disabled={false}
                 className="w-full flex items-center justify-between bg-white border border-gray-100 shadow-[var(--shadow-warm-1)] rounded-[16px] px-5 py-4 hover:border-[var(--color-saffron-container)] hover:bg-[var(--color-warm-paper)] transition-all min-h-[52px] disabled:opacity-65"
               >
                 <div className="text-left">

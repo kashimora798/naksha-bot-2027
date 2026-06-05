@@ -30,7 +30,6 @@ interface Props {
   isDemoMode?: boolean;
   onDemoComplete?: () => void;
   numberingSystem?: 'serpentine' | 'census_u_loop';
-  paymentStatus?: string;
 }
 
 const BC = ['#E74C3C','#3498DB','#27AE60','#F39C12','#9B59B6','#1ABC9C','#E67E22','#2980B9','#C0392B','#16A085','#D35400','#8E44AD'];
@@ -41,7 +40,7 @@ export default function MapWorkspace({
   onUpdateBoundary, onUpdateRoads, onUpdateSymbols, onUpdateBlocks, onUpdateFarmland,
   onUpdateWater, onUpdateForests, onUpdateLandmarks, onUpdateStats, onUpdateOrientation,
   onStepComplete, onJumpToPreview, onUpdateMapData, isDemoMode, onDemoComplete,
-  numberingSystem, paymentStatus
+  numberingSystem
 }: Props) {
   const existingMax = symbols.reduce((m, s) => Math.max(m, s.number ?? 0), 0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -120,7 +119,6 @@ export default function MapWorkspace({
   mapClickRef.current = (coord: Coordinate) => {
     // Boundary drawing by clicking on map
     if (step === 3 && !boundaryClosed) {
-      if (paymentStatus === 'paid') return;
       onUpdateBoundary([...boundaryPins, { ...coord }], false);
       try { navigator.vibrate?.(50); } catch {}
       setShowHelp(false);
@@ -716,13 +714,7 @@ export default function MapWorkspace({
         <div className="text-center py-3">
           <div className="text-green-600 text-3xl mb-1">✓</div>
           <p className="text-sm font-semibold text-[var(--color-charcoal)]">Boundary set · ~{areaT}</p>
-          {paymentStatus === 'paid' ? (
-            <p className="text-xs text-red-600 font-semibold mt-2">
-              ⚠️ Latitude, longitude, and boundary cannot be changed after payment.
-            </p>
-          ) : (
-            <p className="text-xs text-gray-500 mt-1">Tap Continue, or reopen to adjust corners.</p>
-          )}
+          <p className="text-xs text-gray-500 mt-1">Tap Continue, or reopen to adjust corners.</p>
         </div>
       </Sheet>
     );
@@ -730,22 +722,14 @@ export default function MapWorkspace({
     return (
       <Sheet icon="📍" title="Draw Boundary" status={`${boundaryPins.length}/4 pins`}
         footer={
-          paymentStatus === 'paid' ? null : (
             <div className="flex gap-2">
               <button onClick={dropPin} className="flex-1 min-h-[52px] rounded-full font-bold text-white bg-[var(--color-saffron-container)] hover:bg-[var(--color-saffron)] shadow-[var(--shadow-warm-1)] active:scale-[0.97] transition-all">📍 Drop Pin</button>
               <button onClick={closePoly} disabled={!ready} className={`flex-1 min-h-[52px] rounded-full font-bold text-white active:scale-[0.97] transition-all ${ready ? 'bg-[var(--color-india-green)] shadow-[var(--shadow-warm-1)]' : 'bg-gray-300 cursor-not-allowed'}`}>Close →</button>
             </div>
-          )
-        }>
-        {paymentStatus === 'paid' && (
-          <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 flex gap-2 text-xs font-semibold mb-3">
-            <span className="shrink-0 text-sm">⚠️</span>
-            <span>Latitude, longitude, and boundary cannot be changed after payment.</span>
-          </div>
-        )}
+          }>
         <p className="text-xs text-gray-500 font-mono text-center mb-2">{cross.lat.toFixed(5)}°N {cross.lng.toFixed(5)}°E</p>
         <p className="text-xs text-gray-600 text-center mb-3">Pan the map so the crosshair sits on a corner, then tap <strong>Drop Pin</strong>. Add at least 4 corners, then <strong>Close</strong>.</p>
-        {boundaryPins.length>0 && paymentStatus !== 'paid' && <button onClick={undoPin} className="w-full py-2.5 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 active:scale-[0.98]">↩ Undo last pin</button>}
+        {boundaryPins.length>0 && <button onClick={undoPin} className="w-full py-2.5 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600 active:scale-[0.98]">↩ Undo last pin</button>}
       </Sheet>
     );
   }

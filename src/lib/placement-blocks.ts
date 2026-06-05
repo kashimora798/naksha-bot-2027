@@ -48,6 +48,22 @@ export function minEdgeDistM(p: Coordinate, ring: Coordinate[]): number {
   return best;
 }
 
+/** Shortest distance (m) from point p to the nearest road segment. */
+export function minRoadDistM(p: Coordinate, roads: RoadFeature[]): number {
+  const mLat = M_PER_DEG_LAT, mLng = mPerDegLng(p.lat);
+  let best = Infinity;
+  for (const rd of roads) {
+    if (!rd.coords || rd.coords.length < 2) continue;
+    for (let i = 0; i < rd.coords.length - 1; i++) {
+      const a = rd.coords[i], b = rd.coords[i + 1];
+      const ax = (a.lng - p.lng) * mLng, ay = (a.lat - p.lat) * mLat;
+      const bx = (b.lng - p.lng) * mLng, by = (b.lat - p.lat) * mLat;
+      best = Math.min(best, segDistToOrigin(ax, ay, bx, by));
+    }
+  }
+  return best;
+}
+
 /** Bearing (deg) of the polygon's longest edge — the "road frontage" direction. */
 export function longestEdgeBearing(ring: Coordinate[]): number {
   let best = 0, bestLen = -1;
@@ -71,11 +87,13 @@ export function longestEdgeBearing(ring: Coordinate[]): number {
  * parallel to roads).
  *
  * Dynamic spacing: the cell size is seeded from the AVAILABLE area (block minus
- * exclusions) and shrunk until `count` points fit. Every point is kept a margin
+ * exclusions) and shrinks until `count` points fit. Every point is kept a margin
  * inside the block edge AND clear of every exclusion polygon, so houses never
  * straddle a road/boundary or land inside a marked field.
  */
-function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, exclusions: Coordinate[][]): { points: Coordinate[]; cellMeters: number } {
+function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, exclusions: Coordinate[][], layout: LayoutMode): { points: Coordinate[]; cellMeters: number };
+function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, exclusions: Coordinate[][], layout: LayoutMode, roads?: RoadFeature[], roadBufferMeters?: number): { points: Coordinate[]; cellMeters: number };
+function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, exclusions: Coordinate[][], layout: LayoutMode, roads?: RoadFeature[], roadBufferMeters?: number): { points: Coordinate[]; cellMeters: number } {
   const c = ring.reduce((a, p) => ({ lat: a.lat + p.lat / ring.length, lng: a.lng + p.lng / ring.length }), { lat: 0, lng: 0 });
   const mLat = M_PER_DEG_LAT, mLng = mPerDegLng(c.lat);
   const th = (bearingDeg * Math.PI) / 180;
@@ -94,24 +112,19 @@ function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, e
   const uMin = Math.min(...uv.map(p => p.u)), uMax = Math.max(...uv.map(p => p.u));
   const vMin = Math.min(...uv.map(p => p.v)), vMax = Math.max(...uv.map(p => p.v));
 
-  const bboxArea = Math.max(1, (uMax - uMin) * (vMax - vMin));
   const excludedArea = exclusions.reduce((s, ex) => s + (ex.length >= 3 ? polygonArea(ex) : 0), 0);
   const availArea = Math.max(1, polygonArea(ring) - excludedArea);
-  const fillRatio = Math.max(0.15, Math.min(1, availArea / bboxArea));
 
-  const initialCell = Math.sqrt(bboxArea / Math.max(1, count / fillRatio)) * 1.35;
-  const minCellAllowed = 3.5;
+  const targetSpacing = Math.sqrt(availArea / Math.max(1, count));
+  const gridStep = Math.max(1.2, Math.min(15.0, targetSpacing / 4.5));
 
-  let low = minCellAllowed;
-  let high = Math.max(minCellAllowed + 1.0, initialCell);
-  let bestCell = minCellAllowed;
-  let bestPts: { p: Coordinate; u: number; v: number }[] = [];
-
-  const EDGE_MARGIN = 1.8;
+  const roadBuf = (roads && roadBufferMeters) ? roadBufferMeters : 0;
 
   const usable = (p: Coordinate, margin: number) => {
     if (!pointInPolygon(p, ring)) return false;
     if (minEdgeDistM(p, ring) < margin) return false;
+    // Keep symbols clear of roads
+    if (roadBuf > 0 && roads && minRoadDistM(p, roads) < roadBuf) return false;
     for (const ex of exclusions) {
       if (ex.length < 3) continue;
       if (pointInPolygon(p, ex)) return false;
@@ -120,56 +133,171 @@ function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, e
     return true;
   };
 
-  const getPointsForCell = (cellSize: number) => {
-    const margin = Math.min(cellSize * 0.48, EDGE_MARGIN + cellSize * 0.08);
-    const pts: { p: Coordinate; u: number; v: number }[] = [];
-    for (let v = vMin; v <= vMax + 0.01; v += cellSize) {
-      for (let u = uMin; u <= uMax + 0.01; u += cellSize) {
+  interface Candidate {
+    p: Coordinate;
+    u: number;
+    v: number;
+    edgeDist: number;
+    exDist: number;
+  }
+
+  // Find candidate points using a dynamic initial edge margin
+  let candidates: Candidate[] = [];
+  
+  for (const m of [0.8, 0.4, 0.0]) {
+    candidates = [];
+    for (let v = vMin; v <= vMax + 0.01; v += gridStep) {
+      for (let u = uMin; u <= uMax + 0.01; u += gridStep) {
         const p = toLatLng(u, v);
-        if (usable(p, margin)) pts.push({ p, u, v });
+        if (usable(p, m)) {
+          const edgeDist = minEdgeDistM(p, ring);
+          let exDist = Infinity;
+          for (const ex of exclusions) {
+            if (ex.length >= 3) {
+              exDist = Math.min(exDist, minEdgeDistM(p, ex));
+            }
+          }
+          candidates.push({ p, u, v, edgeDist, exDist });
+        }
       }
     }
-    return pts;
-  };
-
-  // Binary search for the maximum cell spacing that fits the count
-  for (let step = 0; step < 12; step++) {
-    const mid = (low + high) / 2;
-    const pts = getPointsForCell(mid);
-    if (pts.length >= count) {
-      bestCell = mid;
-      bestPts = pts;
-      low = mid; // Try larger cell spacing
-    } else {
-      high = mid; // Try smaller cell spacing
+    if (candidates.length >= count) {
+      break;
     }
   }
 
-  if (bestPts.length < count) {
-    bestCell = minCellAllowed;
-    bestPts = getPointsForCell(minCellAllowed);
-  }
-
-  // Row-major sorting order: rows top→bottom (descending v), snake within each row
-  const rowOf = (v: number) => Math.round((vMax - v) / bestCell);
-  bestPts.sort((a, b) => {
+  // Sort candidates in serpentine row-major order
+  const rowOf = (v: number) => Math.round((vMax - v) / gridStep);
+  candidates.sort((a, b) => {
     const ra = rowOf(a.v), rb = rowOf(b.v);
     if (ra !== rb) return ra - rb;
     return ra % 2 === 0 ? a.u - b.u : b.u - a.u;
   });
 
-  return { points: bestPts.slice(0, count).map(x => x.p), cellMeters: bestCell };
+  const selectPoints = (cand: Candidate[], dist: number, maxCount: number, layoutMode: LayoutMode) => {
+    let selected: Candidate[] = [];
+    const reqMargin = Math.max(3.5, Math.min(5.0, dist * 0.42));
+    
+    // For 'rows' (along roads), try to restrict to points close to block edges.
+    const maxEdgeDist = layoutMode === 'rows' ? Math.max(reqMargin + 5.0, 7.5) : Infinity;
+    const distYScale = layoutMode === 'serpentine' ? 1.35 : 1.0;
+
+    for (const c of cand) {
+      if (c.edgeDist < reqMargin || c.exDist < reqMargin) {
+        continue;
+      }
+      if (layoutMode === 'rows' && c.edgeDist > maxEdgeDist) {
+        continue;
+      }
+      let ok = true;
+      for (const s of selected) {
+        const dx = c.u - s.u;
+        const dy = (c.v - s.v) * distYScale;
+        if (dx * dx + dy * dy < dist * dist) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) {
+        selected.push(c);
+        if (selected.length === maxCount) {
+          break;
+        }
+      }
+    }
+
+    // Fallback for rows layout: if we couldn't fit the requested count, do a standard select
+    if (layoutMode === 'rows' && selected.length < maxCount) {
+      selected = [];
+      for (const c of cand) {
+        if (c.edgeDist < reqMargin || c.exDist < reqMargin) {
+          continue;
+        }
+        let ok = true;
+        for (const s of selected) {
+          const dx = c.u - s.u;
+          const dy = c.v - s.v;
+          if (dx * dx + dy * dy < dist * dist) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) {
+          selected.push(c);
+          if (selected.length === maxCount) {
+            break;
+          }
+        }
+      }
+    }
+
+    return selected;
+  };
+
+  const minCellAllowed = 5.0;
+  let low = minCellAllowed;
+  let high = Math.max(minCellAllowed + 1.0, Math.hypot(uMax - uMin, vMax - vMin));
+  let bestD = minCellAllowed;
+  let bestPts: Candidate[] = [];
+
+  // Binary search for maximum spacing D that fits `count` points
+  if (candidates.length > 0) {
+    for (let step = 0; step < 15; step++) {
+      const mid = (low + high) / 2;
+      const selected = selectPoints(candidates, mid, count, layout);
+      if (selected.length >= count) {
+        bestD = mid;
+        bestPts = selected;
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+
+    if (bestPts.length < count) {
+      // Fallback: allow the margin to shrink down to 1.5m to guarantee we fit them, and spacing to 4.5m
+      bestD = 4.5;
+      const fallbackSelect = (cand: Candidate[], dist: number, maxCount: number) => {
+        const selected: Candidate[] = [];
+        const reqMargin = 3.0;
+        for (const c of cand) {
+          if (c.edgeDist < reqMargin || c.exDist < reqMargin) {
+            continue;
+          }
+          let ok = true;
+          for (const s of selected) {
+            const dx = c.u - s.u;
+            const dy = c.v - s.v;
+            if (dx * dx + dy * dy < dist * dist) {
+              ok = false;
+              break;
+            }
+          }
+          if (ok) {
+            selected.push(c);
+            if (selected.length === maxCount) {
+              break;
+            }
+          }
+        }
+        return selected;
+      };
+      bestPts = fallbackSelect(candidates, minCellAllowed, count);
+    }
+  }
+
+  return { points: bestPts.map(x => x.p), cellMeters: bestD };
 }
 
 /**
  * The placement grid for a block (slot centres + cell size), so the UI can
  * draw the grid the houses snap to. `count` sizes the lattice density.
  */
-export function blockGrid(block: Block, count: number, layout: LayoutMode, exclusions: Coordinate[][] = []): { centers: Coordinate[]; cellMeters: number } {
+export function blockGrid(block: Block, count: number, layout: LayoutMode, exclusions: Coordinate[][] = [], roads?: RoadFeature[], roadBufferMeters?: number): { centers: Coordinate[]; cellMeters: number } {
   const ring = blockPoints(block);
   if (ring.length < 3 || count <= 0) return { centers: [], cellMeters: 0 };
   const bearing = longestEdgeBearing(ring);
-  const { points, cellMeters } = latticeInBlock(ring, count, bearing, exclusions);
+  const { points, cellMeters } = latticeInBlock(ring, count, bearing, exclusions, layout, roads, roadBufferMeters);
   return { centers: points, cellMeters };
 }
 
@@ -185,7 +313,8 @@ export function placeGroupsInBlock(block: Block, groups: SymGroup[], opts: { lay
   const ring = blockPoints(block);
   if (ring.length < 3) return [];
   const bearing = longestEdgeBearing(ring);
-  const { points } = latticeInBlock(ring, total, bearing, opts.exclusions ?? []);
+  const ROAD_BUFFER = 3; // metres from road centreline — symbols must stay this clear
+  const { points } = latticeInBlock(ring, total, bearing, opts.exclusions ?? [], opts.layout, opts.roads, ROAD_BUFFER);
   const seq: { type: SymbolType; unitCount?: number }[] = [];
   for (const g of groups) for (let i = 0; i < Math.max(0, g.count); i++) seq.push({ type: g.type, unitCount: g.unitCount });
   return points.map((p, i) => {
@@ -212,7 +341,8 @@ export function placeHousesInBlock(block: Block, opts: PlaceOpts): PlacedSymbol[
   const ring = blockPoints(block);
   if (ring.length < 3) return [];
   const bearing = longestEdgeBearing(ring);
-  const { points } = latticeInBlock(ring, count, bearing, opts.exclusions ?? []);
+  const ROAD_BUFFER = 3; // metres from road centreline
+  const { points } = latticeInBlock(ring, count, bearing, opts.exclusions ?? [], layout, opts.roads, ROAD_BUFFER);
   return points.map(p => ({
     id: crypto.randomUUID(),
     symbol_type: type,

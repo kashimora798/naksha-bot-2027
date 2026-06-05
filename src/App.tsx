@@ -35,7 +35,6 @@ export default function App() {
   const [mapData, setMapData] = useState<MapData>(DEFAULT_MAP_DATA);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [justPaid, setJustPaid] = useState(false); // show the thank-you screen once after a successful payment
   const [userProfile, setUserProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
@@ -82,19 +81,28 @@ export default function App() {
         if (savedStep) setStep(Number(savedStep));
         // We will fetch from supabase in a moment, but load from local storage instantly to avoid flicker
         if (savedMapData) {
-          try { setMapData(JSON.parse(savedMapData)); } catch(e) {}
+          try {
+            const parsed = JSON.parse(savedMapData);
+            setMapData(parsed);
+            if ((parsed as any).mode === 'canvas') setPreviewSource(11);
+          } catch(e) {}
         }
         // Fetch latest from DB
         supabase.from('projects').select('*').eq('id', savedProjectId).single().then(({data}) => {
           if (data) {
             // Replace entirely with DB data (don't merge with stale localStorage)
             setMapData({ ...data.data, projectId: data.id, paymentStatus: data.payment_status });
+            if ((data.data as any)?.mode === 'canvas') setPreviewSource(11);
           }
         });
       } else if (savedStep && Number(savedStep) > 0) {
         setStep(Number(savedStep));
         if (savedMapData) {
-          try { setMapData(JSON.parse(savedMapData)); } catch(e) {}
+          try {
+            const parsed = JSON.parse(savedMapData);
+            setMapData(parsed);
+            if ((parsed as any).mode === 'canvas') setPreviewSource(11);
+          } catch(e) {}
         }
       }
     }
@@ -159,7 +167,6 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const isPaymentSuccess = params.get('payment') === 'success';
     const paymentProjectId = params.get('project_id');
-    const paymentKind = params.get('kind');
     const livePreviewId = params.get('live_preview_id');
 
     if (livePreviewId) {
@@ -223,131 +230,18 @@ export default function App() {
       });
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (isPaymentSuccess && paymentProjectId) {
-      // Cashfree redirected back here. We MUST wait for the auth session to fully
-      // restore after the full-page redirect before calling any Supabase function
-      // or RLS-protected query. Using onAuthStateChange guarantees we have a valid
-      // session, unlike getSession() which may return null during hydration.
-      (async () => {
-        // Step 1: Wait for a valid auth session (up to 15 seconds)
-        let authSession: any = null;
-        const { data: { session: immediateSession } } = await supabase.auth.getSession();
-        if (immediateSession?.access_token) {
-          authSession = immediateSession;
+      // Legacy redirect URL from old Cashfree flow — just load the project
+      supabase.from('projects').select('*').eq('id', paymentProjectId).maybeSingle().then(({ data }) => {
+        if (data) {
+          setProjectId(data.id);
+          setMapData({ ...DEFAULT_MAP_DATA, ...data.data, projectId: data.id, exportCount: data.export_count });
+          setStep(8);
         } else {
-          // Session not ready yet — wait for onAuthStateChange to fire
-          authSession = await new Promise<any>((resolve) => {
-            const timeout = setTimeout(() => resolve(null), 15000);
-            const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_evt, sess) => {
-              if (sess?.access_token) {
-                clearTimeout(timeout);
-                authSub.unsubscribe();
-                resolve(sess);
-              }
-            });
-          });
-        }
-
-        if (!authSession) {
-          console.error('Auth session not available after payment redirect');
-          alert('Session expired — please sign in again to access your download.');
           setStep(0);
-          return;
         }
-
-        // Step 2: Verify payment server-side (with retries)
-        let isPaid = false;
-        try {
-          for (let attempt = 0; attempt < 4; attempt++) {
-            const { data, error } = await supabase.functions.invoke('verify-payment', {
-              body: { projectId: paymentProjectId, kind: paymentKind === 'live' ? 'live' : 'project' },
-            });
-            if (!error && data?.paid) {
-              isPaid = true;
-              break;
-            }
-            await new Promise(r => setTimeout(r, 2000)); // 2s between retries
-          }
-        } catch (e) { console.error('verify-payment failed', e); }
-
-        if (paymentKind === 'live') {
-          // Load live session from IndexedDB
-          import('./lib/idb').then(({ idbStore }) => {
-            idbStore.getSession(paymentProjectId).then((session) => {
-              if (!session) {
-                alert('Payment verified! But we could not find your live session locally.');
-                setStep(0);
-                return;
-              }
-              Promise.all([
-                idbStore.getSymbolsForSession(paymentProjectId),
-                idbStore.getSegmentsForSession(paymentProjectId)
-              ]).then(([symbols, segments]) => {
-                const df = session.drawn_features ? JSON.parse(session.drawn_features) : { blocks: [], farmlandBlocks: [], forests: [], waterBodies: [], landuseAreas: [], landmarks: [] };
-                let poly = null;
-                if (session.polygon_geojson) try { poly = JSON.parse(session.polygon_geojson); } catch(e){}
-                const center = poly && poly.geometry?.coordinates[0][0] ? { lat: poly.geometry.coordinates[0][0][1], lng: poly.geometry.coordinates[0][0][0] } : DEFAULT_MAP_DATA.center;
-                
-                const roadFeatures = segments.filter(seg => seg.points.length >= 2).map(seg => ({
-                   id: seg.segment_id,
-                   coords: seg.points,
-                   highway: seg.road_type || 'residential',
-                   confirmed: true,
-                   source: 'user' as const,
-                }));
-
-                setMapData({
-                  ...DEFAULT_MAP_DATA,
-                  hlbNumber: session.hlb_number || 'LIVE',
-                  center: center,
-                  symbols: symbols as any[],
-                  roads: roadFeatures,
-                  blocks: df.blocks,
-                  farmlandBlocks: df.farmlandBlocks,
-                  forests: df.forests,
-                  waterBodies: df.waterBodies,
-                  landuseAreas: df.landuseAreas,
-                  landmarks: df.landmarks,
-                  boundaryPins: poly ? poly.geometry.coordinates[0].map((c: any) => ({ lat: c[1], lng: c[0] })) : [],
-                  boundaryClosed: true,
-                  numberingComplete: true,
-                  projectId: paymentProjectId,
-                  isLive: true,
-                  paymentStatus: isPaid ? 'paid' : 'unpaid'
-                });
-                setJustPaid(isPaid);
-                setStep(8);
-              });
-            });
-          });
-        } else {
-          // Step 3: Load the project (with retries, 2s apart)
-          let data: any = null;
-          for (let i = 0; i < 6 && !data; i++) {
-            const r = await supabase.from('projects').select('*').eq('id', paymentProjectId).maybeSingle();
-            data = r.data;
-            if (!data) await new Promise(res => setTimeout(res, 2000));
-          }
-          if (data) {
-            setProjectId(data.id);
-            setMapData({
-              ...DEFAULT_MAP_DATA,
-              ...data.data,
-              projectId: data.id,
-              paymentStatus: data.payment_status,
-              exportCount: data.export_count,
-            });
-             setJustPaid(data.payment_status === 'paid');
-            setStep(8); // Always land on the preview/download screen.
-          } else {
-            console.error('Could not load project after payment');
-            alert('Payment verified! But we could not load your map. Please go to Dashboard and open your project.');
-            setStep(0);
-          }
-        }
-      })();
+      });
       window.history.replaceState({}, document.title, window.location.pathname);
     } else if (isPaymentSuccess) {
-      alert('Payment successful! Your export is now unlocked.');
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
@@ -592,7 +486,7 @@ export default function App() {
       )}
       <div className="flex-1 relative overflow-hidden min-h-0">
         <ErrorBoundary>
-        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} paymentStatus={mapData.paymentStatus} /></div>}
+        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} /></div>}
         {/* MapWorkspace is kept permanently mounted (never conditionally removed)
             once the user enters the map flow. We toggle visibility with display:none
             so the Leaflet map instance stays alive across tab switches, preventing
@@ -632,7 +526,6 @@ export default function App() {
             isDemoMode={isDemoMode}
             onDemoComplete={() => setIsDemoMode(false)}
             numberingSystem={mapData.numberingSystem}
-            paymentStatus={mapData.paymentStatus}
           />}
         </div>
         {(step === 7) && (
@@ -651,10 +544,9 @@ export default function App() {
             <PreviewScreen
               mapData={mapData}
               isDemoMode={isDemoMode}
-              justPaid={justPaid}
               onBack={() => setStep(previewSource)}
               onUpdateMapData={update}
-              onExitToDashboard={() => { forceSave(); setJustPaid(false); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
+              onExitToDashboard={() => { forceSave(); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
             />
           </div>
         )}

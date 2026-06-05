@@ -40,13 +40,13 @@ export function blockPoints(b: Block): Coordinate[] {
   ];
 }
 
-function polygonToBlock(ring: Position[], label: string, autoDetected: boolean): Block {
+function polygonToBlock(ring: Position[], label: string, autoDetected: boolean, extra?: Partial<Block>): Block {
   // Drop the closing duplicate vertex if present
   const open = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
     ? ring.slice(0, -1) : ring;
   const pts = open.map(toCoord);
   const bb = getBbox(pts);
-  return { id: crypto.randomUUID(), label, points: pts, ...bb, autoDetected };
+  return { id: crypto.randomUUID(), label, points: pts, ...bb, autoDetected, ...extra };
 }
 
 /**
@@ -161,7 +161,8 @@ export function mergeBlocks(a: Block, b: Block): Block | null {
     const pb = turf.polygon([closeRing(blockPoints(b).map(toLngLat))]);
     const u = turf.union(turf.featureCollection([pa, pb]));
     if (!u || u.geometry.type !== 'Polygon') return null;
-    return polygonToBlock((u.geometry as Polygon).coordinates[0], a.label, false);
+    // Carry forward symbolSizeMultiplier from the first source block
+    return polygonToBlock((u.geometry as Polygon).coordinates[0], a.label, false, { symbolSizeMultiplier: a.symbolSizeMultiplier });
   } catch {
     return null;
   }
@@ -223,7 +224,7 @@ export function splitBlock(b: Block, cutLine: Coordinate[]): Block[] {
       
     if (rings.length < 2) return [b]; // didn't cut it into pieces
     
-    return rings.map((ring, i) => polygonToBlock(ring, `${b.label}${i + 1}`, false));
+    return rings.map((ring, i) => polygonToBlock(ring, `${b.label}${i + 1}`, false, { symbolSizeMultiplier: b.symbolSizeMultiplier }));
   } catch (err) {
     console.error('splitBlock error:', err);
     return [b];

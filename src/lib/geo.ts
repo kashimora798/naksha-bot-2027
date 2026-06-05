@@ -1,5 +1,5 @@
 import type { Coordinate, SymbolType, Block, PlacedSymbol, FarmlandBlock, WaterBody, ForestArea, LanduseArea, Landmark, AreaStats } from '../types';
-import { isHouseType } from '../types';
+import { isHouseType, isNumberableSymbol } from '../types';
 import * as turf from '@turf/turf';
 
 export function getBbox(coords: Coordinate[]): { south: number; west: number; north: number; east: number } {
@@ -389,7 +389,7 @@ export function generateSerpentinePath(
   blocks?: Block[],
   numberingSystem?: 'serpentine' | 'census_u_loop'
 ): Coordinate[] {
-  const houses = symbols.filter(s => isHouseType(s.symbol_type));
+  const houses = symbols.filter(s => isNumberableSymbol(s.symbol_type));
   if (!houses.length) return [];
 
   if (blocks && blocks.length > 0) {
@@ -439,7 +439,7 @@ export function getSerpentineOrder(
   numberingSystem?: 'serpentine' | 'census_u_loop'
 ): string[] {
   const path = generateSerpentinePath(symbols, blocks, numberingSystem);
-  const houses = symbols.filter(s => isHouseType(s.symbol_type));
+  const houses = symbols.filter(s => isNumberableSymbol(s.symbol_type));
   const seen = new Set<string>();
   const order: string[] = [];
   for (const p of path) {

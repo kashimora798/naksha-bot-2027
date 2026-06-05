@@ -108,6 +108,8 @@ export interface Block {
   houseType?: SymbolType;
   /** True if produced by road-intersection detection (vs hand-edited/merged/split). */
   autoDetected?: boolean;
+  /** Sizing multiplier for symbols in this block. */
+  symbolSizeMultiplier?: number;
 }
 
 export interface FarmlandBlock {
@@ -197,6 +199,9 @@ export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; is
 ];
 
 export function isHouseType(t: SymbolType): boolean { return SYMBOL_DEFS.find(d => d.type === t)?.isHouse ?? false; }
+export function isNumberableSymbol(t: SymbolType): boolean {
+  return t !== 'well' && t !== 'pond' && t !== 'farmland';
+}
 export function isPakkaRoad(h: string): boolean { return ['motorway','trunk','primary','secondary'].includes(h); }
 export function getUnitCount(s: PlacedSymbol): number {
   if (s.symbol_type === 'apartment' && s.unit_count && s.unit_count > 1) return s.unit_count;

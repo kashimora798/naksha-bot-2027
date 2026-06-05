@@ -42,6 +42,8 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [showDonate, setShowDonate] = useState(false);
+  const [donateHindi, setDonateHindi] = useState(true);
 
   useEffect(() => {
     if (!localStorage.getItem('naksha_demo_done')) {
@@ -146,6 +148,12 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => { setDonateHindi(true); setShowDonate(true); }}
+              className="px-3 sm:px-4 py-2 bg-orange-50 border border-orange-200 rounded-xl text-sm font-semibold text-orange-600 hover:bg-orange-100 transition-colors flex items-center gap-1.5"
+            >
+              <span>🙏</span><span className="hidden sm:inline">Support</span>
+            </button>
             <button
               onClick={() => setShowProfile(true)}
               className="px-3 sm:px-4 py-2 bg-[var(--color-warm-paper)] border border-[var(--color-saffron)]/15 rounded-xl text-sm font-semibold text-gray-700 hover:bg-[var(--color-saffron)]/5 transition-colors flex items-center gap-1.5"
@@ -308,7 +316,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               onClick={() => onLoadProject(project.id, { ...project.data, paymentStatus: project.payment_status, exportCount: project.export_count })}
               className={`bg-white rounded-2xl p-5 shadow-[var(--shadow-warm-1)] cursor-pointer hover:shadow-[var(--shadow-warm-2)] hover:-translate-y-0.5 transition-all group relative overflow-hidden border ${isCanvas ? 'border-emerald-100' : 'border-[var(--color-saffron)]/10'}`}
             >
-              <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${project.payment_status === 'paid' ? 'bg-green-500' : isCanvas ? 'bg-emerald-400' : 'bg-[var(--color-india-green)]'}`} />
+              <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${isCanvas ? 'bg-emerald-400' : 'bg-[var(--color-india-green)]'}`} />
               <button
                 onClick={(e) => handleDeleteUI(e, project)}
                 className="absolute top-2 right-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all min-h-[36px]"
@@ -327,9 +335,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                 <div className="flex flex-wrap items-center gap-1.5 mb-3">
                   <span className={`text-[11px] font-bold px-2 py-1 rounded-full font-jetbrains-mono ${isCanvas ? 'bg-emerald-50 text-emerald-700' : 'bg-[var(--color-india-green)]/10 text-[var(--color-india-green)]'}`}>{project.data?.blocks?.length || 0} Blocks</span>
                   <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-jetbrains-mono">HLB {project.data?.hlbNumber || '—'}</span>
-                  {project.payment_status === 'paid'
-                    ? <span className="text-[11px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">✓ Paid · tap to download</span>
-                    : <span className="text-[11px] font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full">Draft</span>}
+                  <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-jetbrains-mono">Draft</span>
                 </div>
                 <div className="text-xs text-gray-500 space-y-1 font-jetbrains-mono">
                   <p className="truncate">📍 {project.data?.district || '—'}, {project.data?.state || '—'}</p>
@@ -357,26 +363,11 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                       <button onClick={() => onNewProject(undefined)} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
                     </div>
                   </div>
-                ) : (() => {
-                  const paid = deskProjects.filter((p: any) => p.payment_status === 'paid');
-                  const drafts = deskProjects.filter((p: any) => p.payment_status !== 'paid');
-                  return (
-                    <div className="space-y-6">
-                      {paid.length > 0 && (
-                        <div>
-                          <h3 className="text-xs font-bold text-green-700 uppercase tracking-wide mb-2">✓ Paid — ready to download ({paid.length})</h3>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{paid.map(p => renderCard(p, false))}</div>
-                        </div>
-                      )}
-                      {drafts.length > 0 && (
-                        <div>
-                          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Drafts ({drafts.length})</h3>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{drafts.map(p => renderCard(p, false))}</div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {deskProjects.map((p: any) => renderCard(p, false))}
+                  </div>
+                )}
               </div>
 
               {/* ── Canvas Block Maps ── */}
@@ -471,6 +462,92 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Donation Modal ── */}
+      {showDonate && (
+        <div className="fixed inset-0 z-[4000] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+
+            {/* Header */}
+            <div className="bg-gradient-to-br from-orange-500 to-amber-500 px-6 py-6 text-white text-center relative">
+              <button
+                onClick={() => setShowDonate(false)}
+                className="absolute top-3 right-4 text-white/60 hover:text-white text-xl font-bold leading-none"
+              >×</button>
+              <div className="text-4xl mb-2">🙏</div>
+              {donateHindi ? (
+                <>
+                  <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot बिल्कुल मुफ्त है</h3>
+                  <p className="text-sm text-white/85 mt-1">एक छात्र ने अकेले बनाया</p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot is 100% Free</h3>
+                  <p className="text-sm text-white/85 mt-1">Built solo by a student</p>
+                </>
+              )}
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 text-sm text-slate-700 space-y-3">
+              {donateHindi ? (
+                <>
+                  <p className="leading-relaxed">
+                    मैं एक <strong>अकेला विद्यार्थी</strong> हूँ जिसने यह पूरा ऐप खुद बनाया है — बिना किसी टीम के, बिना किसी फंडिंग के।
+                  </p>
+                  <p className="leading-relaxed">
+                    जो नक्शा आपने अभी बनाया, उसे हाथ से बनाने में <strong>3–4 घंटे</strong> लगते और cyber café में <strong>₹50–100</strong> का खर्च होता। NakshaBot ने यह मिनटों में किया — बिल्कुल मुफ्त।
+                  </p>
+                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
+                    <p className="text-xs text-orange-800 font-semibold">सर्वर खर्च असली है। ₹10 भी बहुत मदद करता है।</p>
+                    <p className="text-[11px] text-orange-600 mt-0.5">हर रुपया इसे सबके लिए मुफ्त रखने में जाता है।</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="leading-relaxed">
+                    I'm a <strong>student who built this entire app solo</strong> — no team, no funding, no company behind it.
+                  </p>
+                  <p className="leading-relaxed">
+                    The map you just made would take <strong>3–4 hours by hand</strong> and cost ₹50–100 at a cyber café. NakshaBot did it in minutes, free, for every enumerator across India.
+                  </p>
+                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
+                    <p className="text-xs text-orange-800 font-semibold">Server costs are real. Even ₹10 goes a long way.</p>
+                    <p className="text-[11px] text-orange-600 mt-0.5">Every rupee keeps NakshaBot free for everyone.</p>
+                  </div>
+                </>
+              )}
+
+              {/* Translate toggle */}
+              <button
+                onClick={() => setDonateHindi(h => !h)}
+                className="w-full py-1.5 text-[11px] text-slate-400 font-medium border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                {donateHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 pb-6 space-y-2">
+              <a
+                href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
+                onClick={() => setShowDonate(false)}
+                className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
+              >
+                {donateHindi ? 'UPI से Donate करें' : 'Donate via UPI'}
+              </a>
+              <p className="text-center text-[10px] text-slate-400">UPI: 8318810984-1@nyes</p>
+              <button
+                onClick={() => setShowDonate(false)}
+                className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors"
+              >
+                {donateHindi ? 'बाद में' : 'Maybe later'}
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
     </div>

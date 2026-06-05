@@ -39,50 +39,73 @@ export function getSymbolSVG(type: SymbolType): string {
 
 export function getSmallSymbolSVG(type: SymbolType, highlight?: boolean, num?: string): string {
   const color = highlight ? '#0066FF' : 'black';
-  const s = 24;
   
+  const isBuilding = type === 'pucca_house' || type === 'kutcha_house' || type === 'apartment' || type === 'non_residential';
+  const isNumberable = type !== 'well' && type !== 'pond' && type !== 'farmland';
+  const isLandmarkWithNum = !isBuilding && isNumberable && !!num;
+
+  const w = 24;
+  const h = isLandmarkWithNum ? 30 : 24;
+
   const drawNum = (yOffset: number = 12.5) => {
     if (!num) return '';
     return `<text x="12" y="${yOffset}" text-anchor="middle" dominant-baseline="middle" font-size="8.5" font-weight="bold" fill="${color}" font-family="sans-serif">${num}</text>`;
   };
 
+  let innerSVG = '';
   switch (type) {
     case 'pucca_house':
-      // Spec: Pucca = square
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(12.5)}</svg>`;
+      innerSVG = `<rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(12.5)}`;
+      break;
     case 'kutcha_house':
-      // Spec: Kutcha = triangle (closed path strokes reliably across renderers)
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><path d="M12 3 L21 20 L3 20 Z" stroke="${color}" stroke-width="1.8" fill="none" stroke-linejoin="round"/>${drawNum(14.5)}</svg>`;
+      innerSVG = `<path d="M12 3 L21 20 L3 20 Z" stroke="${color}" stroke-width="1.8" fill="none" stroke-linejoin="round"/>${drawNum(14.5)}`;
+      break;
     case 'apartment':
-      // Apartment is pucca → square, with floor lines to distinguish in the palette
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="4" y="2" width="16" height="20" stroke="${color}" stroke-width="1.8" fill="none"/><line x1="4" y1="9" x2="20" y2="9" stroke="${color}" stroke-width="1"/><line x1="4" y1="16" x2="20" y2="16" stroke="${color}" stroke-width="1"/><line x1="12" y1="2" x2="12" y2="22" stroke="${color}" stroke-width="1"/>${drawNum(12)}</svg>`;
+      innerSVG = `<rect x="4" y="2" width="16" height="20" stroke="${color}" stroke-width="1.8" fill="none"/><line x1="4" y1="9" x2="20" y2="9" stroke="${color}" stroke-width="1"/><line x1="4" y1="16" x2="20" y2="16" stroke="${color}" stroke-width="1"/><line x1="12" y1="2" x2="12" y2="22" stroke="${color}" stroke-width="1"/>${drawNum(12)}`;
+      break;
     case 'farmland':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" stroke="${color}" stroke-width="1.8" fill="none"/><line x1="2" y1="9" x2="22" y2="9" stroke="${color}" stroke-width="1" stroke-dasharray="3,2"/><line x1="2" y1="14" x2="22" y2="14" stroke="${color}" stroke-width="1" stroke-dasharray="3,2"/><line x1="2" y1="19" x2="22" y2="19" stroke="${color}" stroke-width="1" stroke-dasharray="3,2"/></svg>`;
+      innerSVG = `<rect x="2" y="4" width="20" height="16" stroke="${color}" stroke-width="1.8" fill="none"/><line x1="2" y1="9" x2="22" y2="9" stroke="${color}" stroke-width="1" stroke-dasharray="3,2"/><line x1="2" y1="14" x2="22" y2="14" stroke="${color}" stroke-width="1" stroke-dasharray="3,2"/><line x1="2" y1="19" x2="22" y2="19" stroke="${color}" stroke-width="1" stroke-dasharray="3,2"/>`;
+      break;
     case 'non_residential':
-      // Spec: wholly non-residential pucca = hatched square. Explicit diagonal lines
-      // (clipped to the square) are more robust across webviews than an SVG <pattern>.
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><defs><clipPath id="cp${highlight?'b':'k'}"><rect x="4" y="4" width="16" height="16"/></clipPath></defs><g clip-path="url(#cp${highlight?'b':'k'})"><line x1="4" y1="12" x2="12" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="4" y1="20" x2="20" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="8" y1="20" x2="20" y2="8" stroke="${color}" stroke-width="0.9"/><line x1="16" y1="20" x2="20" y2="16" stroke="${color}" stroke-width="0.9"/></g><rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(12.5)}</svg>`;
+      innerSVG = `<defs><clipPath id="cp${highlight?'b':'k'}"><rect x="4" y="4" width="16" height="16"/></clipPath></defs><g clip-path="url(#cp${highlight?'b':'k'})"><line x1="4" y1="12" x2="12" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="4" y1="20" x2="20" y2="4" stroke="${color}" stroke-width="0.9"/><line x1="8" y1="20" x2="20" y2="8" stroke="${color}" stroke-width="0.9"/><line x1="16" y1="20" x2="20" y2="16" stroke="${color}" stroke-width="0.9"/></g><rect x="4" y="4" width="16" height="16" stroke="${color}" stroke-width="1.8" fill="none"/>${drawNum(12.5)}`;
+      break;
     case 'mosque':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="5" y="14" width="14" height="7" stroke="${color}" stroke-width="1.8" fill="none"/><path d="M5,14 Q5,5 12,3 Q19,5 19,14" stroke="${color}" stroke-width="1.8" fill="none"/></svg>`;
+      innerSVG = `<rect x="5" y="14" width="14" height="7" stroke="${color}" stroke-width="1.8" fill="none"/><path d="M5,14 Q5,5 12,3 Q19,5 19,14" stroke="${color}" stroke-width="1.8" fill="none"/>`;
+      break;
     case 'temple':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="5" y="14" width="14" height="7" stroke="${color}" stroke-width="1.8" fill="none"/><polyline points="5,14 12,5 19,14" stroke="${color}" stroke-width="1.8" fill="none"/></svg>`;
+      innerSVG = `<rect x="5" y="14" width="14" height="7" stroke="${color}" stroke-width="1.8" fill="none"/><polyline points="5,14 12,5 19,14" stroke="${color}" stroke-width="1.8" fill="none"/>`;
+      break;
     case 'church':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="5" y="12" width="14" height="9" stroke="${color}" stroke-width="1.8" fill="none"/><polyline points="5,12 12,4 19,12" stroke="${color}" stroke-width="1.8" fill="none"/></svg>`;
+      innerSVG = `<rect x="5" y="12" width="14" height="9" stroke="${color}" stroke-width="1.8" fill="none"/><polyline points="5,12 12,4 19,12" stroke="${color}" stroke-width="1.8" fill="none"/>`;
+      break;
     case 'school':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="14" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="10" font-weight="bold" fill="${color}">S</text></svg>`;
+      innerSVG = `<rect x="3" y="6" width="18" height="14" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="10" font-weight="bold" fill="${color}">S</text>`;
+      break;
     case 'hospital':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="14" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="10" font-weight="bold" fill="${color}">H</text></svg>`;
+      innerSVG = `<rect x="3" y="6" width="18" height="14" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="10" font-weight="bold" fill="${color}">H</text>`;
+      break;
     case 'well':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="1.8" fill="none"/></svg>`;
+      innerSVG = `<circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="1.8" fill="none"/>`;
+      break;
     case 'post_office':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="12" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="${color}">PO</text></svg>`;
+      innerSVG = `<rect x="3" y="7" width="18" height="12" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="${color}">PO</text>`;
+      break;
     case 'police_station':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="12" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="${color}">PS</text></svg>`;
+      innerSVG = `<rect x="3" y="7" width="18" height="12" stroke="${color}" stroke-width="1.8" fill="none"/><text x="12" y="17" text-anchor="middle" font-size="8" font-weight="bold" fill="${color}">PS</text>`;
+      break;
     case 'pond':
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="14" rx="10" ry="7" stroke="${color}" stroke-width="1.8" fill="none"/></svg>`;
+      innerSVG = `<ellipse cx="12" cy="14" rx="10" ry="7" stroke="${color}" stroke-width="1.8" fill="none"/>`;
+      break;
     default:
-      return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="6" stroke="${color}" stroke-width="1.8"/></svg>`;
+      innerSVG = `<circle cx="12" cy="12" r="6" stroke="${color}" stroke-width="1.8"/>`;
+      break;
   }
+
+  if (isLandmarkWithNum) {
+    innerSVG += `<text x="12" y="27" text-anchor="middle" dominant-baseline="middle" font-size="8.5" font-weight="bold" fill="${color}" font-family="sans-serif">${num}</text>`;
+  }
+
+  return `<svg width="${w}" height="${h}" viewBox="0 0 24 ${h}" fill="none">${innerSVG}</svg>`;
 }
 
 export function drawSymbolOnCanvas(

@@ -2,7 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { MapData, Coordinate, SymbolType, PlacedSymbol, RoadFeature, Block } from '../types';
 import type { SurveySession, SurveySymbol, SurveyPoint, RoadSegment } from './idb';
-import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter, isHouseType, isNonResidential } from '../types';
+import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter, isHouseType, isNumberableSymbol, isNonResidential } from '../types';
 import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon, clusterByProximity, gridBlockOffsets, centroidXY, getSerpentineOrder } from './geo';
 import { drawSymbolOnCanvas } from './symbols';
 import { declutterSymbols } from './declutter';
@@ -202,8 +202,7 @@ export function renderMapToCanvas(
   const symbolSizes = new Map<string, number>();
   let symSz: number;
   {
-    const globalScale = Math.max(0.4, Math.min(1, 100 / numSymbols));
-    const base = Math.max(16 * globalScale, Math.min(32 * globalScale, sc * 0.0002));
+    const base = Math.max(20, Math.min(32, sc * 0.00032));
     const pts = (data.symbols || []).map(s => proj(s));
     if (pts.length >= 2) {
       // Sample up to 60 symbols for nearest-neighbour spacing (O(n*k) but bounded).
@@ -220,10 +219,10 @@ export function renderMapToCanvas(
       }
       nn.sort((a, b) => a - b);
       const medianNN = nn.length ? nn[Math.floor(nn.length / 2)] : base;
-      // Box ~70% of local spacing, clamped to a legible range [12, Math.min(base, 28)]; never larger than 28.
-      symSz = Math.max(12, Math.min(Math.min(base, 28), medianNN * 0.7));
+      // Clamp default symbol size to a legible range [16, base]
+      symSz = Math.max(16, Math.min(base, medianNN * 0.85));
     } else {
-      symSz = Math.min(base, 28);
+      symSz = base;
     }
 
     // Now calculate block-specific symbol sizes to prevent overlaps in congested blocks
@@ -255,13 +254,15 @@ export function renderMapToCanvas(
           }
           nn.sort((a, b) => a - b);
           const blockMedianNN = nn.length ? nn[Math.floor(nn.length / 2)] : base;
-          // Box ~70% of local spacing inside this block, clamped to a legible range [12, Math.min(base, 28)]
-          const blkSymSz = Math.max(12, Math.min(Math.min(base, 28), blockMedianNN * 0.7));
+          // Box ~85% of local spacing inside this block, clamped to a legible range [17, 32]
+          const multiplier = (blk as any).symbolSizeMultiplier ?? 1.0;
+          const blkSymSz = Math.max(17, Math.min(32, blockMedianNN * 0.85)) * multiplier;
           for (const s of blkSyms) {
             symbolSizes.set(s.id, blkSymSz);
           }
         } else if (blkSyms.length === 1) {
-          symbolSizes.set(blkSyms[0].id, Math.min(base, 28));
+          const multiplier = (blk as any).symbolSizeMultiplier ?? 1.0;
+          symbolSizes.set(blkSyms[0].id, 30 * multiplier);
         }
       }
     }
@@ -369,7 +370,8 @@ export function renderMapToCanvas(
       const [cx, cy] = proj(c);
       ctx.fillStyle = BB[i % 6]; ctx.font = `bold ${Math.max(10, symSz * 0.6)}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(`Block ${b.label}`, cx, cy);
+      const labelText = /block|sector/i.test(b.label) ? b.label : `Block ${b.label}`;
+      ctx.fillText(labelText, cx, cy);
     });
   }
 
@@ -658,9 +660,40 @@ export function renderMapToCanvas(
       snappedSymbols.push({ x: idealX, y: idealY, sym, idealX, idealY });
     }
 
+    // Compute one bearing per block so all symbols share the same systematic orientation
+    const blockBearings = new Map<string, number>();
+    for (const block of (data.blocks || [])) {
+      const pts = block.points && block.points.length >= 3 ? block.points : [
+        { lat: block.south, lng: block.west },
+        { lat: block.north, lng: block.west },
+        { lat: block.north, lng: block.east },
+        { lat: block.south, lng: block.east },
+      ];
+      let bestLenSq = -1, bestAngle = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        const dy = b.lat - a.lat, dx = b.lng - a.lng;
+        const lenSq = dy * dy + dx * dx;
+        if (lenSq > bestLenSq) { bestLenSq = lenSq; bestAngle = Math.atan2(dy, dx); }
+      }
+      blockBearings.set(block.id, bestAngle);
+    }
+
     for (const { x, y, sym } of snappedSymbols) {
-      let angle = getBlockOrientation(sym, data.blocks || []);
-      if (angle === null) {
+      let angle = 0;
+      // Find which block this symbol belongs to, use that block's bearing
+      const containingBlock = (data.blocks || []).find(b => {
+        const pts = b.points && b.points.length >= 3 ? b.points : [
+          { lat: b.south, lng: b.west },
+          { lat: b.north, lng: b.west },
+          { lat: b.north, lng: b.east },
+          { lat: b.south, lng: b.east },
+        ];
+        return pointInPolygon(sym, pts);
+      });
+      if (containingBlock && blockBearings.has(containingBlock.id)) {
+        angle = blockBearings.get(containingBlock.id)!;
+      } else {
         angle = findNearestRoadBearing(sym, data.roads || []);
       }
       // Limit angle to [-PI/2, PI/2] to ensure the building number is always upright and readable
@@ -998,7 +1031,7 @@ export async function exportBlockPDF(
   const inkMode = (data as any).renderOptions?.inkMode || 'color';
   wrapDocColors(doc, inkMode);
 
-  const blocks = data.blocks && data.blocks.length > 1 ? data.blocks : [];
+  const blocks = data.blocks && data.blocks.length > 0 ? data.blocks : [];
   const includeBlockSheets = (data as any).includeBlockSheets !== false;
   const selectedAiImages: string[] = (data as any).selectedAiImages || [];
   const aiImagesToPrint = selectedAiImages.length > 0 
@@ -1006,9 +1039,9 @@ export async function exportBlockPDF(
     : (data.surveyMapBase64 ? [data.surveyMapBase64] : []);
 
   // Overview has 1 layout page, plus 1 block index page if blocks exist
-  const overviewPages = blocks.length > 1 ? 2 : 1;
-  const blockDetailPages = (includeBlockSheets && blocks.length > 1) ? blocks.length * 2 : 0;
-  const satellitePage = (!includeBlockSheets || blocks.length <= 1) ? 1 : 0;
+  const overviewPages = blocks.length > 0 ? 2 : 1;
+  const blockDetailPages = (includeBlockSheets && blocks.length > 0) ? blocks.length * 2 : 0;
+  const satellitePage = (!includeBlockSheets || blocks.length <= 0) ? 1 : 0;
   const aiPages = aiImagesToPrint.length * 2;
   let totalPages = overviewPages + blockDetailPages + satellitePage + aiPages;
   let page = 0;
@@ -1033,7 +1066,7 @@ export async function exportBlockPDF(
   }
 
   // ─── PAGE 2: OVERVIEW — BLOCK INDEX MAP (with blocks) — only if blocks exist ───
-  if (blocks.length > 1) {
+  if (blocks.length > 0) {
     onProgress(`Page ${++page}/${totalPages} — Block Index Map`);
     await new Promise(r => setTimeout(r, 50));
     doc.addPage();
@@ -1084,12 +1117,13 @@ export async function exportBlockPDF(
   }
 
   // ─── BLOCK PAGES ───────────────────────────────────────
-  if (includeBlockSheets && blocks.length > 1) {
+  if (includeBlockSheets && blocks.length > 0) {
     for (let bi = 0; bi < blocks.length; bi++) {
       const blk = blocks[bi];
 
       // Clean map for this block
-      onProgress(`Page ${++page}/${totalPages} — Block ${blk.label}`);
+      const blockTitle = /block|sector/i.test(blk.label) ? blk.label : `Block ${blk.label}`;
+      onProgress(`Page ${++page}/${totalPages} — ${blockTitle}`);
       await new Promise(r => setTimeout(r, 50));
       const blkPts = blk.points || [
         { lat: blk.south, lng: blk.west }, { lat: blk.north, lng: blk.west },
@@ -1135,7 +1169,8 @@ export async function exportBlockPDF(
 
         doc.addPage();
         doc.addImage(c.toDataURL('image/png'), 'PNG', 0, 0, a4W, a4H);
-        addOverlays(doc, data, a4W, a4H, `BLOCK ${blk.label}`, blkBB);
+        const labelTextUpper = /block|sector/i.test(blk.label) ? blk.label.toUpperCase() : `BLOCK ${blk.label.toUpperCase()}`;
+        addOverlays(doc, data, a4W, a4H, labelTextUpper, blkBB);
         // Locator inset (bottom-right): whole HLB with this block highlighted.
         drawLocatorInset(doc, data, blkPts, a4W, a4H);
       }
@@ -1153,7 +1188,8 @@ export async function exportBlockPDF(
         const c = env.createCanvas(pw, ph);
         renderMapToCanvas(c, { ...data, orientation: orient }, pw, ph, { satCanvas: blockSatCanvas, hideSymbols: true, focusBounds: blkBB, ...(data as any).renderOptions });
         doc.addImage(c.toDataURL('image/jpeg', SAT_Q), 'JPEG', 0, 0, a4W, a4H);
-        addOverlays(doc, data, a4W, a4H, `SATELLITE — Block ${blk.label}`, blkBB);
+        const satLabelText = /block|sector/i.test(blk.label) ? `SATELLITE — ${blk.label.toUpperCase()}` : `SATELLITE — BLOCK ${blk.label.toUpperCase()}`;
+        addOverlays(doc, data, a4W, a4H, satLabelText, blkBB);
       }
     }
   } else {
@@ -1185,7 +1221,7 @@ async function addClusterInsetPages(
   a4W: number, a4H: number, _pw: number, _ph: number,
   onProgress: (m: string) => void, nextPage: () => number, _total: number
 ) {
-  const houses = (data.symbols || []).filter(s => isHouseType(s.symbol_type));
+  const houses = (data.symbols || []).filter(s => isNumberableSymbol(s.symbol_type));
   if (houses.length < 12) return;
   const bb = getBbox(data.boundaryPins.length >= 3 ? data.boundaryPins : houses);
   const span = Math.max(bb.north - bb.south, bb.east - bb.west) || 0.01;

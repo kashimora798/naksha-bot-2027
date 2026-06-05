@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, RoadFeature, PlacedSymbol, Block, MapData, SymbolType } from '../types';
-import { isHouseType, SYMBOL_DEFS, getUnitCount } from '../types';
+import { isHouseType, isNumberableSymbol, SYMBOL_DEFS, getUnitCount } from '../types';
 import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
-import { detectBlocks, mergeBlocks, splitBlock, relabelBlocks, blockPoints } from '../lib/blocks';
+import { detectBlocks, mergeBlocks, splitBlock, relabelBlocks, blockPoints, labelFor } from '../lib/blocks';
 import { placeGroupsInBlock, blockGrid, minEdgeDistM, type LayoutMode, type SymGroup } from '../lib/placement-blocks';
-import { renderMapToCanvas, findNearestRoadBearing, getBlockOrientation } from '../lib/pdf-export';
+import { renderMapToCanvas, findNearestRoadBearing } from '../lib/pdf-export';
 import { supabase } from '../lib/supabase';
 
 interface Props {
@@ -97,6 +97,11 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   const [rdLoading, setRdLoading] = useState(false);
   const [rdMsg, setRdMsg] = useState('');
 
+  // custom block drawing & delete mode
+  const [blockDrawing, setBlockDrawing] = useState(false);
+  const [blockDrawingPts, setBlockDrawingPts] = useState<Coordinate[]>([]);
+  const [deleteSymbolMode, setDeleteSymbolMode] = useState(false);
+
   // canvas: block selection + edits + placement
   const [selIds, setSelIds] = useState<string[]>([]);
   const [cutting, setCutting] = useState(false);
@@ -121,7 +126,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
 
   function clearAllNumbers() {
     if (!confirm('Are you sure you want to erase all house numbers on the map?')) return;
-    const updated = symbols.map(s => isHouseType(s.symbol_type) ? { ...s, number: null } : s);
+    const updated = symbols.map(s => isNumberableSymbol(s.symbol_type) ? { ...s, number: null } : s);
     onUpdateMapData({ symbols: updated });
     setNextManualNum(1);
     setBlkMsg('Erase completed. All house numbers have been cleared.');
@@ -135,7 +140,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     if (!confirm(`Are you sure you want to erase all house numbers inside Block ${blk.label}?`)) return;
     const ring = blockPoints(blk);
     const updated = symbols.map(s => {
-      if (isHouseType(s.symbol_type) && pointInPolygon({ lat: s.lat, lng: s.lng }, ring)) {
+      if (isNumberableSymbol(s.symbol_type) && pointInPolygon({ lat: s.lat, lng: s.lng }, ring)) {
         return { ...s, number: null };
       }
       return s;
@@ -236,6 +241,11 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       try { navigator.vibrate?.(30); } catch {}
       return;
     }
+    if (phase === 'canvas' && blockDrawing) {
+      setBlockDrawingPts(p => [...p, coord]);
+      try { navigator.vibrate?.(30); } catch {}
+      return;
+    }
     // Deselect selected road on empty map tap
     if (selRoadId) {
       setSelRoadId(null);
@@ -249,6 +259,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   blockClickRef.current = (id: string, c: Coordinate) => {
     if (cutting) { setCutPts(p => [...p, c]); return; }
     if (fieldDrawing) { setFieldPts(p => [...p, c]); return; }
+    if (blockDrawing) { setBlockDrawingPts(p => [...p, c]); return; }
     if (drawingRoad) { setDrwPts(p => [...p, c]); return; }
     if (drawingRouteRoad) { handleRouteRoadClick(c); return; }
     // Clear road selection if selecting a block
@@ -284,6 +295,11 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       try { navigator.vibrate?.(30); } catch {}
       return;
     }
+    if (phase === 'canvas' && blockDrawing) {
+      setBlockDrawingPts(p => [...p, c]);
+      try { navigator.vibrate?.(30); } catch {}
+      return;
+    }
     
     // Normal selection behavior
     if (selRoadId === id) {
@@ -297,13 +313,33 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   // Clicking a house in swap mode or manual numbering mode
   const houseClickRef = useRef<(id: string) => void>(() => {});
   houseClickRef.current = (id: string) => {
+    if (deleteSymbolMode) {
+      const sym = symbols.find(s => s.id === id);
+      if (!sym) return;
+      const kept = symbols.filter(s => s.id !== id);
+      // Decrement houseCount of any block this symbol lay within
+      const updatedBlocks = blocks.map(b => {
+        try {
+          if (pointInPolygon({ lat: sym.lat, lng: sym.lng }, blockPoints(b))) {
+            return { ...b, houseCount: Math.max(0, (b.houseCount ?? 1) - 1) };
+          }
+        } catch {}
+        return b;
+      });
+      onUpdateMapData({
+        symbols: renumber(kept),
+        blocks: updatedBlocks
+      });
+      setBlkMsg('Deleted symbol.');
+      return;
+    }
     if (manualNumMode) {
       const sym = symbols.find(s => s.id === id);
-      if (!sym || !isHouseType(sym.symbol_type)) return;
+      if (!sym || !isNumberableSymbol(sym.symbol_type)) return;
       if (manualNumClearMode) {
         const updated = symbols.map(s => s.id === id ? { ...s, number: null } : s);
         onUpdateMapData({ symbols: updated });
-        setBlkMsg('Cleared number for house.');
+        setBlkMsg('Cleared number for symbol.');
       } else {
         const u = getUnitCount(sym);
         const updated = symbols.map(s => s.id === id ? { ...s, number: nextManualNum } : s);
@@ -314,7 +350,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
         }
         setNextManualNum(nextVal);
         onUpdateMapData({ symbols: updated });
-        setBlkMsg(`Assigned number ${nextManualNum} to house.`);
+        setBlkMsg(`Assigned number ${nextManualNum} to symbol.`);
       }
       return;
     }
@@ -330,10 +366,40 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     setSwapFirst(null);
   };
 
+  function distanceToRoads(c: Coordinate): number {
+    const M_PER_DEG_LAT = 111320;
+    const mPerDegLng = 111320 * Math.cos((c.lat * Math.PI) / 180);
+    let minD = Infinity;
+
+    for (const rd of roads) {
+      if (!rd.coords || rd.coords.length < 2) continue;
+      for (let i = 0; i < rd.coords.length - 1; i++) {
+        const a = rd.coords[i];
+        const b = rd.coords[i + 1];
+        
+        const ax = (a.lng - c.lng) * mPerDegLng;
+        const ay = (a.lat - c.lat) * M_PER_DEG_LAT;
+        const bx = (b.lng - c.lng) * mPerDegLng;
+        const by = (b.lat - c.lat) * M_PER_DEG_LAT;
+        
+        const dx = bx - ax;
+        const dy = by - ay;
+        const l2 = dx * dx + dy * dy;
+        let t = l2 ? -(ax * dx + ay * dy) / l2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const dist = Math.hypot(ax + t * dx, ay + t * dy);
+        if (dist < minD) {
+          minD = dist;
+        }
+      }
+    }
+    return minD;
+  }
+
   const validateSymbolPosition = (id: string | null, c: Coordinate, type: SymbolType, isDropPlacement = false): { valid: boolean; reason?: string } => {
     // 1. Check exclusions (fields, etc.)
-    if (isHouseType(type) && exclusionPolys().some(ex => pointInPolygon(c, ex))) {
-      return { valid: false, reason: "Houses can't go inside a field." };
+    if (isNumberableSymbol(type) && exclusionPolys().some(ex => pointInPolygon(c, ex))) {
+      return { valid: false, reason: "Structures/landmarks can't go inside a field." };
     }
 
     // 2. Check overlap with other symbols
@@ -550,11 +616,13 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
 
   const renderHouses = useCallback(() => {
     const g = houseGrp.current; g.clearLayers();
-    const interactive = arrangeMode || swapMode || manualNumMode;
+    const interactive = arrangeMode || swapMode || manualNumMode || deleteSymbolMode;
 
-    // Pre-compute a per-block cell size so symbols scale to fill the block.
-    // For each block, get the cellMeters from the placement grid and convert to px at current zoom.
+    // Pre-compute per-block data: cell size for icon scaling, and a
+    // SINGLE bearing per block so all symbols in a block rotate the
+    // same way — systematic alignment along the block's longest edge.
     const blockCellMap = new Map<string, number>();
+    const blockBearingMap = new Map<string, number>();
     if (mapRef.current) {
       const map = mapRef.current;
       for (const blk of blocks) {
@@ -563,7 +631,22 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
           try { return pointInPolygon({ lat: s.lat, lng: s.lng }, blockPoints(blk)); } catch { return false; }
         }).length;
         if (inBlk === 0) continue;
-        const { cellMeters } = blockGrid(blk, inBlk, blk.layoutMode ?? 'grid', []);
+        const multiplier = blk.symbolSizeMultiplier ?? 1.0;
+        const { cellMeters } = blockGrid(blk, inBlk, blk.layoutMode ?? 'grid', [], roads, 0);
+
+        // Compute the block's pixel extent at the current zoom so icons
+        // never visually overflow the block boundary.
+        const pts = blockPoints(blk);
+        const screenPts = pts.map(p => map.latLngToContainerPoint([p.lat, p.lng]));
+        const minX = Math.min(...screenPts.map(p => p.x));
+        const maxX = Math.max(...screenPts.map(p => p.x));
+        const minY = Math.min(...screenPts.map(p => p.y));
+        const maxY = Math.max(...screenPts.map(p => p.y));
+        const blockPxW = maxX - minX;
+        const blockPxH = maxY - minY;
+        // Cap icon to 35% of the block's smaller pixel dimension (min 12px, max 80px)
+        const blockSizeCap = Math.max(12, Math.min(80, Math.min(blockPxW, blockPxH) * 0.35));
+
         if (cellMeters > 0) {
           // Convert cellMeters to pixel size at current zoom
           const lat = blk.south + (blk.north - blk.south) / 2;
@@ -572,9 +655,18 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
           const p1 = map.latLngToContainerPoint([lat, 0]);
           const p2 = map.latLngToContainerPoint([lat, degPerCell]);
           const cellPx = Math.abs(p2.x - p1.x);
-          // Clamp: min 16px (readable), max 32px (not overwhelming)
-          blockCellMap.set(blk.id, Math.max(16, Math.min(32, cellPx * 0.88)));
+          const baseSize = Math.max(12, Math.min(blockSizeCap, cellPx * 1.0));
+          blockCellMap.set(blk.id, Math.max(8, Math.min(blockSizeCap, baseSize * multiplier)));
         }
+        // Compute block bearing once (longest edge of the block polygon)
+        let bestLenSq = -1, bestAngle = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const a = pts[i], b = pts[(i + 1) % pts.length];
+          const dy = b.lat - a.lat, dx = b.lng - a.lng;
+          const lenSq = dy * dy + dx * dx;
+          if (lenSq > bestLenSq) { bestLenSq = lenSq; bestAngle = Math.atan2(dy, dx); }
+        }
+        blockBearingMap.set(blk.id, bestAngle);
       }
     }
 
@@ -589,8 +681,16 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       }
       const isLandmark = !isHouseType(s.symbol_type);
       const displayLabel = s.label || (isLandmark ? LANDMARK_TYPE_LABELS[s.symbol_type] : undefined);
-      let angle = getBlockOrientation(s, blocks);
-      if (angle === null) angle = findNearestRoadBearing(s, roads);
+      // Use per-block bearing for systematic block-aligned orientation
+      let angle = 0;
+      const containingBlock = blocks.find(b => {
+        try { return pointInPolygon({ lat: s.lat, lng: s.lng }, blockPoints(b)); } catch { return false; }
+      });
+      if (containingBlock && blockBearingMap.has(containingBlock.id)) {
+        angle = blockBearingMap.get(containingBlock.id)!;
+      } else {
+        angle = findNearestRoadBearing(s, roads);
+      }
       // Normalize angle to [-PI/2, PI/2]
       if (angle > Math.PI / 2) angle -= Math.PI;
       if (angle < -Math.PI / 2) angle += Math.PI;
@@ -616,17 +716,20 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       const iconHtml = isLandmark
         ? `<div style="display:flex;flex-direction:column;align-items:center">${svg}${labelHtml}</div>`
         : `<div style="transform: rotate(${angleDeg}deg); transform-origin: center center; width: ${iconPxI}px; height: ${iconPxI}px; display:flex;align-items:center;justify-content:center;"><svg width="${iconPxI}" height="${iconPxI}" viewBox="0 0 24 24" style="display:block;overflow:visible">${svg.replace(/^<svg[^>]*>/, '').replace('</svg>', '')}</svg></div>`;
-      const iconH = isLandmark && displayLabel ? 30 : (isLandmark ? 18 : iconPxI);
+      let iconH = isLandmark ? (displayLabel ? 30 : 18) : iconPxI;
+      if (isLandmark && s.number != null) {
+        iconH += 10;
+      }
       const m = L.marker([s.lat, s.lng], {
-        icon: L.divIcon({ html: iconHtml, className: '', iconSize: [isLandmark ? 60 : iconPxI, iconH], iconAnchor: [isLandmark ? 30 : iconPxI / 2, isLandmark && displayLabel ? 15 : iconPxI / 2] }),
+        icon: L.divIcon({ html: iconHtml, className: '', iconSize: [isLandmark ? 60 : iconPxI, iconH], iconAnchor: [isLandmark ? 30 : iconPxI / 2, iconH / 2] }),
         interactive,
         draggable: arrangeMode,
       });
       if (arrangeMode) m.on('dragend', () => { const ll = m.getLatLng(); houseDragRef.current(s.id, { lat: ll.lat, lng: ll.lng }); });
-      if (swapMode || manualNumMode) m.on('click', (e: L.LeafletMouseEvent) => { L.DomEvent.stop(e); houseClickRef.current(s.id); });
+      if (swapMode || manualNumMode || deleteSymbolMode) m.on('click', (e: L.LeafletMouseEvent) => { L.DomEvent.stop(e); houseClickRef.current(s.id); });
       g.addLayer(m);
     });
-  }, [symbols, arrangeMode, swapMode, manualNumMode, swapFirst, roads, blocks]);
+  }, [symbols, arrangeMode, swapMode, manualNumMode, deleteSymbolMode, swapFirst, roads, blocks]);
 
   const renderLandmarks = useCallback(() => {
     const g = lmkGrp.current; g.clearLayers();
@@ -654,6 +757,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     draw(drwPts, '#0066FF');
     draw(cutPts, '#E91E63');
     draw(fieldPts, '#16A34A', true);
+    draw(blockDrawingPts, '#EA580C', true);
 
     // Draw LocationIQ route drawing preview
     if (routePreviewCoords.length > 0) {
@@ -664,7 +768,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       }
       routePts.forEach(p => g.addLayer(L.circleMarker([p.lat, p.lng], { radius: 6, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2, pane: 'drawingPane' })));
     }
-  }, [drwPts, cutPts, fieldPts, routePreviewCoords, routePts]);
+  }, [drwPts, cutPts, fieldPts, blockDrawingPts, routePreviewCoords, routePts]);
 
   useEffect(() => { if (ready) renderBnd(); }, [ready, renderBnd]);
   useEffect(() => { if (ready) renderRoads(); }, [ready, renderRoads]);
@@ -684,13 +788,13 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     const inBlk = symbols.filter(s => pointInPolygon({ lat: s.lat, lng: s.lng }, ring)).length;
     const groupTotal = groups.reduce((s, gr) => s + Math.max(0, gr.count), 0);
     const count = inBlk || groupTotal || popCount;
-    const { centers, cellMeters } = blockGrid(blk, count, blk.layoutMode ?? popLayout, exclusionPolys());
+    const { centers, cellMeters } = blockGrid(blk, count, blk.layoutMode ?? popLayout, exclusionPolys(), roads, 3);
     const half = cellMeters / 2;
     for (const c of centers) {
       const dLat = half / 111320, dLng = half / (111320 * Math.cos((c.lat * Math.PI) / 180));
       g.addLayer(L.rectangle([[c.lat - dLat, c.lng - dLng], [c.lat + dLat, c.lng + dLng]], { color: '#0066FF', weight: 1, fill: false, opacity: 0.5, dashArray: '2,3' }));
     }
-  }, [ready, selIds, blocks, symbols, groups, popCount, popLayout, exclusionPolys]);
+  }, [ready, selIds, blocks, symbols, groups, popCount, popLayout, exclusionPolys, roads]);
 
   // HTML5 drag-and-drop: palette symbol → map drop.
   useEffect(() => {
@@ -1011,7 +1115,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       num.set(id, currentNum);
       currentNum += (mapData.numberingSystem === 'census_u_loop' ? 1 : getUnitCount(s));
     });
-    return syms.map(s => isHouseType(s.symbol_type) ? { ...s, number: num.get(s.id) ?? null } : s);
+    return syms.map(s => isNumberableSymbol(s.symbol_type) ? { ...s, number: num.get(s.id) ?? null } : s);
   }
 
   function detectBlocksAction() {
@@ -1072,7 +1176,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     // Apply non-residential flag per group slice
     let offset = 0;
     for (const g of recipe) {
-      if ((g as any).isNonResidential) {
+      if ((g as any).isNonResidential || g.type === 'non_residential') {
         for (let k = offset; k < offset + g.count && k < placed.length; k++) {
           placed[k] = { ...placed[k], is_residential: false };
         }
@@ -1097,6 +1201,55 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       setBlkMsg('Field added — houses will avoid it.');
     }
     setFieldDrawing(false); setFieldPts([]);
+  }
+
+  function finishBlockDrawing() {
+    if (blockDrawingPts.length >= 3) {
+      const defaultName = `Block ${labelFor(blocks.length)}`;
+      const label = prompt('Enter label for the new block:', defaultName);
+      if (label === null) return;
+      const cleanLabel = label.trim() || defaultName;
+      const open = blockDrawingPts.length > 1 && blockDrawingPts[0].lng === blockDrawingPts[blockDrawingPts.length - 1].lng && blockDrawingPts[0].lat === blockDrawingPts[blockDrawingPts.length - 1].lat
+        ? blockDrawingPts.slice(0, -1) : blockDrawingPts;
+      const bb = getBbox(open);
+      const newBlock: Block = {
+        id: `blk_${crypto.randomUUID()}`,
+        label: cleanLabel,
+        points: open,
+        ...bb,
+        autoDetected: false
+      };
+      onUpdateMapData({ blocks: [...blocks, newBlock] });
+      setBlkMsg(`Custom block "${cleanLabel}" added.`);
+    }
+    setBlockDrawing(false); setBlockDrawingPts([]);
+  }
+
+  function clearAllBuildings() {
+    if (!confirm('Are you sure you want to clear all placed houses, apartments, and landmarks? This will completely empty the map canvas.')) return;
+    onUpdateMapData({
+      symbols: [],
+      blocks: blocks.map(b => ({ ...b, houseCount: 0 })),
+    });
+    setBlkMsg('Cleared all buildings and symbols.');
+  }
+
+  function adjustBlockSizeMultiplier(delta: number | null) {
+    if (selIds.length !== 1) return;
+    const bid = selIds[0];
+    const blk = blocks.find(b => b.id === bid);
+    if (!blk) return;
+    let nextMult = 1.0;
+    if (delta !== null) {
+      const current = blk.symbolSizeMultiplier ?? 1.0;
+      nextMult = Math.max(0.3, Math.min(3.0, current + delta));
+    }
+    const updatedBlocks = blocks.map(b => b.id === bid
+      ? { ...b, symbolSizeMultiplier: delta === null ? undefined : parseFloat(nextMult.toFixed(2)) }
+      : b
+    );
+    onUpdateMapData({ blocks: updatedBlocks });
+    setBlkMsg(delta === null ? 'Reset symbol size to default.' : `Adjusted symbol size to ${Math.round(nextMult * 100)}%.`);
   }
 
   function doMerge() {
@@ -1137,7 +1290,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   // ─── UI ─────────────────────────────────────────────────────
   const area = boundaryPins.length >= 3 ? polygonArea(boundaryPins) : 0;
   const areaT = area > 10000 ? `${(area / 10000).toFixed(2)} ha` : `${Math.round(area)} m²`;
-  const houseCount = symbols.filter(s => isHouseType(s.symbol_type)).length;
+  const houseCount = symbols.filter(s => isNumberableSymbol(s.symbol_type)).length;
 
   return (
     <div className="h-full w-full relative" style={{ background: SCHEMATIC_BG }}>
@@ -1221,7 +1374,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
         }`}
         style={panelExpanded
           ? { paddingBottom: 'max(14px, env(safe-area-inset-bottom, 14px))' }
-          : { height: 'calc(52px + env(safe-area-inset-bottom, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
+          : { height: 'calc(76px + env(safe-area-inset-bottom, 0px))', paddingBottom: 'max(14px, env(safe-area-inset-bottom, 14px))' }
         }
       >
         {/* Panel Header bar with minimize/expand controls */}
@@ -1268,61 +1421,44 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
 
             {phase === 'location' && (
               <div className="flex flex-col gap-3">
-                {mapData.paymentStatus === 'paid' && (
-                  <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 flex gap-2 text-xs font-semibold">
-                    <span className="shrink-0 text-sm">⚠️</span>
-                    <span>Latitude, longitude, and boundary cannot be changed after payment.</span>
-                  </div>
-                )}
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Paste Census SMS (Auto-detects HLB & location)</label>
                   <textarea
                     value={smsText}
                     onChange={e => handleSMSChange(e.target.value)}
                     placeholder="Example: HLB 0455 assigned to you. Location: https://maps.google.com/?q=26.4499,80.3319"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-transparent min-h-[50px] resize-none font-medium text-gray-700 shadow-xs disabled:opacity-60"
-                    disabled={mapData.paymentStatus === 'paid'}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-transparent min-h-[50px] resize-none font-medium text-gray-700 shadow-xs"
                   />
                 </div>
                 <p className="text-xs text-gray-600 font-medium">Or enter base coordinates manually:</p>
                 <div className="flex gap-2 items-center flex-wrap">
                   <div className="flex gap-1.5 items-center">
                     <span className="text-xs font-semibold text-gray-400">Lat</span>
-                    <input value={latIn} onChange={e => setLatIn(e.target.value)} placeholder="lat" className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm w-28 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium disabled:opacity-60" disabled={mapData.paymentStatus === 'paid'} />
+                    <input value={latIn} onChange={e => setLatIn(e.target.value)} placeholder="lat" className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm w-28 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium" />
                   </div>
                   <div className="flex gap-1.5 items-center">
                     <span className="text-xs font-semibold text-gray-400">Lng</span>
-                    <input value={lngIn} onChange={e => setLngIn(e.target.value)} placeholder="lng" className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm w-28 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium disabled:opacity-60" disabled={mapData.paymentStatus === 'paid'} />
+                    <input value={lngIn} onChange={e => setLngIn(e.target.value)} placeholder="lng" className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm w-28 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium" />
                   </div>
-                  <button onClick={recenter} disabled={mapData.paymentStatus === 'paid'} className="px-4 py-1.5 bg-gray-100 border border-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors shadow-xs disabled:opacity-50" style={{ minHeight: '38px' }}>Go</button>
+                  <button onClick={recenter} className="px-4 py-1.5 bg-gray-100 border border-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors shadow-xs" style={{ minHeight: '38px' }}>Go</button>
                 </div>
                 <button onClick={() => setPhase('boundary')} className="px-5 py-2.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl font-bold text-sm self-start transition-all shadow-md active:scale-98 flex items-center gap-1" style={{ minHeight: '44px' }}>
-                  {mapData.paymentStatus === 'paid' ? 'View Boundary →' : 'Start Boundary Draft →'}
+                  Start Boundary Draft →
                 </button>
               </div>
             )}
 
             {phase === 'boundary' && (
               <div className="flex flex-col gap-2.5">
-                {mapData.paymentStatus === 'paid' && (
-                  <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 flex gap-2 text-xs font-semibold">
-                    <span className="shrink-0 text-sm">⚠️</span>
-                    <span>Latitude, longitude, and boundary cannot be changed after payment.</span>
-                  </div>
-                )}
                 <p className="text-xs text-gray-600 font-medium flex items-center gap-1">
                   📌 Tap map to drop boundary pins. <strong>{boundaryPins.length} pins placed</strong> {area > 0 && `· Area: ${areaT}`}
                 </p>
                 <div className="flex gap-2 flex-wrap items-center">
-                  {mapData.paymentStatus !== 'paid' && (
-                    <button onClick={() => onUpdateMapData({ boundaryPins: boundaryPins.slice(0, -1), boundaryClosed: false })} disabled={!boundaryPins.length} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg text-sm font-bold disabled:opacity-40 transition-colors" style={{ minHeight: '40px' }}>Undo last pin</button>
-                  )}
-                  {(!boundaryClosed && mapData.paymentStatus !== 'paid') ? (
+                  <button onClick={() => onUpdateMapData({ boundaryPins: boundaryPins.slice(0, -1), boundaryClosed: false })} disabled={!boundaryPins.length} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg text-sm font-bold disabled:opacity-40 transition-colors" style={{ minHeight: '40px' }}>Undo last pin</button>
+                  {!boundaryClosed ? (
                     <button onClick={closeBoundary} disabled={boundaryPins.length < 3} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-bold disabled:opacity-40 transition-colors shadow-sm" style={{ minHeight: '40px' }}>Close boundary</button>
                   ) : (
-                    (boundaryClosed || mapData.paymentStatus === 'paid') && (
-                      <button onClick={() => setPhase('roads')} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all shadow-md active:scale-98" style={{ minHeight: '44px' }}>Continue to Roads →</button>
-                    )
+                    <button onClick={() => setPhase('roads')} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all shadow-md active:scale-98" style={{ minHeight: '44px' }}>Continue to Roads →</button>
                   )}
                   <button onClick={() => setPhase('location')} className="px-3 py-2 text-gray-500 hover:text-gray-700 text-sm font-bold" style={{ minHeight: '40px' }}>← back</button>
                 </div>
@@ -1388,7 +1524,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                         num.set(id, currentNum);
                         currentNum += (val === 'census_u_loop' ? 1 : getUnitCount(s));
                       });
-                      const renumbered = symbols.map(s => isHouseType(s.symbol_type) ? { ...s, number: num.get(s.id) ?? null } : s);
+                      const renumbered = symbols.map(s => isNumberableSymbol(s.symbol_type) ? { ...s, number: num.get(s.id) ?? null } : s);
                       onUpdateMapData({ numberingSystem: val, symbols: renumbered });
                     }}
                     className="border border-gray-200 rounded-lg p-2 text-xs bg-gray-50 text-gray-700 font-semibold focus:outline-none"
@@ -1398,18 +1534,24 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                     <option value="census_u_loop">🏛️ U-Loop</option>
                   </select>
                   <label className={`px-3 py-2 rounded-lg border text-xs font-bold cursor-pointer transition-all ${arrangeMode ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'}`} style={{ minHeight: '38px', display: 'inline-flex', alignItems: 'center' }}>
-                    <input type="checkbox" className="hidden" checked={arrangeMode} onChange={e => { setArrangeMode(e.target.checked); if (e.target.checked) { setSwapMode(false); setSwapFirst(null); setManualNumMode(false); } }} />
+                    <input type="checkbox" className="hidden" checked={arrangeMode} onChange={e => { setArrangeMode(e.target.checked); if (e.target.checked) { setSwapMode(false); setSwapFirst(null); setManualNumMode(false); setDeleteSymbolMode(false); } }} />
                     ✋ Arrange {arrangeMode ? 'ON' : 'OFF'}
                   </label>
                   <label className={`px-3 py-2 rounded-lg border text-xs font-bold cursor-pointer transition-all ${swapMode ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'}`} style={{ minHeight: '38px', display: 'inline-flex', alignItems: 'center' }}>
-                    <input type="checkbox" className="hidden" checked={swapMode} onChange={e => { setSwapMode(e.target.checked); setSwapFirst(null); if (e.target.checked) { setArrangeMode(false); setManualNumMode(false); } }} />
+                    <input type="checkbox" className="hidden" checked={swapMode} onChange={e => { setSwapMode(e.target.checked); setSwapFirst(null); if (e.target.checked) { setArrangeMode(false); setManualNumMode(false); setDeleteSymbolMode(false); } }} />
                     ⇄ Swap {swapMode ? 'ON' : 'OFF'}
                   </label>
                   <label className={`px-3 py-2 rounded-lg border text-xs font-bold cursor-pointer transition-all ${manualNumMode ? 'bg-yellow-600 text-white border-yellow-600 shadow-sm' : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'}`} style={{ minHeight: '38px', display: 'inline-flex', alignItems: 'center' }}>
-                    <input type="checkbox" className="hidden" checked={manualNumMode} onChange={e => { setManualNumMode(e.target.checked); if (e.target.checked) { setArrangeMode(false); setSwapMode(false); setSwapFirst(null); } }} />
+                    <input type="checkbox" className="hidden" checked={manualNumMode} onChange={e => { setManualNumMode(e.target.checked); if (e.target.checked) { setArrangeMode(false); setSwapMode(false); setSwapFirst(null); setDeleteSymbolMode(false); } }} />
                     ✏️ Manual Numbering {manualNumMode ? 'ON' : 'OFF'}
                   </label>
-                  {!fieldDrawing && !cutting && <button onClick={() => { setFieldDrawing(true); setFieldPts([]); setSelIds([]); }} className="px-3.5 py-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-lg text-xs font-bold border border-green-200 transition-colors" style={{ minHeight: '38px' }}>🟩 Draw Field</button>}
+                  <label className={`px-3 py-2 rounded-lg border text-xs font-bold cursor-pointer transition-all ${deleteSymbolMode ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'}`} style={{ minHeight: '38px', display: 'inline-flex', alignItems: 'center' }}>
+                    <input type="checkbox" className="hidden" checked={deleteSymbolMode} onChange={e => { setDeleteSymbolMode(e.target.checked); if (e.target.checked) { setArrangeMode(false); setSwapMode(false); setSwapFirst(null); setManualNumMode(false); } }} />
+                    🗑️ Delete Symbol {deleteSymbolMode ? 'ON' : 'OFF'}
+                  </label>
+                  <button onClick={clearAllBuildings} className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold transition-colors" style={{ minHeight: '38px' }}>💥 Clear All Buildings</button>
+                  {!fieldDrawing && !cutting && !blockDrawing && <button onClick={() => { setFieldDrawing(true); setFieldPts([]); setSelIds([]); }} className="px-3.5 py-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-lg text-xs font-bold border border-green-200 transition-colors" style={{ minHeight: '38px' }}>🟩 Draw Field</button>}
+                  {!fieldDrawing && !cutting && !blockDrawing && <button onClick={() => { setBlockDrawing(true); setBlockDrawingPts([]); setSelIds([]); }} className="px-3.5 py-2 bg-orange-100 hover:bg-orange-200 text-orange-800 rounded-lg text-xs font-bold border border-orange-200 transition-colors" style={{ minHeight: '38px' }}>🧱 Draw Block</button>}
                   {fields.length > 0 && <button onClick={() => onUpdateMapData({ farmlandBlocks: [] })} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 border rounded-lg text-xs font-semibold transition-colors" style={{ minHeight: '38px' }}>Clear fields ({fields.length})</button>}
                   <button onClick={() => setPhase('roads')} className="px-3 py-2 text-gray-500 hover:text-gray-700 text-xs font-bold" style={{ minHeight: '38px' }}>← roads</button>
                   <button onClick={onJumpToPreview} className="px-5 py-2.5 bg-[var(--color-saffron-container)] hover:bg-[var(--color-saffron)] text-white rounded-xl font-bold text-sm ml-auto shadow-md transition-all active:scale-98 max-sm:w-full max-sm:text-center max-sm:mt-1" style={{ minHeight: '44px' }}>Preview &amp; Export →</button>
@@ -1498,6 +1640,16 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                   </div>
                 )}
 
+                {/* Block drawing */}
+                {blockDrawing && (
+                  <div className="flex gap-2 items-center bg-orange-50 border border-orange-200 rounded-xl p-2.5 animate-in slide-in-from-bottom-2 duration-150">
+                    <span className="text-xs font-semibold text-orange-900 flex-grow">Outline a custom block ({blockDrawingPts.length} points).</span>
+                    <button onClick={() => setBlockDrawingPts(p => p.slice(0, -1))} disabled={!blockDrawingPts.length} className="px-3 py-1.5 bg-white border border-orange-300 rounded-lg text-xs font-bold disabled:opacity-40" style={{ minHeight: '36px' }}>Undo</button>
+                    <button onClick={finishBlockDrawing} disabled={blockDrawingPts.length < 3} className="px-3.5 py-1.5 bg-orange-600 text-white rounded-lg text-xs font-bold disabled:opacity-40 shadow-sm" style={{ minHeight: '36px' }}>Finish block</button>
+                    <button onClick={() => { setBlockDrawing(false); setBlockDrawingPts([]); }} className="px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-semibold" style={{ minHeight: '36px' }}>Cancel</button>
+                  </div>
+                )}
+
                 {/* Cut mode */}
                 {cutting && (
                   <div className="flex gap-2 items-center bg-pink-50 border border-pink-200 rounded-xl p-2.5 animate-in slide-in-from-bottom-2 duration-150">
@@ -1515,6 +1667,12 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                       <>
                         <button onClick={renameBlock} className="px-3 py-1.5 bg-white border border-blue-300 text-blue-900 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors shadow-xs" style={{ minHeight: '36px' }}>✏️ Rename</button>
                         <button onClick={() => { setCutting(true); setCutPts([]); }} className="px-3 py-1.5 bg-white border border-blue-300 text-blue-900 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors shadow-xs" style={{ minHeight: '36px' }}>✂️ Split Block</button>
+                        <div className="flex items-center gap-1.5 bg-white border border-blue-300 px-3 py-1.5 rounded-lg text-xs font-bold text-blue-900" style={{ minHeight: '36px' }}>
+                          <span>Size: {Math.round((blocks.find(b => b.id === selIds[0])?.symbolSizeMultiplier ?? 1.0) * 100)}%</span>
+                          <button onClick={() => adjustBlockSizeMultiplier(0.1)} className="px-1.5 py-0.5 hover:bg-blue-100 rounded text-blue-800 font-black border border-blue-250 ml-1">+</button>
+                          <button onClick={() => adjustBlockSizeMultiplier(-0.1)} className="px-1.5 py-0.5 hover:bg-blue-100 rounded text-blue-800 font-black border border-blue-250">-</button>
+                          <button onClick={() => adjustBlockSizeMultiplier(null)} className="px-2 py-0.5 hover:bg-blue-100 rounded text-blue-600 font-semibold border border-blue-200">Reset</button>
+                        </div>
                       </>
                     )}
                     {selIds.length >= 2 && <button onClick={doMerge} className="px-3 py-1.5 bg-white border border-blue-300 text-blue-900 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors shadow-xs" style={{ minHeight: '36px' }}>🔗 Merge Blocks</button>}

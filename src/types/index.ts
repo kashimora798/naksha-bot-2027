@@ -8,7 +8,7 @@ export type SymbolType =
 export interface PlacedSymbol {
   id: string; symbol_type: SymbolType; lat: number; lng: number;
   number: number | null; placed_at: string; auto_detected?: boolean;
-  unit_count?: number; label?: string;
+  unit_count?: number; label?: string; is_manual?: boolean;
   /** Census layout-map: false = wholly non-residential (shape is hatched). Default true. */
   is_residential?: boolean;
   /** Number of census houses within this building (for N(1)..N(k) sub-numbering). */

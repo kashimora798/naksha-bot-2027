@@ -385,7 +385,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       setBlkMsg(res.reason || 'Invalid position.');
       return;
     }
-    onUpdateMapData({ symbols: renumber(symbols.map(s => s.id === id ? { ...s, lat: c.lat, lng: c.lng } : s)) });
+    onUpdateMapData({ symbols: renumber(symbols.map(s => s.id === id ? { ...s, lat: c.lat, lng: c.lng, is_manual: true } : s)) });
   };
 
   // Dropping a palette symbol onto the map (HTML5 DnD → geo coordinate).
@@ -425,6 +425,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       placed_at: new Date().toISOString(),
       is_residential: isHouseType(type) ? true : undefined,
       label: customLabel,
+      is_manual: true,
     };
     onUpdateMapData({ symbols: renumber([...symbols, sym]) });
     setBlkMsg(`${SYMBOL_DEFS.find(d => d.type === type)?.label ?? type} placed on map.`);
@@ -1030,8 +1031,40 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     const requested = recipe.reduce((s, g) => s + Math.max(0, g.count), 0);
     if (requested <= 0) return;
     const ring = blockPoints(blk);
-    const others = symbols.filter(s => !pointInPolygon({ lat: s.lat, lng: s.lng }, ring));
-    let placed = placeGroupsInBlock(blk, recipe, { layout: popLayout, roads, exclusions: exclusionPolys() });
+
+    const symbolsInBlock = symbols.filter(s => {
+      try { return pointInPolygon({ lat: s.lat, lng: s.lng }, ring); } catch { return false; }
+    });
+    
+    // Preserve landmarks, labeled symbols, and manual symbols
+    const preservedInBlock = symbolsInBlock.filter(s => {
+      const isLandmark = !isHouseType(s.symbol_type);
+      const isManual = s.is_manual || s.label !== undefined;
+      return isLandmark || isManual;
+    });
+
+    const others = [
+      ...symbols.filter(s => {
+        try { return !pointInPolygon({ lat: s.lat, lng: s.lng }, ring); } catch { return true; }
+      }),
+      ...preservedInBlock
+    ];
+
+    // Create 5m exclusion zones around preserved symbols to prevent overlapping with auto-placed symbols
+    const preservedExclusions: Coordinate[][] = preservedInBlock.map(s => {
+      const latDelta = 2.5 / 111320;
+      const lngDelta = 2.5 / (111320 * Math.cos((s.lat * Math.PI) / 180));
+      return [
+        { lat: s.lat - latDelta, lng: s.lng - lngDelta },
+        { lat: s.lat + latDelta, lng: s.lng - lngDelta },
+        { lat: s.lat + latDelta, lng: s.lng + lngDelta },
+        { lat: s.lat - latDelta, lng: s.lng + lngDelta },
+      ];
+    });
+
+    const activeExclusions = [...exclusionPolys(), ...preservedExclusions];
+
+    let placed = placeGroupsInBlock(blk, recipe, { layout: popLayout, roads, exclusions: activeExclusions });
     // Apply non-residential flag per group slice
     let offset = 0;
     for (const g of recipe) {
@@ -1042,12 +1075,15 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       }
       offset += g.count;
     }
+    
+    const preservedHousesCount = preservedInBlock.filter(s => isHouseType(s.symbol_type)).length;
+
     onUpdateMapData({
-      blocks: blocks.map(b => b.id === blk.id ? { ...b, layoutMode: popLayout, houseCount: placed.length } : b),
+      blocks: blocks.map(b => b.id === blk.id ? { ...b, layoutMode: popLayout, houseCount: placed.length + preservedHousesCount } : b),
       symbols: renumber([...others, ...placed]),
     });
     setBlkMsg(placed.length < requested
-      ? `Placed ${placed.length} of ${requested} — block is full (fields excluded).`
+      ? `Placed ${placed.length} of ${requested} — block is full (exclusions/landmarks preserved).`
       : `Placed ${placed.length} in block ${blk.label}.`);
   }
 

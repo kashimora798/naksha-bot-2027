@@ -1,9 +1,14 @@
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import AiComparison from '../components/AiComparison/AiComparison';
 
 export default function LandingScreen() {
+  const [selectedSample, setSelectedSample] = useState<'sample1' | 'sample2'>('sample1');
+  const [sample1View, setSample1View] = useState<'sat' | 'map'>('map');
+  const [sample2View, setSample2View] = useState<'sat' | 'map'>('map');
+
   // Auth buttons will now navigate to /sign-in and /sign-up
 
   return (
@@ -153,6 +158,278 @@ export default function LandingScreen() {
             <Link to="/sign-in" className="w-full sm:w-auto px-8 py-4 bg-white text-slate-700 font-bold rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all text-lg flex items-center justify-center">
               Log into Dashboard
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── SAMPLE MAPS GALLERY & BEFORE/AFTER TABS ─── */}
+      <section id="sample-maps" className="py-20 bg-white border-b border-slate-200" aria-labelledby="sample-maps-title">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">Map Quality Showcase</h2>
+            <h2 id="sample-maps-title" className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-4">
+              Generated Census Map Quality & Accuracy (नक्शा की गुणवत्ता)
+            </h2>
+            <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+              NakshaBot generates compliant, high-resolution layout maps directly from satellite views. Click the tabs below to compare the raw satellite imagery with our finished census layout naksha maps.
+            </p>
+          </div>
+
+          {/* Sample Tabs */}
+          <div className="flex justify-center gap-3 mb-8">
+            <button
+              id="btn-sample1"
+              onClick={() => setSelectedSample('sample1')}
+              className={`px-6 py-3 rounded-2xl font-bold text-sm transition-all duration-300 shadow-sm border ${
+                selectedSample === 'sample1'
+                  ? 'bg-orange-500 text-white border-orange-500 shadow-orange-500/20'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Example 1: Rural Village (ग्रामीण क्षेत्र)
+            </button>
+            <button
+              id="btn-sample2"
+              onClick={() => setSelectedSample('sample2')}
+              className={`px-6 py-3 rounded-2xl font-bold text-sm transition-all duration-300 shadow-sm border ${
+                selectedSample === 'sample2'
+                  ? 'bg-orange-500 text-white border-orange-500 shadow-orange-500/20'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Example 2: Dense Urban Area (शहरी क्षेत्र)
+            </button>
+          </div>
+
+          {/* Comparison Container */}
+          <div className="grid lg:grid-cols-12 gap-8 items-center bg-slate-50 rounded-3xl p-6 md:p-8 border border-slate-100 shadow-lg">
+            {/* Left: Info Card */}
+            <div className="lg:col-span-5 space-y-6">
+              {selectedSample === 'sample1' ? (
+                <>
+                  <span className="inline-block px-3 py-1 bg-green-100 text-green-700 font-bold text-xs rounded-full">Rural Layout</span>
+                  <h3 className="text-2xl font-bold text-slate-800 font-[Baloo_2]">Sample 1: Village Enumeration Block</h3>
+                  <p className="text-slate-600 text-sm leading-relaxed">
+                    This sample demonstrates a rural layout featuring spaced pucca/kutcha houses, a central block structure, and path routing. 
+                    Notice how houses are neatly aligned along the road boundaries, maximizing space and keeping symbols highly readable.
+                  </p>
+                  <ul className="space-y-3 text-sm text-slate-600">
+                    <li className="flex items-center gap-2">
+                      <span className="text-orange-500 font-bold">✓</span> Auto U-Loop Numbering Route
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-orange-500 font-bold">✓</span> Clear Pucca (Square) & Kutcha (Triangle) distinction
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-orange-500 font-bold">✓</span> Distinct block-division boundaries with colored fills
+                    </li>
+                  </ul>
+                  
+                  {/* View Toggles for Sample 1 */}
+                  <div className="bg-white p-1.5 rounded-xl border border-slate-200 inline-flex w-full sm:w-auto">
+                    <button
+                      id="btn-sample1-sat"
+                      onClick={() => setSample1View('sat')}
+                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+                        sample1View === 'sat'
+                          ? 'bg-slate-900 text-white'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Before: Satellite Image
+                    </button>
+                    <button
+                      id="btn-sample1-map"
+                      onClick={() => setSample1View('map')}
+                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+                        sample1View === 'map'
+                          ? 'bg-orange-500 text-white'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      After: Generated Census Map
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 font-bold text-xs rounded-full">Urban Layout</span>
+                  <h3 className="text-2xl font-bold text-slate-800 font-[Baloo_2]">Sample 2: Congested City Block</h3>
+                  <p className="text-slate-600 text-sm leading-relaxed">
+                    This sample showcases a high-density urban block where space optimization is critical. 
+                    NakshaBot dynamically calculates block margins, adjusting house size boundaries and aligning houses along roads to prevent overlaps.
+                  </p>
+                  <ul className="space-y-3 text-sm text-slate-600">
+                    <li className="flex items-center gap-2">
+                      <span className="text-orange-500 font-bold">✓</span> Adaptive house symbols for high density
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-orange-500 font-bold">✓</span> Multi-unit flat numbering representation
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-orange-500 font-bold">✓</span> Road name annotations and orientation indicator
+                    </li>
+                  </ul>
+                  
+                  {/* View Toggles for Sample 2 */}
+                  <div className="bg-white p-1.5 rounded-xl border border-slate-200 inline-flex w-full sm:w-auto">
+                    <button
+                      id="btn-sample2-sat"
+                      onClick={() => setSample2View('sat')}
+                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+                        sample2View === 'sat'
+                          ? 'bg-slate-900 text-white'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Before: Satellite Image
+                    </button>
+                    <button
+                      id="btn-sample2-map"
+                      onClick={() => setSample2View('map')}
+                      className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg font-bold text-xs transition-all ${
+                        sample2View === 'map'
+                          ? 'bg-orange-500 text-white'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      After: Generated Census Map
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Right: Interactive Image Frame */}
+            <div className="lg:col-span-7 flex justify-center">
+              <div className="relative w-full max-w-2xl bg-white rounded-2xl overflow-hidden shadow-md border border-slate-200 aspect-[4/3] flex items-center justify-center">
+                {selectedSample === 'sample1' ? (
+                  <figure className="w-full h-full flex flex-col">
+                    <img
+                      src={sample1View === 'sat' ? '/images/sample1_sat.jpg' : '/images/sample1_map.jpg'}
+                      alt={
+                        sample1View === 'sat'
+                          ? 'High resolution satellite view of rural village boundary before census mapping'
+                          : 'Generated Nazri Naksha layout map of rural village showing blocks and house numbering'
+                      }
+                      className="w-full h-full object-contain bg-slate-100"
+                    />
+                    <figcaption className="sr-only">
+                      {sample1View === 'sat' ? 'Rural village satellite image' : 'Rural village generated layout map'}
+                    </figcaption>
+                  </figure>
+                ) : (
+                  <figure className="w-full h-full flex flex-col">
+                    <img
+                      src={sample2View === 'sat' ? '/images/sample2_sat.jpg' : '/images/sample2_map.jpg'}
+                      alt={
+                        sample2View === 'sat'
+                          ? 'Satellite aerial view of dense urban census block with red boundary outline'
+                          : 'Generated urban nazari naksha census map showing block divisions and house symbols'
+                      }
+                      className="w-full h-full object-contain bg-slate-100"
+                    />
+                    <figcaption className="sr-only">
+                      {sample2View === 'sat' ? 'Urban block satellite image' : 'Urban block generated layout map'}
+                    </figcaption>
+                  </figure>
+                )}
+
+                {/* Absolute Watermark Tag */}
+                <div className="absolute top-4 right-4 px-3 py-1.5 bg-slate-900/80 backdrop-blur text-white font-bold text-xs rounded-lg uppercase tracking-wider">
+                  {selectedSample === 'sample1' ? 'Sample 1' : 'Sample 2'}: {selectedSample === 'sample1' ? (sample1View === 'sat' ? 'Satellite View' : 'Finished Map') : (sample2View === 'sat' ? 'Satellite View' : 'Finished Map')}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── DETAILED CANVAS MODE FEATURES SECTION ─── */}
+      <section id="canvas-features-deepdive" className="py-24 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200" aria-labelledby="canvas-features-title">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">Canvas Editor Features</h2>
+            <h2 id="canvas-features-title" className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-4">
+              Advanced Canvas Mode (नक्शा कैनवास फीचर्स)
+            </h2>
+            <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+              Explore the detailed features of NakshaBot's interactive digital drawing canvas designed to help you construct fully compliant maps.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {/* Card 1: Serpentine & U-Loop Winding */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
+              <div>
+                <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">🔄</div>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Dual-Route Auto-Numbering</h3>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Toggle between the traditional **Serpentine Path** and the official **Census U-Loop winding**. The algorithm detects the Northwest corner and automatically numbers houses block-by-block.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-orange-600 mt-4 uppercase tracking-wider">HLO Compliant</span>
+            </div>
+
+            {/* Card 2: Manual Numbering & Collision Avoidance */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
+              <div>
+                <div className="w-12 h-12 bg-teal-100 text-teal-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">✍️</div>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Manual Click-Numbering</h3>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Want custom numbering? Switch to manual click mode. Set the sequence pointer, and assign numbers simply by clicking. Built-in collision avoidance automatically skips pre-allocated house numbers.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-teal-600 mt-4 uppercase tracking-wider">Collision Avoidance</span>
+            </div>
+
+            {/* Card 3: Boundary-Aligned House Auto-Placement */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
+              <div>
+                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">📐</div>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Aligned House Placement</h3>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  When adding houses to a block, NakshaBot aligns them along the sides of its boundary. This eliminates empty spaces and places houses close to side roads, mimicking natural layouts.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-blue-600 mt-4 uppercase tracking-wider">Perfect Alignment</span>
+            </div>
+
+            {/* Card 4: Density-Based Adaptive Symbol Scaling */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
+              <div>
+                <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">🔍</div>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Adaptive Symbol Scaling</h3>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  No overlapping symbols. The editor analyzes building density inside each block and automatically adjusts the house symbol sizes. Sizes remain above a readable threshold for legibility.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-purple-600 mt-4 uppercase tracking-wider">Auto-Scaling</span>
+            </div>
+
+            {/* Card 5: Apartment Flat Count Inputs */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
+              <div>
+                <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">🏢</div>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Apartment Flat Customization</h3>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  For multi-story structures, add flat/unit counts directly to apartment symbols. Displays as `BuildingNum(FlatCount)` (e.g., `4(3)`) and expands into individual rows in the exported register sheet.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-rose-600 mt-4 uppercase tracking-wider">Multi-Unit Support</span>
+            </div>
+
+            {/* Card 6: Erase & Save Draft controls */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
+              <div>
+                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">💾</div>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Drafts & Block Clear Tools</h3>
+                <p className="text-slate-600 text-sm leading-relaxed">
+                  Make mistakes? Use the **Erase Block Numbers** or **Erase All Numbers** buttons. Save your custom map and numbering drafts at any time, allowing you to resume work without losing progress.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-emerald-600 mt-4 uppercase tracking-wider">Editor Tools</span>
+            </div>
           </div>
         </div>
       </section>

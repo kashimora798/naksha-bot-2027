@@ -211,6 +211,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   const mapClickRef = useRef<(c: Coordinate) => void>(() => {});
   mapClickRef.current = (coord: Coordinate) => {
     if (phase === 'boundary' && !boundaryClosed) {
+      if (mapData.paymentStatus === 'paid') return;
       onUpdateMapData({ boundaryPins: [...boundaryPins, { ...coord }] });
       try { navigator.vibrate?.(40); } catch {}
       return;
@@ -716,7 +717,10 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   function closeBoundary() {
     if (boundaryPins.length < 3) { alert('Drop at least 3 pins'); return; }
     if (isPolygonSelfIntersecting(boundaryPins)) { alert('Boundary lines cross each other — adjust the pins.'); return; }
-    onUpdateMapData({ boundaryClosed: true });
+    const sumLat = boundaryPins.reduce((acc, curr) => acc + curr.lat, 0);
+    const sumLng = boundaryPins.reduce((acc, curr) => acc + curr.lng, 0);
+    const center = { lat: sumLat / boundaryPins.length, lng: sumLng / boundaryPins.length };
+    onUpdateMapData({ boundaryClosed: true, center });
   }
 
   async function fetchRoads() {
@@ -1264,44 +1268,61 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
 
             {phase === 'location' && (
               <div className="flex flex-col gap-3">
+                {mapData.paymentStatus === 'paid' && (
+                  <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 flex gap-2 text-xs font-semibold">
+                    <span className="shrink-0 text-sm">⚠️</span>
+                    <span>Latitude, longitude, and boundary cannot be changed after payment.</span>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Paste Census SMS (Auto-detects HLB & location)</label>
                   <textarea
                     value={smsText}
                     onChange={e => handleSMSChange(e.target.value)}
                     placeholder="Example: HLB 0455 assigned to you. Location: https://maps.google.com/?q=26.4499,80.3319"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-transparent min-h-[50px] resize-none font-medium text-gray-700 shadow-xs"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-transparent min-h-[50px] resize-none font-medium text-gray-700 shadow-xs disabled:opacity-60"
+                    disabled={mapData.paymentStatus === 'paid'}
                   />
                 </div>
                 <p className="text-xs text-gray-600 font-medium">Or enter base coordinates manually:</p>
                 <div className="flex gap-2 items-center flex-wrap">
                   <div className="flex gap-1.5 items-center">
                     <span className="text-xs font-semibold text-gray-400">Lat</span>
-                    <input value={latIn} onChange={e => setLatIn(e.target.value)} placeholder="lat" className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm w-28 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium" />
+                    <input value={latIn} onChange={e => setLatIn(e.target.value)} placeholder="lat" className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm w-28 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium disabled:opacity-60" disabled={mapData.paymentStatus === 'paid'} />
                   </div>
                   <div className="flex gap-1.5 items-center">
                     <span className="text-xs font-semibold text-gray-400">Lng</span>
-                    <input value={lngIn} onChange={e => setLngIn(e.target.value)} placeholder="lng" className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm w-28 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium" />
+                    <input value={lngIn} onChange={e => setLngIn(e.target.value)} placeholder="lng" className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm w-28 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-medium disabled:opacity-60" disabled={mapData.paymentStatus === 'paid'} />
                   </div>
-                  <button onClick={recenter} className="px-4 py-1.5 bg-gray-100 border border-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors shadow-xs" style={{ minHeight: '38px' }}>Go</button>
+                  <button onClick={recenter} disabled={mapData.paymentStatus === 'paid'} className="px-4 py-1.5 bg-gray-100 border border-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors shadow-xs disabled:opacity-50" style={{ minHeight: '38px' }}>Go</button>
                 </div>
                 <button onClick={() => setPhase('boundary')} className="px-5 py-2.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl font-bold text-sm self-start transition-all shadow-md active:scale-98 flex items-center gap-1" style={{ minHeight: '44px' }}>
-                  Start Boundary Draft →
+                  {mapData.paymentStatus === 'paid' ? 'View Boundary →' : 'Start Boundary Draft →'}
                 </button>
               </div>
             )}
 
             {phase === 'boundary' && (
               <div className="flex flex-col gap-2.5">
+                {mapData.paymentStatus === 'paid' && (
+                  <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 flex gap-2 text-xs font-semibold">
+                    <span className="shrink-0 text-sm">⚠️</span>
+                    <span>Latitude, longitude, and boundary cannot be changed after payment.</span>
+                  </div>
+                )}
                 <p className="text-xs text-gray-600 font-medium flex items-center gap-1">
                   📌 Tap map to drop boundary pins. <strong>{boundaryPins.length} pins placed</strong> {area > 0 && `· Area: ${areaT}`}
                 </p>
                 <div className="flex gap-2 flex-wrap items-center">
-                  <button onClick={() => onUpdateMapData({ boundaryPins: boundaryPins.slice(0, -1), boundaryClosed: false })} disabled={!boundaryPins.length} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg text-sm font-bold disabled:opacity-40 transition-colors" style={{ minHeight: '40px' }}>Undo last pin</button>
-                  {!boundaryClosed ? (
+                  {mapData.paymentStatus !== 'paid' && (
+                    <button onClick={() => onUpdateMapData({ boundaryPins: boundaryPins.slice(0, -1), boundaryClosed: false })} disabled={!boundaryPins.length} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg text-sm font-bold disabled:opacity-40 transition-colors" style={{ minHeight: '40px' }}>Undo last pin</button>
+                  )}
+                  {(!boundaryClosed && mapData.paymentStatus !== 'paid') ? (
                     <button onClick={closeBoundary} disabled={boundaryPins.length < 3} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-bold disabled:opacity-40 transition-colors shadow-sm" style={{ minHeight: '40px' }}>Close boundary</button>
                   ) : (
-                    <button onClick={() => setPhase('roads')} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all shadow-md active:scale-98" style={{ minHeight: '44px' }}>Continue to Roads →</button>
+                    (boundaryClosed || mapData.paymentStatus === 'paid') && (
+                      <button onClick={() => setPhase('roads')} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all shadow-md active:scale-98" style={{ minHeight: '44px' }}>Continue to Roads →</button>
+                    )
                   )}
                   <button onClick={() => setPhase('location')} className="px-3 py-2 text-gray-500 hover:text-gray-700 text-sm font-bold" style={{ minHeight: '40px' }}>← back</button>
                 </div>

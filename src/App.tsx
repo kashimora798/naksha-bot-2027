@@ -592,7 +592,7 @@ export default function App() {
       )}
       <div className="flex-1 relative overflow-hidden min-h-0">
         <ErrorBoundary>
-        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} /></div>}
+        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown' }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} paymentStatus={mapData.paymentStatus} /></div>}
         {/* MapWorkspace is kept permanently mounted (never conditionally removed)
             once the user enters the map flow. We toggle visibility with display:none
             so the Leaflet map instance stays alive across tab switches, preventing
@@ -604,7 +604,16 @@ export default function App() {
             step={step} center={mapData.center} boundaryPins={mapData.boundaryPins} boundaryClosed={mapData.boundaryClosed}
             roads={mapData.roads} symbols={mapData.symbols} hlbNumber={mapData.hlbNumber} blocks={mapData.blocks} farmlandBlocks={mapData.farmlandBlocks}
             waterBodies={mapData.waterBodies} forests={mapData.forests} landuseAreas={mapData.landuseAreas} landmarks={mapData.landmarks} areaStats={mapData.areaStats}
-            onUpdateBoundary={(p: Coordinate[], c: boolean) => update({ boundaryPins: p, boundaryClosed: c })}
+            onUpdateBoundary={(p: Coordinate[], c: boolean) => {
+              if (c && p.length >= 3) {
+                const sumLat = p.reduce((acc, curr) => acc + curr.lat, 0);
+                const sumLng = p.reduce((acc, curr) => acc + curr.lng, 0);
+                const center = { lat: sumLat / p.length, lng: sumLng / p.length };
+                update({ boundaryPins: p, boundaryClosed: c, center });
+              } else {
+                update({ boundaryPins: p, boundaryClosed: c });
+              }
+            }}
             onUpdateRoads={(r: RoadFeature[]) => update({ roads: r })}
             onUpdateSymbols={(s: PlacedSymbol[]) => {
               const houses = s.filter(x => isHouseType(x.symbol_type));
@@ -623,6 +632,7 @@ export default function App() {
             isDemoMode={isDemoMode}
             onDemoComplete={() => setIsDemoMode(false)}
             numberingSystem={mapData.numberingSystem}
+            paymentStatus={mapData.paymentStatus}
           />}
         </div>
         {(step === 7) && (

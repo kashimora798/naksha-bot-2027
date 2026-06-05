@@ -611,7 +611,7 @@ export default function SessionDetailScreen() {
                     onClick={() => setShowPaywallModal(true)}
                     className="w-full py-3.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-black text-xs rounded-xl shadow-lg active:scale-95 transition-all"
                   >
-                    ✨ Limit Reached! Buy Refill (₹25)
+                    ✨ Limit Reached! Buy Refill (₹5)
                   </button>
                 ) : (
                   <button
@@ -698,8 +698,8 @@ export default function SessionDetailScreen() {
                   <h3 className="text-2xl font-black font-[Baloo_2] tracking-tight">Unlock Official PDF Exports</h3>
                   <p className="text-xs text-white/80 mt-1">Get high-fidelity downloads and full AI mapping access</p>
                   <div className="mt-5 flex items-end justify-center gap-2">
-                    <span className="text-white/60 line-through text-lg">₹99</span>
-                    <span className="text-5xl font-black leading-none">₹25</span>
+                    <span className="text-white/60 line-through text-lg">₹10</span>
+                    <span className="text-5xl font-black leading-none">₹5</span>
                     <span className="text-white/90 text-sm mb-1 font-medium">one-time</span>
                   </div>
                 </div>
@@ -730,7 +730,7 @@ export default function SessionDetailScreen() {
                     disabled={paying}
                     className="w-full py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-black text-sm rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
                   >
-                    {paying ? 'Loading...' : 'Pay ₹25 to Unlock'}
+                    {paying ? 'Loading...' : 'Pay ₹5 to Unlock'}
                   </button>
                 </div>
               </div>
@@ -856,8 +856,8 @@ export default function SessionDetailScreen() {
                 <p className="text-xs text-white/80 mt-1">Unlock exports and get 6 AI generations</p>
               )}
               <div className="mt-4 flex items-end justify-center gap-2">
-                <span className="text-white/70 line-through text-base">₹50</span>
-                <span className="text-4xl font-black leading-none font-sans">₹25</span>
+                <span className="text-white/70 line-through text-base">₹10</span>
+                <span className="text-4xl font-black leading-none font-sans">₹5</span>
                 <span className="text-white/90 text-xs mb-1">pack of 6</span>
               </div>
             </div>
@@ -898,7 +898,7 @@ export default function SessionDetailScreen() {
                 disabled={paying}
                 className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold text-xs rounded-xl shadow hover:opacity-90 active:scale-95 transition-all"
               >
-                {paying ? 'Loading...' : 'Pay ₹25'}
+                {paying ? 'Loading...' : 'Pay ₹5'}
               </button>
             </div>
           </div>

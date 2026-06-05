@@ -1,6 +1,6 @@
 // Server-side AI map generation. Centralizing this here gives us, in one place:
 //   • abuse control — the AI API is only reachable through an authed, counted call
-//   • regen limits — server-enforced (paid map = 5 regens; +₹25 = 5 more)
+//   • regen limits — server-enforced (paid map = 5 regens; +₹5 = 5 more)
 //   • caching — the result is stored in Supabase Storage + image_generations, so
 //     the AI API is never hit again for an image the user already has
 //   • lossless compression — removed server-side @napi-rs/canvas compilation dependency.

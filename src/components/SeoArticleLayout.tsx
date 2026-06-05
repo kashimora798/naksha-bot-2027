@@ -43,7 +43,7 @@ export default function SeoArticleLayout({ title, metaDescription, h1, schema, c
           <div className="mt-16 pt-8 border-t border-slate-200">
             <div className="bg-gradient-to-r from-orange-50 to-rose-50 rounded-3xl p-8 border border-orange-100 text-center">
               <h3 className="text-2xl font-bold font-[Baloo_2] text-slate-900 mb-4">अभी अपना Nazri Naksha बनाएं</h3>
-              <p className="text-slate-600 mb-6">Census 2027 के लिए HLO ready format में A4 PDF download करें — सिर्फ ₹20 में।</p>
+              <p className="text-slate-600 mb-6">Census 2027 के लिए HLO ready format में A4 PDF download करें — सिर्फ ₹5 में।</p>
               <Link to="/" className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold px-8 py-4 rounded-full shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 transition-all">
                 Start Creating Free →
               </Link>

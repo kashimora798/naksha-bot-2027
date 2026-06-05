@@ -311,7 +311,7 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
                 onClick={() => setShowPaywall(true)}
                 className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xs rounded-xl shadow-lg hover:-translate-y-0.5 transition-transform"
               >
-                ✨ Limit Reached! Buy 5 Generations (₹25)
+                ✨ Limit Reached! Buy 5 Generations (₹5)
               </button>
             ) : (
               <button
@@ -386,8 +386,8 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
               <h3 className="text-xl font-black font-[Baloo_2]">Need More AI Generations?</h3>
               <p className="text-xs text-white/80 mt-1">Get 5 extra generations for this project</p>
               <div className="mt-4 flex items-end justify-center gap-2">
-                <span className="text-white/70 line-through text-base">₹50</span>
-                <span className="text-4xl font-black leading-none">₹25</span>
+                <span className="text-white/70 line-through text-base">₹10</span>
+                <span className="text-4xl font-black leading-none">₹5</span>
                 <span className="text-white/90 text-xs mb-1">pack of 5</span>
               </div>
             </div>
@@ -413,7 +413,7 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
                 disabled={paying}
                 className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs rounded-xl shadow hover:opacity-90 active:scale-95 transition-all"
               >
-                {paying ? 'Loading...' : 'Pay ₹25'}
+                {paying ? 'Loading...' : 'Pay ₹5'}
               </button>
             </div>
           </div>

@@ -15,7 +15,7 @@ export default function LandingScreen() {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden selection:bg-orange-200">
       <Helmet>
         <title>HLB Map Maker Online | Nazri Naksha Generator - NakshaBot</title>
-        <meta name="description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹20 में A4 PDF download करें। HLO ready format।" />
+        <meta name="description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹5 में A4 PDF download करें। HLO ready format।" />
         <meta name="keywords" content="HLO map maker, HLB map maker, nazari naksha online, census 2027 map maker, नजरी नक्शा, HLO नक्शा बनाओ, जनगणना नक्शा ऑनलाइन, census enumeration block map, nazari naksha kaise banaye" />
         <link rel="canonical" href="https://examsetu.dev/" />
         <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
@@ -24,7 +24,7 @@ export default function LandingScreen() {
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://examsetu.dev/" />
         <meta property="og:title" content="HLB Map Maker Online | Nazri Naksha Generator - NakshaBot" />
-        <meta property="og:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹20 में A4 PDF download करें। HLO ready format।" />
+        <meta property="og:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹5 में A4 PDF download करें। HLO ready format।" />
         <meta property="og:image" content="https://examsetu.dev/logo.png" />
         <meta property="og:site_name" content="NakshaBot" />
         <meta property="og:locale" content="en_IN" />
@@ -33,7 +33,7 @@ export default function LandingScreen() {
         <meta property="twitter:card" content="summary_large_image" />
         <meta property="twitter:url" content="https://examsetu.dev/" />
         <meta property="twitter:title" content="HLB Map Maker Online | Nazri Naksha Generator - NakshaBot" />
-        <meta property="twitter:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹20 में A4 PDF download करें। HLO ready format।" />
+        <meta property="twitter:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹5 में A4 PDF download करें। HLO ready format।" />
         <meta property="twitter:image" content="https://examsetu.dev/logo.png" />
         
         {/* Schema markups */}
@@ -47,7 +47,7 @@ export default function LandingScreen() {
             "description": "Census 2027 HLB Map Maker and Nazri Naksha Generator for Indian enumerators",
             "offers": {
               "@type": "Offer",
-              "price": "20",
+              "price": "5",
               "priceCurrency": "INR"
             },
             "inLanguage": ["hi", "en"],
@@ -148,7 +148,7 @@ export default function LandingScreen() {
           </h1>
           
           <p className="text-lg lg:text-xl text-slate-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-            NakshaBot भारत का पहला HLB Map Maker tool है जो Census 2027 के प्रगणकों को nazri naksha बनाने में मदद करता है। अपना HLO assignment SMS paste करें, satellite map पर boundary देखें, और printable A4 HLB map PDF download करें — सिर्फ ₹20 में।
+            NakshaBot भारत का पहला HLB Map Maker tool है जो Census 2027 के प्रगणकों को nazri naksha बनाने में मदद करता है। अपना HLO assignment SMS paste करें, satellite map पर boundary देखें, और printable A4 HLB map PDF download करें — सिर्फ ₹5 में।
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

@@ -7,7 +7,7 @@ const corsHeaders = {
 }
 
 // Price (in INR) lives on the SERVER — never trust an amount from the client.
-const MAP_PRICE = 25.00
+const MAP_PRICE = 5.00
 
 // CASHFREE_ENV=production for live; anything else uses sandbox.
 const CASHFREE_BASE = (Deno.env.get('CASHFREE_ENV') === 'production')

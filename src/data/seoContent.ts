@@ -80,8 +80,8 @@ export const seoArticles: SeoArticle[] = [
       <p>Satellite view का उपयोग करके अपने block की boundary को accurately mark करें।</p>
       <h3>Step 3: Roads और Houses verify करें</h3>
       <p>AI द्वारा detect की गई सड़कों और मकानों को verify करें। आप manually भी house symbols add कर सकते हैं।</p>
-      <h3>Step 4: ₹20 pay करें और PDF download करें</h3>
-      <p>अपनी पूरी मेहनत बचाने के लिए सिर्फ ₹20 का payment करें और अपना official, ready-to-print A4 PDF download करें।</p>
+      <h3>Step 4: ₹5 pay करें और PDF download करें</h3>
+      <p>अपनी पूरी मेहनत बचाने के लिए सिर्फ ₹5 का payment करें और अपना official, ready-to-print A4 PDF download करें।</p>
       <h2>Nazri Naksha Sample — कैसा दिखता है?</h2>
       <figure class="my-8">
         <img src="/logo.png" alt="hlb map sample census 2027 kanpur" class="w-full h-auto rounded-2xl shadow-md border border-slate-200 bg-slate-100" style="min-height: 200px; object-fit: contain;" />
@@ -172,7 +172,7 @@ export const seoArticles: SeoArticle[] = [
     id: 'hlb-map-download',
     url: '/hlb-map-download',
     title: 'HLB Map Download — Nazri Naksha PDF Free Sample | Census 2027',
-    metaDescription: 'HLB map PDF download karo census 2027 ke liye. Apna HLB number enter karo aur ready-to-print nazri naksha A4 PDF milega. ₹20 mein poora bundle.',
+    metaDescription: 'HLB map PDF download karo census 2027 ke liye. Apna HLB number enter karo aur ready-to-print nazri naksha A4 PDF milega. ₹5 mein poora bundle.',
     h1: 'HLB Map Download — अपना Nazri Naksha PDF पाएं',
     content: `
       <p class="lead">Census 2027 के लिए एकदम सही फॉर्मेट में अपना HLB Map / Nazri Naksha डाउनलोड करें। नीचे दिए गए फ्री सैंपल्स देखें。</p>
@@ -192,7 +192,7 @@ export const seoArticles: SeoArticle[] = [
         <li><strong>Enter SMS:</strong> NakshaBot homepage पर जाएं और अपना HLO assignment SMS paste करें।</li>
         <li><strong>Draw Boundary:</strong> Satellite map पर अपने block की boundary बनाएं।</li>
         <li><strong>Generate:</strong> AI को मकान detect करने दें और map generate करें।</li>
-        <li><strong>Download:</strong> ₹20 का payment करें और अपना High-Resolution A4 PDF download करें।</li>
+        <li><strong>Download:</strong> ₹5 का payment करें और अपना High-Resolution A4 PDF download करें।</li>
       </ol>
       <h2>What's included in the download</h2>
       <ul>

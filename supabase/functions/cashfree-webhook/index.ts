@@ -103,7 +103,7 @@ serve(async (req) => {
           .maybeSingle()
 
         // Idempotent: only act if not already paid (verify-payment may have run first),
-        // so regenerations are granted exactly once per ₹25.
+        // so regenerations are granted exactly once per ₹5.
         if (proj && proj.payment_status !== 'paid') {
           await supabaseAdmin.from('projects').update({ payment_status: 'paid' }).eq('id', proj.id)
           await supabaseAdmin.rpc('grant_regen_allowance', { proj_id: proj.id, n: 5 })

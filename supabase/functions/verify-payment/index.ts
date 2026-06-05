@@ -10,7 +10,7 @@ const CASHFREE_BASE = (Deno.env.get('CASHFREE_ENV') === 'production')
   ? 'https://api.cashfree.com/pg'
   : 'https://sandbox.cashfree.com/pg'
 
-// Regenerations granted when a map is paid for (₹25 = map unlock + 5 AI regens).
+// Regenerations granted when a map is paid for (₹5 = map unlock + 5 AI regens).
 const REGENS_PER_PAYMENT = 5
 
 // Called by the app right after the Cashfree redirect. Instead of trusting the URL

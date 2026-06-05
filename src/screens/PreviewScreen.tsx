@@ -641,7 +641,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           <button
             onClick={() => isPaid ? handleExport() : setShowPaywall(true)}
             disabled={exporting || paying}
-            title={isPaid ? 'Download print-ready PDF' : 'Unlock the print (₹25)'}
+            title={isPaid ? 'Download print-ready PDF' : 'Unlock the print (₹5)'}
             className={`w-10 h-10 rounded-full shadow-lg font-bold flex items-center justify-center mt-3 transition-colors ${exporting || paying ? 'bg-gray-400 text-white' : isPaid ? 'bg-orange-500 text-white' : 'bg-emerald-600 text-white'}`}>
             {exporting || paying ? '⏳' : isPaid ? '🖨️' : '🔒'}
           </button>
@@ -652,7 +652,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           <div className="absolute left-0 right-0 bottom-4 z-[55] flex justify-center px-4 pointer-events-none">
             {!isPaid ? (
               <button onClick={() => setShowPaywall(true)} disabled={paying} className="pointer-events-auto w-full max-w-md py-4 rounded-2xl font-black text-base shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white">
-                🔓 Unlock Map & HLO Register — <span className="opacity-90">₹25</span>
+                🔓 Unlock Map & HLO Register — <span className="opacity-90">₹5</span>
               </button>
             ) : mapData.isLive ? (
               <div className="pointer-events-auto w-full max-w-md flex flex-col gap-2">
@@ -797,7 +797,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                 {regenLimitReached ? (
                   <div className="text-center space-y-2">
                     <p className="text-xs text-red-400">You've used all {regenAllowance} AI generations for this map.</p>
-                    <button onClick={() => setShowPaywall(true)} className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-bold text-sm shadow-lg hover:opacity-90 active:scale-95 transition-all">✨ Buy 5 More for ₹25</button>
+                    <button onClick={() => setShowPaywall(true)} className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-bold text-sm shadow-lg hover:opacity-90 active:scale-95 transition-all">✨ Buy 5 More for ₹5</button>
                   </div>
                 ) : (
                   <button onClick={generateAI} className="px-6 py-3 bg-purple-500 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-purple-600 active:scale-95 transition-all">✨ Generate AI Survey Map</button>
@@ -990,8 +990,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
               <h3 className="text-xl font-black font-[Baloo_2]">आपका नक्शा तैयार है!</h3>
               <p className="text-sm text-white/90">Unlock the print-ready PDF for this HLB</p>
               <div className="mt-3 flex items-end justify-center gap-2">
-                <span className="text-white/70 line-through text-lg">₹50</span>
-                <span className="text-5xl font-black leading-none">₹25</span>
+                <span className="text-white/70 line-through text-lg">₹10</span>
+                <span className="text-5xl font-black leading-none">₹5</span>
                 <span className="text-white/90 text-sm mb-1">one-time</span>
               </div>
             </div>
@@ -1011,7 +1011,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
             </div>
             <div className="px-6 pb-6 pt-1">
               <button onClick={() => { setShowPaywall(false); handlePayment(); }} disabled={paying} className="w-full py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-black text-base shadow-lg active:scale-[0.98] transition-all disabled:opacity-60">
-                {paying ? 'Opening payment…' : 'Get it now → Pay ₹25'}
+                {paying ? 'Opening payment…' : 'Get it now → Pay ₹5'}
               </button>
               <p className="text-center text-[11px] text-slate-400 mt-3">🔒 Secure UPI / card payment via Cashfree</p>
               <button onClick={() => setShowPaywall(false)} disabled={paying} className="w-full mt-1 py-2 text-xs text-slate-400 font-semibold">Maybe later</button>

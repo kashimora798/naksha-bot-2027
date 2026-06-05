@@ -94,63 +94,71 @@ function latticeInBlock(ring: Coordinate[], count: number, bearingDeg: number, e
   const uMin = Math.min(...uv.map(p => p.u)), uMax = Math.max(...uv.map(p => p.u));
   const vMin = Math.min(...uv.map(p => p.v)), vMax = Math.max(...uv.map(p => p.v));
 
-  // Seed cell size from the BOUNDING BOX area (not polygon area).
-  // The lattice sweeps the full [uMin,uMax]×[vMin,vMax] bbox; using polygon
-  // area gives too-small cells for irregular/split polygons (L-shapes, triangles)
-  // causing the first pass to already exceed `count` and returning congested pts.
-  // Using bbox area guarantees a spacing appropriate for the sweep region;
-  // pointInPolygon filtering then keeps only truly interior points.
   const bboxArea = Math.max(1, (uMax - uMin) * (vMax - vMin));
   const excludedArea = exclusions.reduce((s, ex) => s + (ex.length >= 3 ? polygonArea(ex) : 0), 0);
   const availArea = Math.max(1, polygonArea(ring) - excludedArea);
-  // Fill ratio: what fraction of the bbox is actually polygon interior.
-  // Use this to correct the density so we still converge quickly.
   const fillRatio = Math.max(0.15, Math.min(1, availArea / bboxArea));
-  let cell = Math.max(1.5, Math.sqrt(bboxArea / Math.max(1, count / fillRatio)) * 0.95);
+
+  const initialCell = Math.sqrt(bboxArea / Math.max(1, count / fillRatio)) * 1.35;
+  const minCellAllowed = 3.5;
+
+  let low = minCellAllowed;
+  let high = Math.max(minCellAllowed + 1.0, initialCell);
+  let bestCell = minCellAllowed;
+  let bestPts: { p: Coordinate; u: number; v: number }[] = [];
+
+  const EDGE_MARGIN = 1.8;
 
   const usable = (p: Coordinate, margin: number) => {
     if (!pointInPolygon(p, ring)) return false;
-    if (minEdgeDistM(p, ring) < margin) return false;            // keep clear of road/boundary
+    if (minEdgeDistM(p, ring) < margin) return false;
     for (const ex of exclusions) {
       if (ex.length < 3) continue;
-      if (pointInPolygon(p, ex)) return false;                   // never inside a field
-      if (minEdgeDistM(p, ex) < margin) return false;            // keep a gap around the field
+      if (pointInPolygon(p, ex)) return false;
+      if (minEdgeDistM(p, ex) < margin) return false;
     }
     return true;
   };
 
-  // Tight fixed margin: keep just a small clearance from the block edge so
-  // houses align close to road boundaries (like a real census map) but still
-  // have a small visual gap. A cell-proportional component handles very coarse
-  // grids. Previously margin = max(2.6, cell*0.38) was far too large and caused
-  // all interior points to be stripped in narrow blocks, yielding a single row.
-  const EDGE_MARGIN = 1.8; // metres — absolute minimum clearance from block edge
-
-  for (let iter = 0; iter < 20; iter++) {
-    // margin = 1.8m + 8% of cell, capped at half-cell so we never exceed usable area.
-    const margin = Math.min(cell * 0.48, EDGE_MARGIN + cell * 0.08);
+  const getPointsForCell = (cellSize: number) => {
+    const margin = Math.min(cellSize * 0.48, EDGE_MARGIN + cellSize * 0.08);
     const pts: { p: Coordinate; u: number; v: number }[] = [];
-    for (let v = vMin; v <= vMax; v += cell) {
-      for (let u = uMin; u <= uMax; u += cell) {
+    for (let v = vMin; v <= vMax + 0.01; v += cellSize) {
+      for (let u = uMin; u <= uMax + 0.01; u += cellSize) {
         const p = toLatLng(u, v);
         if (usable(p, margin)) pts.push({ p, u, v });
       }
     }
-    // Stop when we have enough points OR cell is already at the minimum.
-    // Min cell is 3.5m so even 6-7m wide blocks can fit two rows.
-    if (pts.length >= count || cell <= 3.5) {
-      // row-major order: rows top→bottom (descending v), snake within each row
-      const rowOf = (v: number) => Math.round((vMax - v) / cell);
-      pts.sort((a, b) => {
-        const ra = rowOf(a.v), rb = rowOf(b.v);
-        if (ra !== rb) return ra - rb;
-        return ra % 2 === 0 ? a.u - b.u : b.u - a.u;
-      });
-      return { points: pts.slice(0, count).map(x => x.p), cellMeters: cell };
+    return pts;
+  };
+
+  // Binary search for the maximum cell spacing that fits the count
+  for (let step = 0; step < 12; step++) {
+    const mid = (low + high) / 2;
+    const pts = getPointsForCell(mid);
+    if (pts.length >= count) {
+      bestCell = mid;
+      bestPts = pts;
+      low = mid; // Try larger cell spacing
+    } else {
+      high = mid; // Try smaller cell spacing
     }
-    cell = Math.max(3.5, cell * 0.78);
   }
-  return { points: [], cellMeters: cell };
+
+  if (bestPts.length < count) {
+    bestCell = minCellAllowed;
+    bestPts = getPointsForCell(minCellAllowed);
+  }
+
+  // Row-major sorting order: rows top→bottom (descending v), snake within each row
+  const rowOf = (v: number) => Math.round((vMax - v) / bestCell);
+  bestPts.sort((a, b) => {
+    const ra = rowOf(a.v), rb = rowOf(b.v);
+    if (ra !== rb) return ra - rb;
+    return ra % 2 === 0 ? a.u - b.u : b.u - a.u;
+  });
+
+  return { points: bestPts.slice(0, count).map(x => x.p), cellMeters: bestCell };
 }
 
 /**

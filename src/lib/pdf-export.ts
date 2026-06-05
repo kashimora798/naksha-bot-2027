@@ -203,7 +203,7 @@ export function renderMapToCanvas(
   let symSz: number;
   {
     const globalScale = Math.max(0.4, Math.min(1, 100 / numSymbols));
-    const base = Math.max(16 * globalScale, Math.min(42 * globalScale, sc * 0.0002));
+    const base = Math.max(16 * globalScale, Math.min(32 * globalScale, sc * 0.0002));
     const pts = (data.symbols || []).map(s => proj(s));
     if (pts.length >= 2) {
       // Sample up to 60 symbols for nearest-neighbour spacing (O(n*k) but bounded).
@@ -220,10 +220,10 @@ export function renderMapToCanvas(
       }
       nn.sort((a, b) => a - b);
       const medianNN = nn.length ? nn[Math.floor(nn.length / 2)] : base;
-      // Box ~70% of local spacing, clamped to a legible range; never larger than base.
-      symSz = Math.max(10, Math.min(base, medianNN * 0.7));
+      // Box ~70% of local spacing, clamped to a legible range [12, Math.min(base, 28)]; never larger than 28.
+      symSz = Math.max(12, Math.min(Math.min(base, 28), medianNN * 0.7));
     } else {
-      symSz = base;
+      symSz = Math.min(base, 28);
     }
 
     // Now calculate block-specific symbol sizes to prevent overlaps in congested blocks
@@ -255,13 +255,13 @@ export function renderMapToCanvas(
           }
           nn.sort((a, b) => a - b);
           const blockMedianNN = nn.length ? nn[Math.floor(nn.length / 2)] : base;
-          // Box ~70% of local spacing inside this block, clamped to a legible range [9, base]
-          const blkSymSz = Math.max(9, Math.min(base, blockMedianNN * 0.7));
+          // Box ~70% of local spacing inside this block, clamped to a legible range [12, Math.min(base, 28)]
+          const blkSymSz = Math.max(12, Math.min(Math.min(base, 28), blockMedianNN * 0.7));
           for (const s of blkSyms) {
             symbolSizes.set(s.id, blkSymSz);
           }
         } else if (blkSyms.length === 1) {
-          symbolSizes.set(blkSyms[0].id, base);
+          symbolSizes.set(blkSyms[0].id, Math.min(base, 28));
         }
       }
     }

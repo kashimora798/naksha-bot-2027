@@ -572,8 +572,8 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
           const p1 = map.latLngToContainerPoint([lat, 0]);
           const p2 = map.latLngToContainerPoint([lat, degPerCell]);
           const cellPx = Math.abs(p2.x - p1.x);
-          // Clamp: min 14px (readable), max 40px (not overwhelming)
-          blockCellMap.set(blk.id, Math.max(14, Math.min(40, cellPx * 0.88)));
+          // Clamp: min 16px (readable), max 32px (not overwhelming)
+          blockCellMap.set(blk.id, Math.max(16, Math.min(32, cellPx * 0.88)));
         }
       }
     }

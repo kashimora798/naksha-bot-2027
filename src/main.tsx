@@ -45,6 +45,13 @@ import BlogSchedulePage from "./screens/BlogSchedulePage";
 import BlogRulesPage from "./screens/BlogRulesPage";
 import SeoArticlePage from "./screens/SeoArticlePage";
 import { seoArticles } from "./data/seoContent";
+import AdminLayout from "./screens/admin/AdminLayout";
+import AdminDashboard from "./screens/admin/AdminDashboard";
+import AdminUsersScreen from "./screens/admin/AdminUsersScreen";
+import AdminUserDetail from "./screens/admin/AdminUserDetail";
+import AdminProjectsScreen from "./screens/admin/AdminProjectsScreen";
+import AdminSessionsScreen from "./screens/admin/AdminSessionsScreen";
+import AdminFeedbackScreen from "./screens/admin/AdminFeedbackScreen";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -109,6 +116,16 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/contact.html" element={<ContactScreen />} />
           <Route path="/sign-in" element={<SignInScreen />} />
           <Route path="/sign-up" element={<SignUpScreen />} />
+
+          {/* Admin — invisible, route only */}
+          <Route path="/kratagya" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="users" element={<AdminUsersScreen />} />
+            <Route path="users/:id" element={<AdminUserDetail />} />
+            <Route path="projects" element={<AdminProjectsScreen />} />
+            <Route path="sessions" element={<AdminSessionsScreen />} />
+            <Route path="feedback" element={<AdminFeedbackScreen />} />
+          </Route>
         </Routes>
       </BrowserRouter>
     </HelmetProvider>

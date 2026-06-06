@@ -436,7 +436,7 @@ function mergeAcrossSources(groups: any[][]): any[] {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
-    const { north, south, east, west, boundary } = await req.json();
+    const { north, south, east, west, boundary, useGoogle } = await req.json();
     if ([north, south, east, west].some(v => typeof v !== 'number')) {
       return new Response(JSON.stringify({ error: 'Missing/invalid bounding box' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -445,9 +445,7 @@ serve(async (req) => {
     // Use the actual boundary polygon if provided, otherwise fall back to bbox
     let poly: any;
     if (Array.isArray(boundary) && boundary.length >= 3) {
-      // GeoJSON ring order is [lng, lat]. Accept lng or lon for the x coordinate.
       const ring = boundary.map((p: any) => [p.lng ?? p.lon, p.lat]);
-      // Close the ring if not already closed
       if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) {
         ring.push(ring[0]);
       }
@@ -456,39 +454,58 @@ serve(async (req) => {
       poly = turf.bboxPolygon([west, south, east, north]);
     }
 
-    // PRIORITY SYSTEM: Try sources sequentially, stop when one succeeds (returns >0 buildings)
-    // Order: Google (best coverage) → OSM (good urban) → Microsoft (rural fallback)
-    let buildings: any[] = [];
+    // DEFAULT: Run Microsoft + OSM in parallel. Google is opt-in only (useGoogle=true)
+    // because it over-detects in dense areas causing congested symbol placement.
     const sources: Record<string, any> = {};
+    let buildings: any[] = [];
 
-    // Try Google first (best coverage, 2000+ buildings in urban areas)
-    console.log('Trying Google Earth Engine...');
-    const googleResult = await fetchGoogle(north, south, east, west, poly);
-    sources.google = { count: googleResult.out.length, ...googleResult.meta };
+    if (useGoogle) {
+      // Google explicitly requested: try Google first, fall back to MS+OSM if empty
+      console.log('Trying Google Earth Engine (explicit request)...');
+      const googleResult = await fetchGoogle(north, south, east, west, poly);
+      sources.google = { count: googleResult.out.length, ...googleResult.meta };
 
-    if (googleResult.out.length > 0) {
-      buildings = googleResult.out;
-      console.log(`✓ Google returned ${buildings.length} buildings, using Google only`);
-      // Mark other sources as skipped
-      sources.osm = { count: 0, skipped: true, reason: 'google_succeeded' };
-      sources.microsoft = { count: 0, skipped: true, reason: 'google_succeeded' };
-    } else {
-      // Google failed or empty, try OSM
-      console.log('Google returned 0, trying OSM...');
-      const osmResult = await fetchOSM(north, south, east, west, poly);
-      sources.osm = { count: osmResult.out.length, ...osmResult.meta };
-
-      if (osmResult.out.length > 0) {
-        buildings = osmResult.out;
-        console.log(`✓ OSM returned ${buildings.length} buildings, using OSM only`);
-        sources.microsoft = { count: 0, skipped: true, reason: 'osm_succeeded' };
-      } else {
-        // OSM failed or empty, try Microsoft
-        console.log('OSM returned 0, trying Microsoft...');
-        const msResult = await fetchMicrosoft(north, south, east, west, poly);
+      if (googleResult.out.length > 0) {
+        buildings = googleResult.out;
+        console.log(`✓ Google returned ${buildings.length} buildings`);
+        // Still run MS+OSM for any buildings Google missed (different footprint coverage)
+        const [msResult, osmResult] = await Promise.all([
+          fetchMicrosoft(north, south, east, west, poly),
+          fetchOSM(north, south, east, west, poly),
+        ]);
         sources.microsoft = { count: msResult.out.length, ...msResult.meta };
-        buildings = msResult.out;
-        console.log(`✓ Microsoft returned ${buildings.length} buildings`);
+        sources.osm = { count: osmResult.out.length, ...osmResult.meta };
+        buildings = mergeAcrossSources([googleResult.out, osmResult.out, msResult.out]);
+        console.log(`✓ Merged total: ${buildings.length} buildings`);
+      } else {
+        // Google failed, fall through to MS+OSM
+        console.log('Google returned 0, falling back to MS+OSM...');
+        const [msResult, osmResult] = await Promise.all([
+          fetchMicrosoft(north, south, east, west, poly),
+          fetchOSM(north, south, east, west, poly),
+        ]);
+        sources.microsoft = { count: msResult.out.length, ...msResult.meta };
+        sources.osm = { count: osmResult.out.length, ...osmResult.meta };
+        buildings = mergeAcrossSources([osmResult.out, msResult.out]);
+        console.log(`✓ MS+OSM fallback: ${buildings.length} buildings`);
+      }
+    } else {
+      // Default path: MS + OSM in parallel, no Google
+      console.log('Running Microsoft + OSM (default, no Google)...');
+      const [msResult, osmResult] = await Promise.all([
+        fetchMicrosoft(north, south, east, west, poly),
+        fetchOSM(north, south, east, west, poly),
+      ]);
+      sources.microsoft = { count: msResult.out.length, ...msResult.meta };
+      sources.osm = { count: osmResult.out.length, ...osmResult.meta };
+      sources.google = { count: 0, skipped: true, reason: 'not_requested' };
+
+      if (msResult.out.length === 0 && osmResult.out.length === 0) {
+        // Both empty — tell the client to try Google if they want
+        console.log('MS+OSM both returned 0 buildings');
+      } else {
+        buildings = mergeAcrossSources([osmResult.out, msResult.out]);
+        console.log(`✓ MS+OSM: ${buildings.length} buildings after merge`);
       }
     }
 

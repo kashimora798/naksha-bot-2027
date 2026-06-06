@@ -190,8 +190,11 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   // Mobile UX helper states
   const [showHelp, setShowHelp] = useState(false);
   const [helpStep, setHelpStep] = useState(0);
+  const [showVideoTutorial, setShowVideoTutorial] = useState(false);
   const [panelExpanded, setPanelExpanded] = useState(true);
   const [showLayers, setShowLayers] = useState(false);
+  const [isCropped, setIsCropped] = useState(false);
+  const [cropZoom, setCropZoom] = useState<number | null>(null);
 
 
   // Convenience accessors into mapData
@@ -497,6 +500,15 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     onUpdateMapData({ symbols: renumber([...symbols, sym]) });
     setBlkMsg(`${SYMBOL_DEFS.find(d => d.type === type)?.label ?? type} placed on map.`);
   };
+
+  // ─── AUTO SHOW VIDEO TUTORIAL ──────────────────────────────
+  useEffect(() => {
+    const hasSeen = localStorage.getItem('seen_canvas_tutorial_video');
+    if (!hasSeen && boundaryPins.length === 0 && blocks.length === 0) {
+      setShowVideoTutorial(true);
+      localStorage.setItem('seen_canvas_tutorial_video', 'true');
+    }
+  }, []);
 
   // ─── MAP INIT ───────────────────────────────────────────────
   useEffect(() => {
@@ -1292,6 +1304,56 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   const areaT = area > 10000 ? `${(area / 10000).toFixed(2)} ha` : `${Math.round(area)} m²`;
   const houseCount = symbols.filter(s => isNumberableSymbol(s.symbol_type)).length;
 
+  function handleSmartCrop() {
+    const map = mapRef.current;
+    if (!map) return;
+    const pts = symbols.filter(s => s.lat && s.lng);
+    if (pts.length < 2) { alert('Place at least 2 symbols first to use Smart Crop.'); return; }
+
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const s of pts) {
+      if (s.lat < minLat) minLat = s.lat; if (s.lat > maxLat) maxLat = s.lat;
+      if (s.lng < minLng) minLng = s.lng; if (s.lng > maxLng) maxLng = s.lng;
+    }
+
+    const latPad = Math.max((maxLat - minLat) * 0.3, 0.0005);
+    const lngPad = Math.max((maxLng - minLng) * 0.3, 0.0005);
+    const cropBounds = L.latLngBounds(
+      [minLat - latPad, minLng - lngPad],
+      [maxLat + latPad, maxLng + lngPad]
+    );
+
+    if (boundaryClosed && boundaryPins.length >= 3) {
+      let bMinLat = Infinity, bMaxLat = -Infinity, bMinLng = Infinity, bMaxLng = -Infinity;
+      for (const p of boundaryPins) {
+        if (p.lat < bMinLat) bMinLat = p.lat; if (p.lat > bMaxLat) bMaxLat = p.lat;
+        if (p.lng < bMinLng) bMinLng = p.lng; if (p.lng > bMaxLng) bMaxLng = p.lng;
+      }
+      const bndArea = (bMaxLat - bMinLat) * (bMaxLng - bMinLng);
+      const symArea = (maxLat - minLat + latPad * 2) * (maxLng - minLng + lngPad * 2);
+      if (bndArea > 0 && symArea / bndArea > 0.75) {
+        alert('Map is already well-populated — no large empty areas detected.'); return;
+      }
+    }
+
+    map.fitBounds(cropBounds, { animate: true, padding: [16, 16] });
+    map.once('moveend', () => { setCropZoom(map.getZoom()); });
+    setIsCropped(true);
+  }
+
+  function handleCropReset() {
+    const map = mapRef.current;
+    if (!map) return;
+    if (boundaryClosed && boundaryPins.length >= 3) {
+      const ll = boundaryPins.map(p => L.latLng(p.lat, p.lng));
+      map.fitBounds(L.latLngBounds(ll), { animate: true, padding: [24, 24] });
+    } else {
+      map.setView([mapData.center.lat, mapData.center.lng], 17, { animate: true });
+    }
+    setIsCropped(false);
+    setCropZoom(null);
+  }
+
   return (
     <div className="h-full w-full relative" style={{ background: SCHEMATIC_BG }}>
       <div ref={containerRef} className="absolute inset-0" />
@@ -1315,6 +1377,14 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
           title="Open guided editor help"
         >
           ❓ Help Guide
+        </button>
+        <button 
+          onClick={() => setShowVideoTutorial(true)} 
+          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg text-xs font-bold flex items-center gap-1 border border-blue-200 transition-all ml-1"
+          style={{ minHeight: '36px' }}
+          title="Watch tutorial video"
+        >
+          🎥 Tutorial Video
         </button>
         <div className="ml-auto flex items-center gap-1 text-[11px]">
           {/* Desktop phase indicator */}
@@ -1363,6 +1433,30 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                 </label>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Smart Crop button — canvas phase, top-right */}
+      {phase === 'canvas' && !isCropped && (
+        <div className="absolute top-14 right-3 z-[1002] flex flex-col items-center gap-1">
+          <button
+            onClick={handleSmartCrop}
+            className="w-10 h-10 rounded-xl shadow-md bg-white/95 border border-black/10 flex items-center justify-center text-base active:scale-95 transition-transform"
+            title="Smart Crop — zoom to populated area"
+          >🔍</button>
+          <span className="text-[9px] text-gray-500 font-semibold leading-none text-center">Crop</span>
+        </div>
+      )}
+      {phase === 'canvas' && isCropped && (
+        <div className="absolute top-14 right-3 z-[1002] flex flex-col items-center gap-1">
+          <button
+            onClick={handleCropReset}
+            className="w-10 h-10 rounded-xl shadow-md bg-orange-500 text-white flex items-center justify-center text-base active:scale-95 transition-transform"
+            title="Reset crop — zoom out to full boundary"
+          >↩</button>
+          {cropZoom !== null && (
+            <span className="bg-black/70 text-white text-[9px] font-bold rounded px-1 py-0.5 leading-none">z{cropZoom}</span>
           )}
         </div>
       )}
@@ -1932,6 +2026,49 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                   Get Started!
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tutorial Video Dialog Overlay */}
+      {showVideoTutorial && (
+        <div className="absolute inset-0 z-[2000] bg-black/75 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <span className="font-bold flex items-center gap-2 text-base font-[Baloo_2]">
+                🎥 Nazri Naksha Tutorial Video
+              </span>
+              <button 
+                onClick={() => setShowVideoTutorial(false)} 
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-lg font-bold transition-all transform hover:scale-105 active:scale-95"
+              >
+                ✕
+              </button>
+            </div>
+            {/* Modal Body */}
+            <div className="p-4 bg-slate-950 flex items-center justify-center">
+              <div className="relative w-full overflow-hidden rounded-2xl aspect-video bg-black shadow-inner">
+                <iframe
+                  className="absolute inset-0 w-full h-full border-0"
+                  src="https://www.youtube.com/embed/CmojjKhI220?autoplay=1"
+                  title="How to make nazri naksha for census 2027 . HLB nazri naksha making tutorial in 10 minutes"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                ></iframe>
+              </div>
+            </div>
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-semibold">
+              <span>Census 2027 Nazri Naksha Making Tutorial</span>
+              <button 
+                onClick={() => setShowVideoTutorial(false)}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all transform hover:scale-105 active:scale-95"
+              >
+                Close Video
+              </button>
             </div>
           </div>
         </div>

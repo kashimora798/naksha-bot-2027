@@ -79,10 +79,14 @@ export default function MapWorkspace({
   const [panelOpen, setPanelOpen] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
   const [drawMode, setDrawMode] = useState<'none' | 'farmland' | 'block' | 'label'>('none');
+  const [selectDeleteMode, setSelectDeleteMode] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
   const [polyPts, setPolyPts] = useState<Coordinate[]>([]);
   const [farmLbl, setFarmLbl] = useState('A'); const [blkLbl, setBlkLbl] = useState('A');
   const [customLabel, setCustomLabel] = useState('');
   const [showStats, setShowStats] = useState(false);
+  const [isCropped, setIsCropped] = useState(false);
+  const [cropZoom, setCropZoom] = useState<number | null>(null);
 
   const houses = symbols.filter(s => isHouseType(s.symbol_type));
   const numDone = houses.filter(s => s.number !== null).length;
@@ -94,6 +98,15 @@ export default function MapWorkspace({
   // ─── STALE CLOSURE FIXES ────────────────────────────────
   const mkClickRef = useRef<(id: string, evType: 'click'|'dblclick') => void>(() => {});
   mkClickRef.current = (id: string, evType: 'click'|'dblclick') => {
+    // Select-to-delete mode: single click toggles selection
+    if (step === 5 && selectDeleteMode) {
+      setSelectedForDelete(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      });
+      return;
+    }
     if (step === 5 && evType === 'dblclick') { const s = symbols.find(x => x.id === id); if (s && confirm(`Delete ${s.symbol_type.replace(/_/g,' ')}?`)) { const m = mks.current.get(id); if (m) { m.remove(); mks.current.delete(id); } onUpdateSymbols(symbols.filter(x => x.id !== id)); } return; }
     if (step !== 6 || evType !== 'click') return;
     const sym = symbols.find(x => x.id === id); if (!sym || !isHouseType(sym.symbol_type)) return;
@@ -400,9 +413,9 @@ export default function MapWorkspace({
     }
   }
 
-  async function fetchBuildingsForBlock() {
+  async function fetchBuildingsForBlock(useGoogle = false) {
     if (boundaryPins.length < 3) return;
-    setBldgMsg('🏠 Detecting buildings…');
+    setBldgMsg(useGoogle ? '🏠 Detecting buildings (incl. Google)…' : '🏠 Detecting buildings…');
     try {
       const bb = getBbox(boundaryPins);
       const res = await supabase.functions.invoke('fetch-open-buildings', {
@@ -411,7 +424,8 @@ export default function MapWorkspace({
           south: bb.south,
           east: bb.east,
           west: bb.west,
-          boundary: boundaryPins.map(p => ({ lat: p.lat, lng: p.lng }))
+          boundary: boundaryPins.map(p => ({ lat: p.lat, lng: p.lng })),
+          useGoogle,
         }
       });
 
@@ -444,7 +458,7 @@ export default function MapWorkspace({
         onUpdateSymbols([...symbols, ...newSymbols]);
         setBldgMsg(`✅ Detected ${newSymbols.length} buildings${srcTxt}. Tap any to edit; numbering happens in the next step.`);
       } else {
-        setBldgMsg(`No buildings found here${srcTxt}. This area may be unmapped — place houses manually or use Live Survey.`);
+        setBldgMsg(`No buildings found here${srcTxt}. Try "Try Google too" for more coverage, or place houses manually.`);
       }
     } catch (err) {
       setBldgMsg('⚠️ Building detection failed. Place houses manually.');
@@ -691,6 +705,60 @@ export default function MapWorkspace({
     </div>;
   }
 
+  // ─── SMART CROP ─────────────────────────────────────────
+  function handleSmartCrop() {
+    const map = mapRef.current;
+    if (!map) return;
+    const pts = symbols.filter(s => s.lat && s.lng);
+    if (pts.length < 2) { alert('Place at least 2 symbols first to use Smart Crop.'); return; }
+
+    // Compute tight bounds around all symbols
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const s of pts) {
+      if (s.lat < minLat) minLat = s.lat; if (s.lat > maxLat) maxLat = s.lat;
+      if (s.lng < minLng) minLng = s.lng; if (s.lng > maxLng) maxLng = s.lng;
+    }
+
+    // Pad by 30% of the symbol spread in each axis
+    const latPad = Math.max((maxLat - minLat) * 0.3, 0.0005);
+    const lngPad = Math.max((maxLng - minLng) * 0.3, 0.0005);
+    const cropBounds = L.latLngBounds(
+      [minLat - latPad, minLng - lngPad],
+      [maxLat + latPad, maxLng + lngPad]
+    );
+
+    // Check if symbols already fill most of the boundary (>75% of its bbox)
+    if (boundaryClosed && boundaryPins.length >= 3) {
+      let bMinLat = Infinity, bMaxLat = -Infinity, bMinLng = Infinity, bMaxLng = -Infinity;
+      for (const p of boundaryPins) {
+        if (p.lat < bMinLat) bMinLat = p.lat; if (p.lat > bMaxLat) bMaxLat = p.lat;
+        if (p.lng < bMinLng) bMinLng = p.lng; if (p.lng > bMaxLng) bMaxLng = p.lng;
+      }
+      const bndArea = (bMaxLat - bMinLat) * (bMaxLng - bMinLng);
+      const symArea = (maxLat - minLat + latPad * 2) * (maxLng - minLng + lngPad * 2);
+      if (bndArea > 0 && symArea / bndArea > 0.75) {
+        alert('Map is already well-populated — no large empty areas detected.'); return;
+      }
+    }
+
+    map.fitBounds(cropBounds, { animate: true, padding: [16, 16] });
+    map.once('moveend', () => { setCropZoom(map.getZoom()); });
+    setIsCropped(true);
+  }
+
+  function handleCropReset() {
+    const map = mapRef.current;
+    if (!map) return;
+    if (boundaryClosed && boundaryPins.length >= 3) {
+      const ll = boundaryPins.map(p => L.latLng(p.lat, p.lng));
+      map.fitBounds(L.latLngBounds(ll), { animate: true, padding: [24, 24] });
+    } else {
+      map.setView([center.lat, center.lng], 17, { animate: true });
+    }
+    setIsCropped(false);
+    setCropZoom(null);
+  }
+
   // ─── STATS TOGGLE ───────────────────────────────────────
   function statsPanel(){
     if(!showStats||!areaStats)return null;
@@ -798,7 +866,12 @@ export default function MapWorkspace({
         {/* Auto + draw tools */}
         <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mt-3 mb-1.5">Auto-detect &amp; zones</p>
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={fetchBuildingsForBlock} className="py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">🏠 Auto-Detect Buildings</button>
+          <button onClick={() => fetchBuildingsForBlock(false)} className="py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">🏠 Auto-Detect (MS+OSM)</button>
+          <button
+            onClick={() => fetchBuildingsForBlock(true)}
+            className="py-2.5 rounded-xl text-xs font-bold bg-yellow-50 text-yellow-700 border border-yellow-200"
+            title="Google has more buildings but may over-detect in dense areas"
+          >⚠️ Try Google too</button>
           {!hasAuto
             ? <button onClick={autoDetectArea} className="py-2.5 rounded-xl text-xs font-bold bg-purple-500 text-white">✨ Auto-Detect Area</button>
             : <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="py-2.5 rounded-xl text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">🏷️ Place Name</button>}
@@ -806,6 +879,46 @@ export default function MapWorkspace({
           <button onClick={startBlkDraw} className="py-2.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">🔲 Draw Block</button>
           {hasAuto && <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="py-2.5 rounded-xl text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200 col-span-2">🏷️ Place Name</button>}
         </div>
+
+        {/* Delete tools */}
+        {symbols.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">Remove symbols</p>
+            {!selectDeleteMode ? (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => { setSelectDeleteMode(true); setSelectedForDelete(new Set()); setPlacing(false); setSelSym(null); }}
+                  className="py-2.5 rounded-xl text-xs font-bold bg-red-50 text-red-600 border border-red-200"
+                >☑ Select &amp; Delete</button>
+                <button
+                  onClick={() => { if (window.confirm(`Remove all ${symbols.length} symbols from the map?`)) { onUpdateSymbols([]); } }}
+                  className="py-2.5 rounded-xl text-xs font-bold bg-red-50 text-red-600 border border-red-200"
+                >🗑 Clear All</button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[10px] text-gray-500 text-center">Tap symbols on the map to select them</p>
+                <div className="flex gap-2">
+                  <button
+                    disabled={selectedForDelete.size === 0}
+                    onClick={() => {
+                      const ids = selectedForDelete;
+                      ids.forEach(id => { const m = mks.current.get(id); if (m) { m.remove(); mks.current.delete(id); } });
+                      onUpdateSymbols(symbols.filter(s => !ids.has(s.id)));
+                      setSelectedForDelete(new Set());
+                      setSelectDeleteMode(false);
+                    }}
+                    className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-500 text-white disabled:opacity-40"
+                  >Delete {selectedForDelete.size > 0 ? `(${selectedForDelete.size})` : ''}</button>
+                  <button
+                    onClick={() => { setSelectDeleteMode(false); setSelectedForDelete(new Set()); }}
+                    className="flex-1 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200"
+                  >Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Sheet>
     );
   }
@@ -1015,6 +1128,15 @@ export default function MapWorkspace({
         <button onClick={()=>mapRef.current?.zoomOut()} className="bg-white/95 backdrop-blur w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg font-bold text-gray-700 active:scale-95">−</button>
         <button onClick={()=>setShowSat(s=>!s)} className={`w-10 h-10 rounded-xl shadow flex items-center justify-center text-base active:scale-95 ${showSat?'bg-white/95 text-gray-700':'bg-blue-500 text-white'}`}>{showSat?'🗺️':'🛰️'}</button>
         {step>=3&&<button onClick={()=>setShowSidebar(true)} className="w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg bg-white/95 font-bold text-gray-700 active:scale-95" title="Layers & data">☰</button>}
+        {step>=5&&!isCropped&&(
+          <button onClick={handleSmartCrop} className="w-10 h-10 rounded-xl shadow flex items-center justify-center text-base bg-white/95 text-gray-700 active:scale-95" title="Smart Crop — zoom to populated area">🔍</button>
+        )}
+        {step>=5&&isCropped&&(
+          <div className="flex flex-col gap-1 items-center">
+            <button onClick={handleCropReset} className="w-10 h-10 rounded-xl shadow flex items-center justify-center text-sm bg-orange-500 text-white active:scale-95" title="Reset crop — zoom out to full boundary">↩</button>
+            {cropZoom!==null&&<span className="bg-black/70 text-white text-[9px] font-bold rounded px-1 py-0.5 leading-none">z{cropZoom}</span>}
+          </div>
+        )}
       </div>
       <div className="absolute top-2 left-2 bg-[var(--color-saffron-container)] text-white px-3.5 py-1.5 rounded-full text-xs font-bold z-[1001] pointer-events-none shadow-[var(--shadow-warm-1)] font-public-sans tracking-wide">HLB {hlbNumber}</div>
 

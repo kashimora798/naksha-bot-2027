@@ -37,6 +37,27 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [liveSessions, setLiveSessions] = useState<SurveySession[]>([]);
   const [showDemoModal, setShowDemoModal] = useState(false);
 
+  // Video Tutorial Popup States
+  const [showVideoModal, setShowVideoModal] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+
+  const handleStartCanvasMap = () => {
+    const hasSeen = localStorage.getItem('seen_canvas_tutorial_video');
+    if (hasSeen === 'true') {
+      onCanvasBlockMap?.();
+    } else {
+      setShowVideoModal(true);
+    }
+  };
+
+  const confirmStartCanvasMap = () => {
+    if (dontShowAgain) {
+      localStorage.setItem('seen_canvas_tutorial_video', 'true');
+    }
+    setShowVideoModal(false);
+    onCanvasBlockMap?.();
+  };
+
   // Feedback State
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
@@ -118,7 +139,8 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
     try {
       await supabase.from('feedbacks').insert([{
         suggestions: feedbackText,
-        useful: 'Dashboard Experience'
+        useful: 'Dashboard Experience',
+        user_id: user?.id ?? null,
       }]);
       setFeedbackSubmitted(true);
       localStorage.setItem('naksha_dashboard_feedback', 'true');
@@ -194,7 +216,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <p className="text-xs text-white/80 mt-0.5">Build an HLB map from satellite imagery</p>
           </button>
           <button
-            onClick={() => onCanvasBlockMap?.()}
+            onClick={handleStartCanvasMap}
             className="group text-left p-5 rounded-2xl bg-white border border-emerald-100 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
           >
             <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-2xl mb-3">🧩</div>
@@ -374,14 +396,14 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">🧩 Canvas Block Maps</h2>
-                  <button onClick={() => onCanvasBlockMap?.()} className="px-3.5 py-2 bg-emerald-500 text-white rounded-xl font-bold text-xs shadow active:scale-95 transition-all">+ New Canvas Map</button>
+                  <button onClick={handleStartCanvasMap} className="px-3.5 py-2 bg-emerald-500 text-white rounded-xl font-bold text-xs shadow active:scale-95 transition-all">+ New Canvas Map</button>
                 </div>
                 {canvasProjects.length === 0 ? (
                   <div className="bg-emerald-50 rounded-[24px] p-8 text-center border border-emerald-100">
                     <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center text-3xl mx-auto mb-3">🧩</div>
                     <h3 className="text-base font-bold font-public-sans text-emerald-800 mb-1">No canvas maps yet</h3>
                     <p className="text-sm text-emerald-700 max-w-xs mx-auto mb-4">Use Canvas Blocks mode to auto-detect blocks from roads and place houses with mixed types.</p>
-                    <button onClick={() => onCanvasBlockMap?.()} className="px-5 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-sm shadow hover:bg-emerald-600 transition-colors">Start Canvas Map</button>
+                    <button onClick={handleStartCanvasMap} className="px-5 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-sm shadow hover:bg-emerald-600 transition-colors">Start Canvas Map</button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{canvasProjects.map(p => renderCard(p, true))}</div>
@@ -547,6 +569,68 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ── Tutorial Video Modal ── */}
+      {showVideoModal && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full overflow-hidden animate-in fade-in zoom-in duration-300">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <span className="font-bold flex items-center gap-2 text-base font-[Baloo_2]">
+                🎥 Canvas Blocks Map Tutorial (ट्यूटोरियल वीडियो)
+              </span>
+              <button 
+                onClick={() => setShowVideoModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-lg font-bold transition-all"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 bg-slate-955 flex flex-col items-center">
+              <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-inner">
+                <iframe
+                  className="absolute inset-0 w-full h-full border-0"
+                  src="https://www.youtube.com/embed/CmojjKhI220?autoplay=1"
+                  title="How to make nazri naksha for census 2027 . HLB nazri naksha making tutorial in 10 minutes"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                ></iframe>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={dontShowAgain}
+                  onChange={(e) => setDontShowAgain(e.target.checked)}
+                  className="rounded border-slate-350 text-emerald-600 focus:ring-emerald-500 w-4.5 h-4.5"
+                />
+                Don't show this video tutorial again (दोबारा न दिखाएं)
+              </label>
+              
+              <div className="flex gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => setShowVideoModal(false)}
+                  className="flex-1 sm:flex-initial px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmStartCanvasMap}
+                  className="flex-1 sm:flex-initial px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow"
+                >
+                  Proceed to Create Map →
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

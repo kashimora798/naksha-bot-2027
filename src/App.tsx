@@ -168,8 +168,19 @@ export default function App() {
     const isPaymentSuccess = params.get('payment') === 'success';
     const paymentProjectId = params.get('project_id');
     const livePreviewId = params.get('live_preview_id');
+    const adminViewId = params.get('admin_view');
 
-    if (livePreviewId) {
+    if (adminViewId) {
+      supabase.from('projects').select('*').eq('id', adminViewId).maybeSingle().then(({ data }) => {
+        if (data) {
+          setProjectId(data.id);
+          setMapData({ ...DEFAULT_MAP_DATA, ...data.data, projectId: data.id, paymentStatus: data.payment_status });
+          if ((data.data as any)?.mode === 'canvas') { setPreviewSource(11); setStep(11); }
+          else setStep(8);
+        }
+      });
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (livePreviewId) {
       import('./lib/idb').then(({ idbStore }) => {
         idbStore.getSession(livePreviewId).then(async (session) => {
            if (!session) return;

@@ -112,6 +112,7 @@ export default function LandingScreen() {
           <div className="hidden md:flex items-center gap-8">
             <a href="#idea" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">The Idea</a>
             <a href="#process" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">How it Works</a>
+            <a href="#tutorial" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">Tutorial</a>
             <a href="#features" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">Features</a>
           </div>
           <div className="flex items-center gap-4">
@@ -586,6 +587,33 @@ export default function LandingScreen() {
         </div>
       </section>
 
+      {/* ─── TUTORIAL VIDEO SECTION ─── */}
+      <section id="tutorial" className="py-24 bg-white border-b border-slate-200">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">Video Tutorial (वीडियो ट्यूटोरियल)</h2>
+            <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-4">
+              Nazri Naksha Census 2027 Tutorial Video
+            </h3>
+            <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+              Watch our 10-minute step-by-step video guide to learn how to make your census maps online using NakshaBot.
+            </p>
+          </div>
+          
+          <div className="relative max-w-4xl mx-auto rounded-3xl overflow-hidden shadow-2xl border-4 border-slate-950 bg-slate-950 aspect-video group">
+            <iframe
+              className="absolute inset-0 w-full h-full"
+              src="https://www.youtube.com/embed/CmojjKhI220"
+              title="How to make nazri naksha for census 2027 . HLB nazri naksha making tutorial in 10 minutes"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            ></iframe>
+          </div>
+        </div>
+      </section>
+
       {/* ─── FEATURES SECTION ─── */}
       <section id="features" className="py-24 bg-slate-50">
         <div className="max-w-6xl mx-auto px-6">
@@ -760,6 +788,7 @@ export default function LandingScreen() {
             <h5 className="text-white font-bold mb-4">Resources</h5>
             <ul className="space-y-3 text-sm flex flex-col">
               <li><Link to="/how-it-works" className="hover:text-orange-400 transition-colors">How it Works</Link></li>
+              <li><a href="#tutorial" className="hover:text-orange-400 transition-colors">Video Tutorial</a></li>
               <li><Link to="/faq" className="hover:text-orange-400 transition-colors">FAQ</Link></li>
               <li><Link to="/rules" className="hover:text-orange-400 transition-colors">Map Rules</Link></li>
               <li><Link to="/schedule" className="hover:text-orange-400 transition-colors">Census Schedule</Link></li>

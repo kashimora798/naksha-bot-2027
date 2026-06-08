@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, RoadFeature, PlacedSymbol, Block, MapData, SymbolType } from '../types';
 import { isHouseType, isNumberableSymbol, SYMBOL_DEFS, getUnitCount } from '../types';
-import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween, fetchOverpass } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { detectBlocks, mergeBlocks, splitBlock, relabelBlocks, blockPoints, labelFor } from '../lib/blocks';
 import { placeGroupsInBlock, blockGrid, minEdgeDistM, type LayoutMode, type SymGroup } from '../lib/placement-blocks';
@@ -856,7 +856,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
         out geom;`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`, { signal: controller.signal });
+      const r = await fetchOverpass(q, controller.signal);
       clearTimeout(timeoutId);
       if (!r.ok) throw new Error('fetch failed');
       const d = await r.json();

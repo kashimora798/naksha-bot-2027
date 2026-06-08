@@ -784,10 +784,7 @@ export async function snapRoadsToOSM(surveySegments: any[], boundaryPolygon: any
     way["highway"]; out geom;`;
     
   try {
-    const response = await fetch(
-      'https://overpass-api.de/api/interpreter',
-      { method: 'POST', body: query }
-    );
+    const response = await fetchOverpass(query);
     if (!response.ok) return surveySegments;
     const data = await response.json();
     
@@ -846,4 +843,45 @@ export async function snapRoadsToOSM(surveySegments: any[], boundaryPolygon: any
     console.error("OSM Snapping error:", err);
     return surveySegments;
   }
+}
+
+// ─── OVERPASS API FALLBACK SYSTEM ──────────────────────────
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://z.overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter'
+];
+
+export async function fetchOverpass(query: string, signal?: AbortSignal): Promise<Response> {
+  let lastError: any = null;
+  
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      console.log(`[Overpass] Trying endpoint: ${endpoint}`);
+      // Send raw query as POST body (Overpass standard)
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        body: query,
+        signal
+      });
+
+      if (response.ok) {
+        console.log(`[Overpass] Successfully fetched from: ${endpoint}`);
+        return response;
+      }
+
+      console.warn(`[Overpass] Endpoint ${endpoint} returned status ${response.status}`);
+      lastError = new Error(`Overpass returned status ${response.status}`);
+      if (response.status === 429) {
+        continue; // Try next endpoint immediately
+      }
+    } catch (err) {
+      console.warn(`[Overpass] Failed to connect to ${endpoint}:`, err);
+      lastError = err;
+    }
+  }
+  
+  throw lastError || new Error('All Overpass endpoints failed');
 }

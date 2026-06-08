@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, PlacedSymbol, RoadFeature, SymbolType, Block, FarmlandBlock, WaterBody, ForestArea, Landmark, AreaStats, MapData } from '../types';
 import { SYMBOL_DEFS, isHouseType, isPakkaRoad, getUnitCount, polyCenter } from '../types';
-import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, buildComprehensiveQuery, processOverpassData, isPolygonSelfIntersecting } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, buildComprehensiveQuery, processOverpassData, isPolygonSelfIntersecting, fetchOverpass } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { declutterSymbols, buildRotationMap } from '../lib/declutter';
 import SymbolDrawer from '../components/SymbolDrawer';
@@ -387,7 +387,7 @@ export default function MapWorkspace({
         out geom;`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`, { signal: controller.signal });
+      const r = await fetchOverpass(q, controller.signal);
       clearTimeout(timeoutId);
       if (!r.ok) throw new Error('Failed to fetch roads');
       const d = await r.json();
@@ -477,7 +477,7 @@ export default function MapWorkspace({
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-        const r = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`, { signal: controller.signal });
+        const r = await fetchOverpass(q, controller.signal);
         clearTimeout(timeoutId);
         if (r.ok) {
           const d = await r.json();

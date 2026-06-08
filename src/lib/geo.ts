@@ -860,10 +860,13 @@ export async function fetchOverpass(query: string, signal?: AbortSignal): Promis
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
       console.log(`[Overpass] Trying endpoint: ${endpoint}`);
-      // Send raw query as POST body (Overpass standard)
+      // Send query in application/x-www-form-urlencoded body (required by Overpass POST)
       const response = await fetch(endpoint, {
         method: 'POST',
-        body: query,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: 'data=' + encodeURIComponent(query),
         signal
       });
 

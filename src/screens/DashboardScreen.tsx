@@ -41,6 +41,9 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
+  // WhatsApp Group Popup
+  const [showWhatsApp, setShowWhatsApp] = useState(false);
+
   const handleStartCanvasMap = () => {
     const hasSeen = localStorage.getItem('seen_canvas_tutorial_video');
     if (hasSeen === 'true') {
@@ -70,6 +73,9 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
     if (!localStorage.getItem('naksha_demo_done')) {
       setShowDemoModal(true);
       localStorage.setItem('naksha_demo_done', 'true');
+    } else if (!localStorage.getItem('naksha_whatsapp_popup')) {
+      setShowWhatsApp(true);
+      localStorage.setItem('naksha_whatsapp_popup', 'true');
     }
   }, []);
 
@@ -170,6 +176,16 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => setShowWhatsApp(true)}
+              className="px-3 sm:px-4 py-2 bg-green-50 border border-green-200 rounded-xl text-sm font-semibold text-green-700 hover:bg-green-100 transition-colors flex items-center gap-1.5"
+              title="Join WhatsApp Support Group"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 flex-shrink-0" viewBox="0 0 32 32" fill="currentColor">
+                <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.697-1.807A12.93 12.93 0 0016 28c6.627 0 12-5.373 12-12S22.627 3 16 3zm0 2c5.523 0 10 4.477 10 10s-4.477 10-10 10a10.93 10.93 0 01-5.25-1.336l-.37-.213-4.572 1.074 1.117-4.46-.234-.385A9.955 9.955 0 016 15C6 9.477 10.477 5 16 5zm-3.47 5.5c-.2 0-.52.075-.795.375C11.46 11.175 10.5 12.1 10.5 13.97c0 1.875 1.375 3.688 1.563 3.938.187.25 2.687 4.25 6.593 5.813 3.25 1.281 3.907 1.031 4.625.969.719-.063 2.313-.938 2.641-1.844.328-.906.328-1.688.226-1.844-.094-.156-.344-.25-.719-.437-.375-.188-2.219-1.094-2.563-1.219-.344-.125-.594-.188-.843.188-.25.375-.969 1.219-1.188 1.469-.218.25-.437.281-.812.094-.375-.188-1.582-.582-3.013-1.852-1.113-.992-1.863-2.215-2.082-2.59-.218-.375-.023-.578.164-.766.168-.168.375-.438.563-.656.187-.219.25-.375.375-.625.125-.25.063-.47-.031-.657-.094-.187-.844-2.031-1.157-2.78-.312-.75-.625-.65-.843-.663-.219-.012-.469-.012-.719-.012z"/>
+              </svg>
+              <span className="hidden sm:inline">Help Group</span>
+            </button>
             <button
               onClick={() => { setDonateHindi(true); setShowDonate(true); }}
               className="px-3 sm:px-4 py-2 bg-orange-50 border border-orange-200 rounded-xl text-sm font-semibold text-orange-600 hover:bg-orange-100 transition-colors flex items-center gap-1.5"
@@ -566,6 +582,79 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                 className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors"
               >
                 {donateHindi ? 'बाद में' : 'Maybe later'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ── WhatsApp Group Modal ── */}
+      {showWhatsApp && (
+        <div className="fixed inset-0 z-[3500] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom sm:zoom-in duration-300">
+
+            {/* Header */}
+            <div className="bg-gradient-to-br from-green-500 to-emerald-600 px-6 py-5 text-white relative">
+              <button
+                onClick={() => setShowWhatsApp(false)}
+                className="absolute top-3 right-4 text-white/60 hover:text-white text-2xl font-bold leading-none"
+                aria-label="Close"
+              >×</button>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-white" viewBox="0 0 32 32" fill="currentColor">
+                    <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.697-1.807A12.93 12.93 0 0016 28c6.627 0 12-5.373 12-12S22.627 3 16 3zm0 2c5.523 0 10 4.477 10 10s-4.477 10-10 10a10.93 10.93 0 01-5.25-1.336l-.37-.213-4.572 1.074 1.117-4.46-.234-.385A9.955 9.955 0 016 15C6 9.477 10.477 5 16 5zm-3.47 5.5c-.2 0-.52.075-.795.375C11.46 11.175 10.5 12.1 10.5 13.97c0 1.875 1.375 3.688 1.563 3.938.187.25 2.687 4.25 6.593 5.813 3.25 1.281 3.907 1.031 4.625.969.719-.063 2.313-.938 2.641-1.844.328-.906.328-1.688.226-1.844-.094-.156-.344-.25-.719-.437-.375-.188-2.219-1.094-2.563-1.219-.344-.125-.594-.188-.843.188-.25.375-.969 1.219-1.188 1.469-.218.25-.437.281-.812.094-.375-.188-1.582-.582-3.013-1.852-1.113-.992-1.863-2.215-2.082-2.59-.218-.375-.023-.578.164-.766.168-.168.375-.438.563-.656.187-.219.25-.375.375-.625.125-.25.063-.47-.031-.657-.094-.187-.844-2.031-1.157-2.78-.312-.75-.625-.65-.843-.663-.219-.012-.469-.012-.719-.012z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black font-[Baloo_2] leading-tight">ExamSetu Support &amp;</h3>
+                  <p className="text-sm text-white/85 font-semibold">Nazri Naksha Help Group 🚀</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-3 text-sm text-slate-700">
+              <p className="leading-relaxed">This group is created to help all users of <strong>examsetu.dev</strong> with:</p>
+              <ul className="space-y-2 pl-1">
+                {[
+                  'Solving software-related problems and technical issues',
+                  'Guidance regarding features and usage',
+                  'Support for generating and understanding Nazri Naksha',
+                  'Quick updates and assistance from the team',
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="mt-0.5 text-green-500 flex-shrink-0">✓</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center">
+                <p className="text-xs text-green-800 font-semibold">Feel free to ask doubts, report issues, and help others in the community.</p>
+                <p className="text-[11px] text-green-600 mt-0.5">We are here to make your work smoother and easier. ✨</p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 pb-6 space-y-2">
+              <a
+                href="https://chat.whatsapp.com/FXoZ2HqifdZ2rgzukag4be"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setShowWhatsApp(false)}
+                className="flex items-center justify-center gap-2 w-full py-3.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all hover:brightness-105"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 32 32" fill="currentColor">
+                  <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.697-1.807A12.93 12.93 0 0016 28c6.627 0 12-5.373 12-12S22.627 3 16 3zm0 2c5.523 0 10 4.477 10 10s-4.477 10-10 10a10.93 10.93 0 01-5.25-1.336l-.37-.213-4.572 1.074 1.117-4.46-.234-.385A9.955 9.955 0 016 15C6 9.477 10.477 5 16 5zm-3.47 5.5c-.2 0-.52.075-.795.375C11.46 11.175 10.5 12.1 10.5 13.97c0 1.875 1.375 3.688 1.563 3.938.187.25 2.687 4.25 6.593 5.813 3.25 1.281 3.907 1.031 4.625.969.719-.063 2.313-.938 2.641-1.844.328-.906.328-1.688.226-1.844-.094-.156-.344-.25-.719-.437-.375-.188-2.219-1.094-2.563-1.219-.344-.125-.594-.188-.843.188-.25.375-.969 1.219-1.188 1.469-.218.25-.437.281-.812.094-.375-.188-1.582-.582-3.013-1.852-1.113-.992-1.863-2.215-2.082-2.59-.218-.375-.023-.578.164-.766.168-.168.375-.438.563-.656.187-.219.25-.375.375-.625.125-.25.063-.47-.031-.657-.094-.187-.844-2.031-1.157-2.78-.312-.75-.625-.65-.843-.663-.219-.012-.469-.012-.719-.012z"/>
+                </svg>
+                Join WhatsApp Group
+              </a>
+              <button
+                onClick={() => setShowWhatsApp(false)}
+                className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors"
+              >
+                Maybe later
               </button>
             </div>
 

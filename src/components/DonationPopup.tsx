@@ -9,17 +9,40 @@ interface Props {
 
 export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea }: Props) {
   const [isHindi, setIsHindi] = useState(true);
+  const [customAmount, setCustomAmount] = useState('');
+  const [customNote, setCustomNote] = useState('');
 
   if (!isOpen) return null;
 
+  const fixedAmounts = [50, 100, 500, 1000, 2000, 5000, 10000];
+
+  const getUpiUrl = (amount: number | string, noteText: string) => {
+    const defaultNote = isHindi 
+      ? 'स्कूल फीस और स्टेशनरी मदद' 
+      : 'School fees & stationery help';
+    const finalNote = noteText.trim() || defaultNote;
+    return `upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR&am=${amount}&tn=${encodeURIComponent(finalNote)}`;
+  };
+
+  const handleCustomPay = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(customAmount);
+    if (isNaN(amt) || amt <= 0) {
+      alert(isHindi ? 'कृपया मान्य राशि दर्ज करें' : 'Please enter a valid amount');
+      return;
+    }
+    const url = getUpiUrl(customAmount, customNote);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
-    <div className="fixed inset-0 z-[4000] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-[4000] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden my-8 transition-all animate-in fade-in zoom-in duration-200">
         {/* Header Section */}
-        <div className="bg-gradient-to-br from-orange-500 to-amber-500 px-6 py-6 text-white text-center relative">
+        <div className="bg-gradient-to-br from-orange-500 to-amber-500 px-6 py-5 text-white text-center relative">
           <button 
             onClick={onClose}
-            className="absolute top-3 right-4 text-white/60 hover:text-white text-xl font-bold leading-none"
+            className="absolute top-3 right-4 text-white/70 hover:text-white text-xl font-bold leading-none"
             aria-label="Close"
             style={{ minHeight: 'auto' }}
           >
@@ -28,43 +51,43 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
           <div className="text-4xl mb-2">🙏</div>
           {isHindi ? (
             <>
-              <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot बिल्कुल मुफ्त है</h3>
-              <p className="text-sm text-white/85 mt-1">एक छात्र ने अकेले बनाया</p>
+              <h3 className="text-xl font-black font-[Baloo_2] tracking-wide">स्कूल फीस और पढ़ाई में मदद की अपील</h3>
+              <p className="text-xs text-white/90 mt-1">अकेले छात्र ने बनाया (Solo Student Developer)</p>
             </>
           ) : (
             <>
-              <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot is 100% Free</h3>
-              <p className="text-sm text-white/85 mt-1">Built solo by a student</p>
+              <h3 className="text-xl font-black font-[Baloo_2] tracking-wide">Appeal for School Fees & Study Help</h3>
+              <p className="text-xs text-white/90 mt-1">Built solo by a student developer</p>
             </>
           )}
         </div>
 
         {/* Content Section */}
-        <div className="px-6 py-5 text-sm text-slate-700 space-y-3">
+        <div className="px-6 py-4 text-sm text-slate-700 space-y-3 max-h-[50vh] overflow-y-auto scrollbar-thin">
           {isHindi ? (
             <>
               <p className="leading-relaxed">
-                मैं एक <strong>अकेला विद्यार्थी</strong> हूँ जिसने यह पूरा ऐप खुद बनाया है — बिना किसी टीम के, बिना किसी फंडिंग के।
+                मैं एक <strong>अकेला विद्यार्थी</strong> हूँ जिसने यह NakshaBot ऐप खुद बनाया है। मुझे अपनी **स्कूल/कॉलेज की फीस** और **पढ़ाई की स्टेशनरी (बुक्स, पेन)** के खर्चों के लिए आपकी मदद की जरूरत है।
               </p>
               <p className="leading-relaxed">
-                जो नक्शा आपने अभी बनाया, उसे हाथ से बनाने में <strong>3–4 घंटे</strong> लगते और cyber café में <strong>₹50–100</strong> का खर्च होता। NakshaBot ने यह मिनटों में किया — बिल्कुल मुफ्त।
+                नक्शा बनाने में cyber café में <strong>₹50–100</strong> का खर्च होता। NakshaBot ने यह मुफ्त किया। अगर आपको यह उपयोगी लगा, तो कृपया मुझे अपनी पढ़ाई जारी रखने में सहायता करें।
               </p>
-              <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
-                <p className="text-xs text-orange-800 font-semibold">सर्वर खर्च असली है। ₹10 भी बहुत मदद करता है।</p>
-                <p className="text-[11px] text-orange-600 mt-0.5">हर रुपया इसे सबके लिए मुफ्त रखने में जाता है।</p>
+              <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center text-xs">
+                <p className="text-orange-800 font-bold">पेमेंट नोट में अपना नाम या संदेश अवश्य लिखें!</p>
+                <p className="text-orange-600 mt-0.5 text-[11px]">ताकि मुझे पता चले कि किस शुभचिंतक ने सहायता की है।</p>
               </div>
             </>
           ) : (
             <>
               <p className="leading-relaxed">
-                I am a <strong>student who built this entire app solo</strong> — no team, no funding, no company behind it.
+                I am a <strong>student developer who built this app solo</strong>. I need your help to support my **school/college fees** and **stationery (books, pens)** to continue my education.
               </p>
               <p className="leading-relaxed">
-                The map you just made would take <strong>3–4 hours by hand</strong> and cost <strong>₹50–100</strong> at a cyber café. NakshaBot did it in minutes — completely free.
+                Cyber cafés charge <strong>₹50–100</strong> for a map. NakshaBot did it instantly for free. If this app helped you, please contribute toward my studies.
               </p>
-              <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
-                <p className="text-xs text-orange-800 font-semibold">Server costs are real. Even ₹10 helps a lot.</p>
-                <p className="text-[11px] text-orange-600 mt-0.5">Every rupee goes toward keeping it free for everyone.</p>
+              <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center text-xs">
+                <p className="text-orange-800 font-bold">Please write your name or message in the UPI note!</p>
+                <p className="text-orange-600 mt-0.5 text-[11px]">So that I know who supported my education.</p>
               </div>
             </>
           )}
@@ -72,30 +95,73 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
           {/* Language Toggle Button */}
           <button 
             onClick={() => setIsHindi(!isHindi)}
-            className="w-full py-1.5 text-[11px] text-slate-400 font-medium border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors"
+            className="w-full py-1.5 text-[11px] text-slate-400 font-semibold border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors"
             style={{ minHeight: '32px' }}
           >
             {isHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
           </button>
+
+          {/* Fixed Amount Buttons */}
+          <div className="space-y-1.5 pt-2 border-t border-slate-100">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              {isHindi ? 'मदद के लिए राशि चुनें (Select Support Amount)' : 'Choose support amount'}
+            </p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {fixedAmounts.map(amt => (
+                <a
+                  key={amt}
+                  href={getUpiUrl(amt, customNote)}
+                  className="py-2.5 bg-orange-50 border border-orange-200 text-orange-700 text-center font-bold text-xs rounded-xl hover:bg-orange-100 active:scale-95 transition-all flex items-center justify-center gap-0.5"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ minHeight: '38px' }}
+                >
+                  ₹{amt}
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom Amount Form */}
+          <form onSubmit={handleCustomPay} className="space-y-2 pt-2 border-t border-slate-100">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              {isHindi ? 'या अन्य राशि और संदेश लिखें (Or enter other amount & note)' : 'Or custom amount & message'}
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                value={customAmount}
+                onChange={e => setCustomAmount(e.target.value)}
+                placeholder={isHindi ? 'राशि ₹ (Amount)' : 'Amount ₹'}
+                className="w-1/3 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400"
+                min="1"
+                required
+              />
+              <input
+                type="text"
+                value={customNote}
+                onChange={e => setCustomNote(e.target.value)}
+                placeholder={isHindi ? 'अपना नाम / संदेश (Your Name/Msg)' : 'Your Name / Message'}
+                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+              style={{ minHeight: '44px' }}
+            >
+              🚀 {isHindi ? 'योगदान करें (Pay via UPI)' : 'Support via UPI'}
+            </button>
+          </form>
         </div>
 
-        {/* Action Buttons Section */}
-        <div className="px-6 pb-6 space-y-2">
-          <a 
-            href="upi://pay?pa=8318810984-1@nyes&amp;pn=NakshaBot&amp;cu=INR" 
-            className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ minHeight: '48px', lineHeight: '48px', padding: '0 16px' }}
-          >
-            {isHindi ? 'UPI से Donate करें' : 'Donate via UPI'}
-          </a>
-          <p className="text-center text-[10px] text-slate-400">UPI: 8318810984-1@nyes</p>
-          
+        {/* Footer actions */}
+        <div className="px-6 pb-5 pt-1 border-t border-slate-50 bg-slate-50/50 flex flex-col items-center gap-1.5">
+          <p className="text-center text-[10px] text-slate-400 font-medium font-mono">UPI: 8318810984-1@nyes</p>
           {isPrintArea ? (
             <button 
               onClick={onClose}
-              className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors"
+              className="w-full py-2 text-slate-500 text-xs font-semibold rounded-xl hover:bg-slate-100 transition-colors"
               style={{ minHeight: '36px' }}
             >
               {isHindi ? 'बाद में' : 'Maybe later'}
@@ -103,7 +169,7 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
           ) : (
             <button 
               onClick={onMute24h}
-              className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors"
+              className="w-full py-2 text-slate-500 text-xs font-semibold rounded-xl hover:bg-slate-100 transition-colors"
               style={{ minHeight: '36px' }}
             >
               {isHindi ? '24 घंटे के लिए बंद करें (Mute)' : 'Mute for 24 hours'}

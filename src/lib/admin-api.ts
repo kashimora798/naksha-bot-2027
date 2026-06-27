@@ -306,3 +306,40 @@ export async function fetchAdminFeedback(): Promise<AdminFeedback[]> {
     owner_mobile: f.user_id ? (profileMap[f.user_id]?.mobile ?? null) : null,
   }));
 }
+
+export interface AdminDonation {
+  id: string;
+  user_id: string | null;
+  amount: number;
+  name: string | null;
+  note: string | null;
+  created_at: string;
+  // joined
+  owner_name?: string | null;
+  owner_mobile?: string | null;
+}
+
+export async function fetchAdminDonations(): Promise<AdminDonation[]> {
+  const { data, error } = await supabase
+    .from('donations')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const userIds = [...new Set((data || []).filter(d => d.user_id).map(d => d.user_id))];
+  let profileMap: Record<string, any> = {};
+
+  if (userIds.length) {
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('id, full_name, mobile')
+      .in('id', userIds);
+    (profiles || []).forEach(p => { profileMap[p.id] = p; });
+  }
+
+  return (data || []).map(d => ({
+    ...d,
+    owner_name: d.user_id ? (profileMap[d.user_id]?.full_name ?? null) : null,
+    owner_mobile: d.user_id ? (profileMap[d.user_id]?.mobile ?? null) : null,
+  }));
+}

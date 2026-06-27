@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { idbStore, SurveySession } from '../lib/idb';
 import type { MapData } from '../types';
 import ProfileScreen from './ProfileScreen';
+import DonationPopup from '../components/DonationPopup';
 
 export interface Project {
   id: string;
@@ -72,7 +73,6 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [showDonate, setShowDonate] = useState(false);
-  const [donateHindi, setDonateHindi] = useState(true);
 
   useEffect(() => {
     if (sessionPopupShown.current) return;
@@ -213,7 +213,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               <span className="hidden sm:inline">Help Group</span>
             </button>
             <button
-              onClick={() => { setDonateHindi(true); setShowDonate(true); }}
+              onClick={() => setShowDonate(true)}
               className="px-3 sm:px-4 py-2 bg-orange-50 border border-orange-200 rounded-xl text-sm font-semibold text-orange-600 hover:bg-orange-100 transition-colors flex items-center gap-1.5"
             >
               <span>🙏</span><span className="hidden sm:inline">Support</span>
@@ -602,90 +602,12 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
       )}
 
       {/* ── Donation Modal ── */}
-      {showDonate && (
-        <div className="fixed inset-0 z-[4000] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
-
-            {/* Header */}
-            <div className="bg-gradient-to-br from-orange-500 to-amber-500 px-6 py-6 text-white text-center relative">
-              <button
-                onClick={() => setShowDonate(false)}
-                className="absolute top-3 right-4 text-white/60 hover:text-white text-xl font-bold leading-none"
-              >×</button>
-              <div className="text-4xl mb-2">🙏</div>
-              {donateHindi ? (
-                <>
-                  <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot बिल्कुल मुफ्त है</h3>
-                  <p className="text-sm text-white/85 mt-1">एक छात्र ने अकेले बनाया</p>
-                </>
-              ) : (
-                <>
-                  <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot is 100% Free</h3>
-                  <p className="text-sm text-white/85 mt-1">Built solo by a student</p>
-                </>
-              )}
-            </div>
-
-            {/* Body */}
-            <div className="px-6 py-5 text-sm text-slate-700 space-y-3">
-              {donateHindi ? (
-                <>
-                  <p className="leading-relaxed">
-                    मैं एक <strong>अकेला विद्यार्थी</strong> हूँ जिसने यह पूरा ऐप खुद बनाया है — बिना किसी टीम के, बिना किसी फंडिंग के।
-                  </p>
-                  <p className="leading-relaxed">
-                    जो नक्शा आपने अभी बनाया, उसे हाथ से बनाने में <strong>3–4 घंटे</strong> लगते और cyber café में <strong>₹50–100</strong> का खर्च होता। NakshaBot ने यह मिनटों में किया — बिल्कुल मुफ्त।
-                  </p>
-                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
-                    <p className="text-xs text-orange-800 font-semibold">सर्वर खर्च असली है। ₹10 भी बहुत मदद करता है।</p>
-                    <p className="text-[11px] text-orange-600 mt-0.5">हर रुपया इसे सबके लिए मुफ्त रखने में जाता है।</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="leading-relaxed">
-                    I'm a <strong>student who built this entire app solo</strong> — no team, no funding, no company behind it.
-                  </p>
-                  <p className="leading-relaxed">
-                    The map you just made would take <strong>3–4 hours by hand</strong> and cost ₹50–100 at a cyber café. NakshaBot did it in minutes, free, for every enumerator across India.
-                  </p>
-                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
-                    <p className="text-xs text-orange-800 font-semibold">Server costs are real. Even ₹10 goes a long way.</p>
-                    <p className="text-[11px] text-orange-600 mt-0.5">Every rupee keeps NakshaBot free for everyone.</p>
-                  </div>
-                </>
-              )}
-
-              {/* Translate toggle */}
-              <button
-                onClick={() => setDonateHindi(h => !h)}
-                className="w-full py-1.5 text-[11px] text-slate-400 font-medium border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors"
-              >
-                {donateHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
-              </button>
-            </div>
-
-            {/* Actions */}
-            <div className="px-6 pb-6 space-y-2">
-              <a
-                href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
-                onClick={() => setShowDonate(false)}
-                className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
-              >
-                {donateHindi ? 'UPI से Donate करें' : 'Donate via UPI'}
-              </a>
-              <p className="text-center text-[10px] text-slate-400">UPI: 8318810984-1@nyes</p>
-              <button
-                onClick={() => setShowDonate(false)}
-                className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors"
-              >
-                {donateHindi ? 'बाद में' : 'Maybe later'}
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
+      <DonationPopup
+        isOpen={showDonate}
+        onClose={() => setShowDonate(false)}
+        onMute24h={() => setShowDonate(false)}
+        isPrintArea={false}
+      />
 
       {/* ── WhatsApp Group Modal ── */}
       {showWhatsApp && (

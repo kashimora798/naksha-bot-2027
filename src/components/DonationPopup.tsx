@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   isOpen: boolean;
@@ -24,13 +25,27 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
     return `upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR&am=${amount}&tn=${encodeURIComponent(finalNote)}`;
   };
 
-  const handleCustomPay = (e: React.FormEvent) => {
+  const handleCustomPay = async (e: React.FormEvent) => {
     e.preventDefault();
     const amt = parseFloat(customAmount);
     if (isNaN(amt) || amt <= 0) {
       alert(isHindi ? 'कृपया मान्य राशि दर्ज करें' : 'Please enter a valid amount');
       return;
     }
+
+    // Save intent to DB
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from('donations').insert({
+        amount: amt,
+        name: customNote.trim() || null,
+        note: customNote.trim() || null,
+        user_id: user?.id || null
+      });
+    } catch (err) {
+      console.error('Error saving donation intent to DB:', err);
+    }
+
     const url = getUpiUrl(customAmount, customNote);
     window.open(url, '_blank', 'noopener,noreferrer');
   };
@@ -107,18 +122,24 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
               {isHindi ? 'मदद के लिए राशि चुनें (Select Support Amount)' : 'Choose support amount'}
             </p>
             <div className="grid grid-cols-4 gap-1.5">
-              {fixedAmounts.map(amt => (
-                <a
-                  key={amt}
-                  href={getUpiUrl(amt, customNote)}
-                  className="py-2.5 bg-orange-50 border border-orange-200 text-orange-700 text-center font-bold text-xs rounded-xl hover:bg-orange-100 active:scale-95 transition-all flex items-center justify-center gap-0.5"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ minHeight: '38px' }}
-                >
-                  ₹{amt}
-                </a>
-              ))}
+              {fixedAmounts.map(amt => {
+                const isSelected = customAmount === String(amt);
+                return (
+                  <button
+                    type="button"
+                    key={amt}
+                    onClick={() => setCustomAmount(String(amt))}
+                    className={`py-2.5 text-center font-bold text-xs rounded-xl active:scale-95 transition-all flex items-center justify-center gap-0.5 ${
+                      isSelected
+                        ? 'bg-orange-500 text-white border-orange-600 shadow-sm'
+                        : 'bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100'
+                    }`}
+                    style={{ minHeight: '38px' }}
+                  >
+                    ₹{amt}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -133,7 +154,7 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
                 value={customAmount}
                 onChange={e => setCustomAmount(e.target.value)}
                 placeholder={isHindi ? 'राशि ₹ (Amount)' : 'Amount ₹'}
-                className="w-1/3 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400"
+                className="w-1/3 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400 font-bold text-slate-800"
                 min="1"
                 required
               />
@@ -142,7 +163,7 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
                 value={customNote}
                 onChange={e => setCustomNote(e.target.value)}
                 placeholder={isHindi ? 'अपना नाम / संदेश (Your Name/Msg)' : 'Your Name / Message'}
-                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400"
+                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400 text-slate-800"
               />
             </div>
             <button

@@ -9,6 +9,7 @@ const NAV = [
   { label: 'Projects', path: '/kratagya/projects', icon: '◫' },
   { label: 'Live Sessions', path: '/kratagya/sessions', icon: '◎' },
   { label: 'Feedback', path: '/kratagya/feedback', icon: '◈' },
+  { label: 'Donations', path: '/kratagya/donations', icon: '♥' },
 ];
 
 export default function AdminLayout() {

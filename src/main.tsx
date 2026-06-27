@@ -52,6 +52,7 @@ import AdminUserDetail from "./screens/admin/AdminUserDetail";
 import AdminProjectsScreen from "./screens/admin/AdminProjectsScreen";
 import AdminSessionsScreen from "./screens/admin/AdminSessionsScreen";
 import AdminFeedbackScreen from "./screens/admin/AdminFeedbackScreen";
+import AdminDonationsScreen from "./screens/admin/AdminDonationsScreen";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -125,6 +126,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="projects" element={<AdminProjectsScreen />} />
             <Route path="sessions" element={<AdminSessionsScreen />} />
             <Route path="feedback" element={<AdminFeedbackScreen />} />
+            <Route path="donations" element={<AdminDonationsScreen />} />
           </Route>
         </Routes>
       </BrowserRouter>

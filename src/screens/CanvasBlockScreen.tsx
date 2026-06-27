@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, RoadFeature, PlacedSymbol, Block, MapData, SymbolType } from '../types';
 import { isHouseType, isNumberableSymbol, SYMBOL_DEFS, getUnitCount } from '../types';
-import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween, fetchOverpass } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween, fetchOverpass, generateSerpentinePath, bearingBetween } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { detectBlocks, mergeBlocks, splitBlock, relabelBlocks, blockPoints, labelFor } from '../lib/blocks';
 import { placeGroupsInBlock, blockGrid, minEdgeDistM, type LayoutMode, type SymGroup } from '../lib/placement-blocks';
@@ -63,10 +63,12 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   const fieldGrp = useRef(L.layerGroup());
   const gridGrp = useRef(L.layerGroup());
   const drwGrp = useRef(L.layerGroup());
+  const srpGrp = useRef(L.layerGroup());
 
   const [ready, setReady] = useState(false);
   const [phase, setPhase] = useState<Phase>('location');
   const [layers, setLayers] = useState({ satellite: true, roads: true, blocks: true, fields: true, houses: true, landmarks: true });
+  const [showSnakeView, setShowSnakeView] = useState(false);
 
   // location inputs
   const [latIn, setLatIn] = useState(String(mapData.center.lat));
@@ -527,7 +529,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map),
       L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map),
     ];
-    [bndGrp, blkGrp, fieldGrp, gridGrp, rdGrp, houseGrp, lmkGrp, drwGrp].forEach(g => { if (!map.hasLayer(g.current)) g.current.addTo(map); });
+    [bndGrp, blkGrp, fieldGrp, gridGrp, rdGrp, houseGrp, lmkGrp, drwGrp, srpGrp].forEach(g => { if (!map.hasLayer(g.current)) g.current.addTo(map); });
     map.on('click', (e: L.LeafletMouseEvent) => mapClickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng }));
     mapRef.current = map;
     setReady(true);
@@ -535,24 +537,41 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── LAYER VISIBILITY ───────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
-    const op = layers.satellite ? 1 : 0;
-    tileRef.current?.setOpacity(op);
-    overlayTiles.current.forEach(t => t.setOpacity(op));
-    if (containerRef.current) containerRef.current.style.background = layers.satellite ? '#000' : SCHEMATIC_BG;
-    const toggle = (g: L.LayerGroup, on: boolean) => { if (on) { if (!map.hasLayer(g)) g.addTo(map); } else if (map.hasLayer(g)) map.removeLayer(g); };
-    toggle(rdGrp.current, layers.roads);
-    toggle(blkGrp.current, layers.blocks);
-    toggle(fieldGrp.current, layers.fields);
-    toggle(houseGrp.current, layers.houses);
-    toggle(lmkGrp.current, layers.landmarks);
-  }, [layers]);
+    
+    if (showSnakeView) {
+      // White canvas background in Snake View
+      tileRef.current?.setOpacity(0);
+      overlayTiles.current.forEach(t => t.setOpacity(0));
+      if (containerRef.current) containerRef.current.style.background = '#FFFFFF';
+      
+      const toggle = (g: L.LayerGroup, on: boolean) => { if (on) { if (!map.hasLayer(g)) g.addTo(map); } else if (map.hasLayer(g)) map.removeLayer(g); };
+      toggle(rdGrp.current, false);
+      toggle(blkGrp.current, true); // blocks visible
+      toggle(fieldGrp.current, false);
+      toggle(houseGrp.current, true); // houses visible
+      toggle(lmkGrp.current, false);
+    } else {
+      const op = layers.satellite ? 1 : 0;
+      tileRef.current?.setOpacity(op);
+      overlayTiles.current.forEach(t => t.setOpacity(op));
+      if (containerRef.current) containerRef.current.style.background = layers.satellite ? '#000' : SCHEMATIC_BG;
+      
+      const toggle = (g: L.LayerGroup, on: boolean) => { if (on) { if (!map.hasLayer(g)) g.addTo(map); } else if (map.hasLayer(g)) map.removeLayer(g); };
+      toggle(rdGrp.current, layers.roads);
+      toggle(blkGrp.current, layers.blocks);
+      toggle(fieldGrp.current, layers.fields);
+      toggle(houseGrp.current, layers.houses);
+      toggle(lmkGrp.current, layers.landmarks);
+    }
+  }, [layers, showSnakeView]);
 
   // ─── RENDERERS ──────────────────────────────────────────────
   const renderBnd = useCallback(() => {
-    const g = bndGrp.current; g.clearLayers(); if (!boundaryPins.length) return;
+    const g = bndGrp.current; g.clearLayers();
+    if (showSnakeView) return;
+    if (!boundaryPins.length) return;
     const ll = boundaryPins.map(p => L.latLng(p.lat, p.lng));
     if (boundaryClosed && ll.length >= 3) g.addLayer(L.polygon(ll, { color: '#CC0000', weight: 2.5, fillColor: '#CC0000', fillOpacity: 0.06, interactive: false }));
     else if (ll.length >= 2) g.addLayer(L.polyline(ll, { color: '#CC0000', weight: 2, dashArray: '8,5', interactive: false }));
@@ -560,7 +579,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       g.addLayer(L.circleMarker([p.lat, p.lng], { radius: 9, color: '#FFF', fillColor: '#CC0000', fillOpacity: 1, weight: 2.5 }));
       g.addLayer(L.marker([p.lat, p.lng], { icon: L.divIcon({ html: `<div style="color:#fff;font:bold 11px sans-serif;text-align:center;line-height:18px;width:18px;height:18px">${i + 1}</div>`, className: '', iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false }));
     });
-  }, [boundaryPins, boundaryClosed]);
+  }, [boundaryPins, boundaryClosed, showSnakeView]);
 
   const renderRoads = useCallback(() => {
     const g = rdGrp.current; g.clearLayers();
@@ -781,7 +800,51 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       routePts.forEach(p => g.addLayer(L.circleMarker([p.lat, p.lng], { radius: 6, color: '#fff', fillColor: color, fillOpacity: 1, weight: 2, pane: 'drawingPane' })));
     }
   }, [drwPts, cutPts, fieldPts, blockDrawingPts, routePreviewCoords, routePts]);
+  const renderSrp = useCallback(() => {
+    const g = srpGrp.current; g.clearLayers();
+    if (!showSnakeView || symbols.length < 2) return;
+    
+    // Generate serpentine path
+    const bp = boundaryPins.length >= 3 ? boundaryPins : undefined;
+    const blksForOrder = mapData.numberingSystem === 'boundary_serpentine' ? undefined : (blocks.length ? blocks : undefined);
+    const order = getSerpentineOrder(symbols, blksForOrder, mapData.numberingSystem, bp);
+    
+    // Sort symbols according to order
+    const sortedSyms = order
+      .map(id => symbols.find(s => s.id === id))
+      .filter((s): s is PlacedSymbol => !!s);
+      
+    if (sortedSyms.length < 2) return;
+    
+    // Draw thick solid polyline
+    g.addLayer(L.polyline(sortedSyms.map(c=>[c.lat,c.lng]), {color: '#E67E22', weight: 5.5, opacity: 0.95}));
+    
+    // Midpoint arrow on every segment
+    for (let i = 0; i < sortedSyms.length - 1; i++) {
+      const p1 = sortedSyms[i], p2 = sortedSyms[i+1];
+      const midLat = (p1.lat + p2.lat) / 2;
+      const midLng = (p1.lng + p2.lng) / 2;
+      const brg = bearingBetween(p1, p2);
+      
+      const arrowIcon = L.divIcon({
+        html: `<div style="transform:rotate(${brg}deg); display:flex; align-items:center; justify-content:center; width:16px; height:16px;">` +
+              `<svg width="12" height="12" viewBox="0 0 24 24" fill="none">` +
+              `<path d="M4 22L20 12L4 2 Z" fill="#E67E22"/>` +
+              `</svg></div>`,
+        className: '',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+      g.addLayer(L.marker([midLat, midLng], { icon: arrowIcon, interactive: false }));
+    }
+    
+    // Draw START and END markers
+    g.addLayer(L.marker([sortedSyms[0].lat,sortedSyms[0].lng],{icon:L.divIcon({html:`<div style="background:#27AE60;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font:bold 7px sans-serif;border:2px solid white">START</div>`,className:'',iconSize:[24,24],iconAnchor:[12,12]}),interactive:false}));
+    const last=sortedSyms[sortedSyms.length-1];
+    g.addLayer(L.marker([last.lat,last.lng],{icon:L.divIcon({html:`<div style="background:#E74C3C;color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font:bold 7px sans-serif;border:2px solid white">END</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]}),interactive:false}));
+  }, [symbols, blocks, boundaryPins, mapData.numberingSystem, showSnakeView]);
 
+  useEffect(() => { if (ready) renderSrp(); }, [ready, renderSrp]);
   useEffect(() => { if (ready) renderBnd(); }, [ready, renderBnd]);
   useEffect(() => { if (ready) renderRoads(); }, [ready, renderRoads]);
   useEffect(() => { if (ready) renderBlocks(); }, [ready, renderBlocks]);
@@ -1460,6 +1523,28 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
           {cropZoom !== null && (
             <span className="bg-black/70 text-white text-[9px] font-bold rounded px-1 py-0.5 leading-none">z{cropZoom}</span>
           )}
+        </div>
+      )}
+
+      {phase === 'canvas' && (
+        <div className="absolute top-28 right-3 z-[1002] flex flex-col items-center gap-1">
+          <button
+            onClick={() => setShowSnakeView(s => !s)}
+            className={`w-10 h-10 rounded-xl shadow-md flex items-center justify-center text-lg active:scale-95 transition-all ${
+              showSnakeView ? 'bg-orange-500 text-white' : 'bg-white/95 border border-black/10 text-gray-700 hover:bg-orange-50'
+            }`}
+            title={showSnakeView ? "Exit Snake View" : "Snake View — Preview flow path"}
+          >
+            🐍
+          </button>
+          <span className="text-[9px] text-gray-500 font-semibold leading-none text-center">Snake</span>
+        </div>
+      )}
+
+      {showSnakeView && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 bg-orange-600/95 text-white text-xs px-4 py-2 rounded-xl z-[1001] pointer-events-none shadow-lg text-center flex items-center gap-2">
+          <span>🐍</span>
+          <strong>Snake View Active</strong> • Previewing flow path through blocks & houses
         </div>
       )}
 

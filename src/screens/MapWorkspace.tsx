@@ -108,6 +108,8 @@ export default function MapWorkspace({
   const luGrp = useRef(L.layerGroup());
   const mks = useRef<Map<string, L.Marker>>(new Map());
   const tileRef = useRef<L.TileLayer | null>(null);
+  const tileLabelsRef = useRef<L.TileLayer | null>(null);
+  const tileTransRef = useRef<L.TileLayer | null>(null);
   const rotMap = useRef<Map<string, number>>(new Map());
   const numHist = useRef<string[]>([]);
 
@@ -128,6 +130,7 @@ export default function MapWorkspace({
   const [autoData, setAutoData] = useState<{ buildings: number; farmlands: number; water: number; forests: number; landmarks: number; total: number; isVision?: boolean } | null>(null);
   const [showBlk, setShowBlk] = useState(true);
   const [showGuide, setShowGuide] = useState(true);
+  const [showSnakeView, setShowSnakeView] = useState(false);
   const [serpPath, setSerpPath] = useState<Coordinate[]>([]); const [serpOrd, setSerpOrd] = useState<string[]>([]);
   const [aptUnits, setAptUnits] = useState(2);
   const [editMode, setEditMode] = useState(false);
@@ -184,6 +187,13 @@ export default function MapWorkspace({
   };
 
   const mapClickRef = useRef<(c: Coordinate) => void>(() => {});
+  const zoomEndRef = useRef<() => void>(() => {});
+  zoomEndRef.current = () => {
+    if (!mapRef.current) return;
+    symbols.forEach(sym => {
+      refreshMk(sym);
+    });
+  };
   mapClickRef.current = (coord: Coordinate) => {
     // Boundary drawing by clicking on map
     if (step === 3 && !boundaryClosed) {
@@ -232,8 +242,8 @@ export default function MapWorkspace({
     const map = L.map(containerRef.current, { center: [center.lat, center.lng], zoom: 17, zoomControl: false, attributionControl: false });
     tileRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
     // Add Hybrid labels overlay for Places and Roads
-    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
-    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
+    tileLabelsRef.current = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
+    tileTransRef.current = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
     [bndGrp, blkGrp, rdGrp, drwGrp, srpGrp, watGrp, forGrp, lmkGrp, frmGrp, hlGrp, luGrp].forEach(g => {
       if (!map.hasLayer(g.current)) {
         g.current.addTo(map);
@@ -241,21 +251,25 @@ export default function MapWorkspace({
     });
     map.on('move', () => { const c = map.getCenter(); setCross(c); });
     map.on('click', (e: L.LeafletMouseEvent) => { mapClickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng }); });
+    map.on('zoomend', () => { zoomEndRef.current(); });
     mapRef.current = map; setReady(true);
     return () => { map.remove(); mapRef.current = null; };
   }, []);
 
   // ─── RENDERERS ──────────────────────────────────────────
   const renderBnd = useCallback(() => {
-    const g = bndGrp.current; g.clearLayers(); if (!boundaryPins.length) return;
+    const g = bndGrp.current; g.clearLayers();
+    if (showSnakeView) return;
+    if (!boundaryPins.length) return;
     const ll = boundaryPins.map(p => L.latLng(p.lat, p.lng));
     if (boundaryClosed && ll.length >= 3) g.addLayer(L.polygon(ll, { color:'#CC0000', weight:2.5, fillColor:'#CC0000', fillOpacity:0.1 }));
     else if (ll.length >= 2) g.addLayer(L.polyline(ll, { color:'#CC0000', weight:2, dashArray:'8,5' }));
     boundaryPins.forEach((p,i) => { g.addLayer(L.circleMarker([p.lat,p.lng], { radius:10, color:'#FFF', fillColor:'#CC0000', fillOpacity:1, weight:2.5 })); g.addLayer(L.marker([p.lat,p.lng], { icon: L.divIcon({ html:`<div style="color:#fff;font:bold 11px sans-serif;text-align:center;line-height:20px;width:20px;height:20px">${i+1}</div>`, className:'', iconSize:[20,20], iconAnchor:[10,10] }), interactive:false })); });
-  }, [boundaryPins, boundaryClosed]);
+  }, [boundaryPins, boundaryClosed, showSnakeView]);
 
   const renderRds = useCallback(() => {
     const g = rdGrp.current; g.clearLayers();
+    if (showSnakeView) return;
     roads.forEach((r,i) => { if (r.coords.length < 2) return; const ll = r.coords.map(c => L.latLng(c.lat, c.lng)); const cf=r.confirmed, pk=isPakkaRoad(r.highway), rs=['residential','unclassified','tertiary','service','living_street'].includes(r.highway), kt=['footway','path','track','pedestrian','steps'].includes(r.highway); const lc=cf?'#000':'#FFB830', gc=cf?'#FFF':'#FFF8E8';
       if (revMode&&i===revIdx) { g.addLayer(L.polyline(ll,{color:'#0066FF',weight:7,opacity:0.9})); g.addLayer(L.polyline(ll,{color:'#FFF',weight:3})); return; }
       if (pk) { g.addLayer(L.polyline(ll,{color:lc,weight:8})); g.addLayer(L.polyline(ll,{color:gc,weight:4})); }
@@ -263,10 +277,11 @@ export default function MapWorkspace({
       else if (kt) { g.addLayer(L.polyline(ll,{color:lc,weight:5,dashArray:'10,6'})); g.addLayer(L.polyline(ll,{color:gc,weight:2,dashArray:'10,6'})); }
       else { g.addLayer(L.polyline(ll,{color:lc,weight:5})); g.addLayer(L.polyline(ll,{color:gc,weight:2})); }
     });
-  }, [roads, revMode, revIdx]);
+  }, [roads, revMode, revIdx, showSnakeView]);
 
   const renderWat = useCallback(() => {
     const g = watGrp.current; g.clearLayers();
+    if (showSnakeView) return;
     for (const wb of waterBodies) {
       if (wb.type === 'pond' && wb.coords.length >= 3) {
         g.addLayer(L.polygon(wb.coords.map(c=>[c.lat,c.lng]), { color:'#1565C0', weight:2, fillColor:'#42A5F5', fillOpacity:0.25 }));
@@ -276,20 +291,22 @@ export default function MapWorkspace({
         if (wb.name) { const c = wb.center; g.addLayer(L.marker([c.lat,c.lng], { icon: L.divIcon({ html:`<div style="background:rgba(21,101,192,0.8);color:white;font-size:8px;padding:1px 4px;border-radius:3px;white-space:nowrap;text-shadow:0 0 2px rgba(0,0,0,0.5)">${wb.name}</div>`, className:'', iconAnchor:[20,8] }), interactive:false })); }
       }
     }
-  }, [waterBodies]);
+  }, [waterBodies, showSnakeView]);
 
   const renderFor = useCallback(() => {
     const g = forGrp.current; g.clearLayers();
+    if (showSnakeView) return;
     for (const fa of forests) {
       if (fa.points.length < 3) continue;
       g.addLayer(L.polygon(fa.points.map(p=>[p.lat,p.lng]), { color:'#2E7D32', weight:2, dashArray:'6,3', fillColor:'#4CAF50', fillOpacity:0.2 }));
       const c = polyCenter(fa.points);
       g.addLayer(L.marker([c.lat,c.lng], { icon: L.divIcon({ html:`<div style="color:#2E7D32;font-size:10px;font-weight:bold;text-shadow:0 0 3px white,-0 0 3px white,0 0 3px white;white-space:nowrap">🌳 ${fa.name}</div>`, className:'', iconAnchor:[30,8] }), interactive:false }));
     }
-  }, [forests]);
+  }, [forests, showSnakeView]);
 
   const renderLmk = useCallback(() => {
     const g = lmkGrp.current; g.clearLayers();
+    if (showSnakeView) return;
     for (const lm of landmarks) {
       const m = L.marker([lm.lat,lm.lng], { icon: L.divIcon({ html:`<div style="background:rgba(255,255,255,0.92);color:#333;font-size:9px;font-weight:600;padding:2px 5px;border-radius:4px;border:1px solid #ccc;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.2);max-width:120px;overflow:hidden;text-overflow:ellipsis">📌 ${lm.name}</div>`, className:'', iconAnchor:[30,20] }), interactive:true });
       m.on('click', () => {
@@ -300,11 +317,11 @@ export default function MapWorkspace({
       });
       g.addLayer(m);
     }
-  }, [landmarks, editMode]);
+  }, [landmarks, editMode, showSnakeView]);
 
   const renderBlks = useCallback(() => {
     const g = blkGrp.current; g.clearLayers();
-    if (!showBlk) return;
+    if (!showBlk && !showSnakeView) return;
     blocks.forEach((b, i) => {
       const c = b.points ? polyCenter(b.points) : { lat: (b.south + b.north) / 2, lng: (b.west + b.east) / 2 };
       const pts: Coordinate[] = b.points || [
@@ -319,10 +336,11 @@ export default function MapWorkspace({
         }));
       }
     });
-  }, [blocks, showBlk]);
+  }, [blocks, showBlk, showSnakeView]);
 
   const renderFrms = useCallback(() => {
     const g = frmGrp.current; g.clearLayers();
+    if (showSnakeView) return;
     farmlandBlocks.forEach(fb => {
       if (fb.points.length < 3) return;
       g.addLayer(L.polygon(fb.points.map(p => [p.lat, p.lng]), { color: '#2E7D32', weight: 3, dashArray: '10,5', fillColor: '#66BB6A', fillOpacity: 0.15 }));
@@ -331,12 +349,51 @@ export default function MapWorkspace({
         icon: L.divIcon({ html: `<div style="font:bold 13px 'Baloo 2',sans-serif;color:#2E7D32;text-shadow:1px 1px 3px white,-1px -1px 3px white;text-align:center;pointer-events:none">🌾 Farm ${fb.label}</div>`, className: '', iconSize: [90, 22], iconAnchor: [45, 11] }), interactive: false,
       }));
     });
-  }, [farmlandBlocks]);
-  const renderSrp = useCallback(() => { const g = srpGrp.current; g.clearLayers(); if(!showGuide||serpPath.length<2)return; g.addLayer(L.polyline(serpPath.map(c=>[c.lat,c.lng]),{color:'#FF4444',weight:3,opacity:0.45,dashArray:'12,8'})); const st=Math.max(1,Math.floor(serpPath.length/12)); for(let i=0;i<serpPath.length-1;i+=st){const brg=bearingBetween(serpPath[i],serpPath[Math.min(i+1,serpPath.length-1)]);g.addLayer(L.marker([serpPath[i].lat,serpPath[i].lng],{icon:L.divIcon({html:`<div style="transform:rotate(${brg}deg);color:#FF4444;font-size:14px;opacity:0.5;filter:drop-shadow(0 0 2px white)">➤</div>`,className:'',iconSize:[14,14],iconAnchor:[7,7]}),interactive:false}));} g.addLayer(L.marker([serpPath[0].lat,serpPath[0].lng],{icon:L.divIcon({html:`<div style="background:#27AE60;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font:bold 7px sans-serif;border:2px solid white">START</div>`,className:'',iconSize:[24,24],iconAnchor:[12,12]}),interactive:false})); const last=serpPath[serpPath.length-1]; g.addLayer(L.marker([last.lat,last.lng],{icon:L.divIcon({html:`<div style="background:#E74C3C;color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font:bold 7px sans-serif;border:2px solid white">END</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]}),interactive:false})); }, [serpPath, showGuide]);
+  }, [farmlandBlocks, showSnakeView]);
+
+  const renderSrp = useCallback(() => {
+    const g = srpGrp.current; g.clearLayers();
+    if ((!showGuide && !showSnakeView) || serpPath.length < 2) return;
+    
+    if (showSnakeView) {
+      g.addLayer(L.polyline(serpPath.map(c=>[c.lat,c.lng]), {color: '#E67E22', weight: 5.5, opacity: 0.95}));
+      
+      for (let i = 0; i < serpPath.length - 1; i++) {
+        const p1 = serpPath[i], p2 = serpPath[i+1];
+        const midLat = (p1.lat + p2.lat) / 2;
+        const midLng = (p1.lng + p2.lng) / 2;
+        const brg = bearingBetween(p1, p2);
+        
+        const arrowIcon = L.divIcon({
+          html: `<div style="transform:rotate(${brg}deg); display:flex; align-items:center; justify-content:center; width:16px; height:16px;">` +
+                `<svg width="12" height="12" viewBox="0 0 24 24" fill="none">` +
+                `<path d="M4 22L20 12L4 2 Z" fill="#E67E22"/>` +
+                `</svg></div>`,
+          className: '',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        });
+        g.addLayer(L.marker([midLat, midLng], { icon: arrowIcon, interactive: false }));
+      }
+    } else {
+      g.addLayer(L.polyline(serpPath.map(c=>[c.lat,c.lng]),{color:'#FF4444',weight:3,opacity:0.45,dashArray:'12,8'}));
+      const st=Math.max(1,Math.floor(serpPath.length/12));
+      for(let i=0;i<serpPath.length-1;i+=st){
+        const brg=bearingBetween(serpPath[i],serpPath[Math.min(i+1,serpPath.length-1)]);
+        g.addLayer(L.marker([serpPath[i].lat,serpPath[i].lng],{icon:L.divIcon({html:`<div style="transform:rotate(${brg}deg);color:#FF4444;font-size:14px;opacity:0.5;filter:drop-shadow(0 0 2px white)">➤</div>`,className:'',iconSize:[14,14],iconAnchor:[7,7]}),interactive:false}));
+      }
+    }
+    
+    g.addLayer(L.marker([serpPath[0].lat,serpPath[0].lng],{icon:L.divIcon({html:`<div style="background:#27AE60;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font:bold 7px sans-serif;border:2px solid white">START</div>`,className:'',iconSize:[24,24],iconAnchor:[12,12]}),interactive:false}));
+    const last=serpPath[serpPath.length-1];
+    g.addLayer(L.marker([last.lat,last.lng],{icon:L.divIcon({html:`<div style="background:#E74C3C;color:white;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font:bold 7px sans-serif;border:2px solid white">END</div>`,className:'',iconSize:[20,20],iconAnchor:[10,10]}),interactive:false}));
+  }, [serpPath, showGuide, showSnakeView]);
 
   const renderDrawPoly = (pts: Coordinate[]) => { const g = drwGrp.current; g.clearLayers(); if(!pts.length)return; pts.forEach((p,i)=>{const col=drawMode==='farmland'?'#2E7D32':BC[blocks.length%12];g.addLayer(L.circleMarker([p.lat,p.lng],{radius:7,color:col,fillColor:col,fillOpacity:1,weight:2}));g.addLayer(L.marker([p.lat,p.lng],{icon:L.divIcon({html:`<div style="color:white;font:bold 9px sans-serif;text-align:center;line-height:14px;width:14px;height:14px">${i+1}</div>`,className:'',iconSize:[14,14],iconAnchor:[7,7]}),interactive:false}));}); if(pts.length>=2){const col=drawMode==='farmland'?'#2E7D32':BC[blocks.length%12];g.addLayer(L.polyline(pts.map(p=>[p.lat,p.lng]),{color:col,weight:2.5,dashArray:'8,5',opacity:0.8}));} };
 
   const renderLanduse = useCallback(() => {
+    const g = luGrp.current; g.clearLayers();
+    if (showSnakeView) return;
     if (!landuseAreas) return;
     const landusStyles: Record<string, { fill: string; stroke: string; width: number; dash: string; label: string }> = {
       farmland:     { fill: '#FFF8DC', stroke: '#8B7355', width: 1, dash: '4,2', label: '🌾' },
@@ -351,9 +408,6 @@ export default function MapWorkspace({
       cemetery:     { fill: '#C8C8C8', stroke: '#808080', width: 1, dash: '',    label: '🪦' },
       park:         { fill: '#90EE90', stroke: '#228B22', width: 1, dash: '',    label: '⛲' }
     };
-
-    const g = luGrp.current; 
-    g.clearLayers();
     landuseAreas.forEach(la => {
       if (la.points.length < 3) return;
       const st = landusStyles[la.type] || landusStyles.grass;
@@ -368,7 +422,7 @@ export default function MapWorkspace({
         }));
       }
     });
-  }, [landuseAreas]);
+  }, [landuseAreas, showSnakeView]);
 
   useEffect(() => { if(ready)renderBnd(); }, [ready,renderBnd]);
   useEffect(() => { if(ready)renderRds(); }, [ready,renderRds]);
@@ -393,7 +447,24 @@ export default function MapWorkspace({
     // Add markers for new symbols
     symbols.forEach(s => addMk(s));
   }, [ready, symbols]);
-  useEffect(() => { if(tileRef.current) tileRef.current.setOpacity(showSat?1:0); }, [showSat]);
+  useEffect(() => {
+    if (!ready) return;
+    if (showSnakeView) {
+      if (tileRef.current) tileRef.current.setOpacity(0);
+      if (tileLabelsRef.current) tileLabelsRef.current.setOpacity(0);
+      if (tileTransRef.current) tileTransRef.current.setOpacity(0);
+      if (containerRef.current) {
+        containerRef.current.style.backgroundColor = '#FFFFFF';
+      }
+    } else {
+      if (tileRef.current) tileRef.current.setOpacity(showSat ? 1 : 0);
+      if (tileLabelsRef.current) tileLabelsRef.current.setOpacity(1);
+      if (tileTransRef.current) tileTransRef.current.setOpacity(1);
+      if (containerRef.current) {
+        containerRef.current.style.backgroundColor = '#E8E6E0';
+      }
+    }
+  }, [ready, showSat, showSnakeView]);
   // Guided tour: auto-place the curated demo block when entering the boundary
   // step, so the user doesn't have to draw and the next steps (roads/buildings)
   // are guaranteed to find data. Real (non-demo) users still draw their own.
@@ -625,10 +696,33 @@ export default function MapWorkspace({
     m.on('click',()=>mkClickRef.current(sym.id, 'click'));
     mks.current.set(sym.id,m);
   }
+  function getAdaptiveSymbolSize(sym: PlacedSymbol, map: L.Map, allSymbols: PlacedSymbol[]): number {
+    const lat = sym.lat ?? (sym as any).position?.lat;
+    const lng = sym.lng ?? (sym as any).position?.lng;
+    if (typeof lat !== 'number' || typeof lng !== 'number') return 24;
+    
+    const p = map.latLngToLayerPoint([lat, lng]);
+    let minDist = Infinity;
+    for (const other of allSymbols) {
+      if (other.id === sym.id) continue;
+      const olat = other.lat ?? (other as any).position?.lat;
+      const olng = other.lng ?? (other as any).position?.lng;
+      if (typeof olat !== 'number' || typeof olng !== 'number') continue;
+      
+      const op = map.latLngToLayerPoint([olat, olng]);
+      const d = Math.hypot(p.x - op.x, p.y - op.y);
+      if (d < minDist) minDist = d;
+    }
+    
+    // Size is 75% of local spacing in pixels, clamped to [12px, 24px]
+    return minDist < Infinity ? Math.max(12, Math.min(24, minDist * 0.75)) : 24;
+  }
+
   function mkIcon(sym:PlacedSymbol):L.DivIcon{
     const isS=sym.id===sugId;const u=getUnitCount(sym);
     const nl=sym.number!==null?(numberingSystem === 'census_u_loop'?(u>1?`${sym.number}(${u})`:String(sym.number)):(u>1?`${sym.number}-${sym.number+u-1}`:String(sym.number))):'';
     const rh=isS?`<div style="position:absolute;top:-10px;left:-10px;width:44px;height:44px;border:3px solid #0066FF;border-radius:50%;pointer-events:none;animation:guidePulse 1.5s infinite"></div>`:'';
+    
     // Road/Block-aligned rotation for house types
     let angle = getBlockOrientation(sym, blocks || []);
     if (angle === null) {
@@ -638,7 +732,30 @@ export default function MapWorkspace({
     if (angle < -Math.PI / 2) angle += Math.PI;
     const rot = (angle * 180) / Math.PI;
     const rotStyle = rot !== 0 ? `transform:rotate(${rot}deg);` : '';
-    return L.divIcon({html:`<div style="position:relative;cursor:pointer;${rotStyle}">${getSmallSymbolSVG(sym.symbol_type, false, nl)}${rh}</div>`,className:'',iconSize:[24,24],iconAnchor:[12,12]});
+
+    const map = mapRef.current;
+    const isLandmark = !isHouseType(sym.symbol_type);
+    const size = map && !isLandmark ? getAdaptiveSymbolSize(sym, map, symbols) : 24;
+    const sizeI = Math.round(size);
+    const svg = getSmallSymbolSVG(sym.symbol_type, false, nl);
+
+    let iconHtml = '';
+    if (isLandmark) {
+      iconHtml = `<div style="position:relative;cursor:pointer;${rotStyle}">${svg}${rh}</div>`;
+    } else {
+      iconHtml = `<div style="position:relative;cursor:pointer;${rotStyle} width:${sizeI}px; height:${sizeI}px; display:flex; align-items:center; justify-content:center;">` +
+        `<svg width="${sizeI}" height="${sizeI}" viewBox="0 0 24 24" style="display:block;overflow:visible">${svg.replace(/^<svg[^>]*>/, '').replace('</svg>', '')}</svg>` +
+        `${rh}</div>`;
+    }
+
+    const iconH = isLandmark ? (sym.number !== null ? 34 : 24) : sizeI;
+
+    return L.divIcon({
+      html: iconHtml,
+      className: '',
+      iconSize: [isLandmark ? 24 : sizeI, iconH],
+      iconAnchor: [isLandmark ? 12 : sizeI / 2, iconH / 2]
+    });
   }
   function refreshMk(sym:PlacedSymbol){const m=mks.current.get(sym.id);if(m)m.setIcon(mkIcon(sym));}
 
@@ -1187,12 +1304,14 @@ export default function MapWorkspace({
         />
       )}
       <div ref={containerRef} className="absolute inset-0" />
-      <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-[1000]">
-        <svg width="64" height="64" viewBox="0 0 64 64">
-          <line x1="32" y1="4" x2="32" y2="56" stroke="white" strokeWidth="5" opacity="0.9"/><line x1="4" y1="32" x2="56" y2="32" stroke="white" strokeWidth="5" opacity="0.9"/><circle cx="32" cy="32" r="7" stroke="white" strokeWidth="3.5" opacity="0.9" fill="none"/>
-          <line x1="32" y1="4" x2="32" y2="56" stroke="#CC0000" strokeWidth="2.5"/><line x1="4" y1="32" x2="56" y2="32" stroke="#CC0000" strokeWidth="2.5"/><circle cx="32" cy="32" r="5.5" stroke="#CC0000" strokeWidth="2.5" fill="none"/><circle cx="32" cy="32" r="2" fill="#CC0000"/>
-        </svg>
-      </div>
+      {!showSnakeView && (
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-[1000]">
+          <svg width="64" height="64" viewBox="0 0 64 64">
+            <line x1="32" y1="4" x2="32" y2="56" stroke="white" strokeWidth="5" opacity="0.9"/><line x1="4" y1="32" x2="56" y2="32" stroke="white" strokeWidth="5" opacity="0.9"/><circle cx="32" cy="32" r="7" stroke="white" strokeWidth="3.5" opacity="0.9" fill="none"/>
+            <line x1="32" y1="4" x2="32" y2="56" stroke="#CC0000" strokeWidth="2.5"/><line x1="4" y1="32" x2="56" y2="32" stroke="#CC0000" strokeWidth="2.5"/><circle cx="32" cy="32" r="5.5" stroke="#CC0000" strokeWidth="2.5" fill="none"/><circle cx="32" cy="32" r="2" fill="#CC0000"/>
+          </svg>
+        </div>
+      )}
       {/* Top-right control column — uniform sizing, single Layers/Data entry */}
       <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-[1001]">
         <button onClick={()=>mapRef.current?.zoomIn()} className="bg-white/95 backdrop-blur w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg font-bold text-gray-700 active:scale-95">+</button>
@@ -1208,6 +1327,17 @@ export default function MapWorkspace({
             {cropZoom!==null&&<span className="bg-black/70 text-white text-[9px] font-bold rounded px-1 py-0.5 leading-none">z{cropZoom}</span>}
           </div>
         )}
+        {step>=3&&(
+          <button
+            onClick={() => setShowSnakeView(s => !s)}
+            className={`w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg active:scale-95 transition-all ${
+              showSnakeView ? 'bg-orange-500 text-white' : 'bg-white/95 text-gray-700 hover:bg-orange-50'
+            }`}
+            title={showSnakeView ? "Exit Snake View" : "Snake View — Preview flow path"}
+          >
+            🐍
+          </button>
+        )}
       </div>
       <div className="absolute top-2 left-2 bg-[var(--color-saffron-container)] text-white px-3.5 py-1.5 rounded-full text-xs font-bold z-[1001] pointer-events-none shadow-[var(--shadow-warm-1)] font-public-sans tracking-wide">HLB {hlbNumber}</div>
 
@@ -1217,8 +1347,14 @@ export default function MapWorkspace({
       {step===4&&drwRd&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-blue-600/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">✏️ Tap on map to trace road • {drwPts.length} points</div>}
       {step===5&&drawMode!=='none'&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-green-600/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">Tap map to drop corners • {polyPts.length} placed</div>}
       {step===5&&placing&&selSym&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-orange-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">Tap map to place {SYMBOL_DEFS.find(d=>d.type===selSym)?.labelHi}</div>}
-      {step===6&&showGuide&&serpPath.length>1&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-red-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">🐍 Follow red path</div>}
+      {step===6&&showGuide&&serpPath.length>1&&!showSnakeView&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-red-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg text-center">🐍 Follow red path</div>}
       {step===6&&editMode&&<div className="absolute top-14 left-1/2 -translate-x-1/2 bg-yellow-500/90 text-white text-xs px-3 py-2 rounded-lg z-[1001] pointer-events-none shadow-lg">✏️ EDIT</div>}
+      {showSnakeView && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 bg-orange-600/95 text-white text-xs px-4 py-2 rounded-xl z-[1001] pointer-events-none shadow-lg text-center flex items-center gap-2">
+          <span>🐍</span>
+          <strong>Snake View Active</strong> • Previewing flow path through blocks & houses
+        </div>
+      )}
 
       {/* Bottom Sheet (each panel is self-positioned at the bottom) */}
       {step===3&&pBnd()}

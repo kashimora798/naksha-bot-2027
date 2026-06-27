@@ -195,76 +195,34 @@ export function renderMapToCanvas(
     }
   }
 
-  const numSymbols = data.symbols?.length || 1;
-  // Symbol size from LOCAL spacing, not global count: measure the median nearest-
-  // neighbour distance between symbols in canvas space and size boxes to ~70% of it,
-  // so sparse areas stay large/legible and only genuinely tight pockets shrink.
   const symbolSizes = new Map<string, number>();
-  let symSz: number;
+  const symSz = Math.max(20, Math.min(32, sc * 0.00032));
   {
-    const base = Math.max(20, Math.min(32, sc * 0.00032));
-    const pts = (data.symbols || []).map(s => proj(s));
-    if (pts.length >= 2) {
-      // Sample up to 60 symbols for nearest-neighbour spacing (O(n*k) but bounded).
-      const sample = pts.length > 60 ? pts.filter((_, i) => i % Math.ceil(pts.length / 60) === 0) : pts;
-      const nn: number[] = [];
-      for (let i = 0; i < sample.length; i++) {
-        let best = Infinity;
-        for (let j = 0; j < pts.length; j++) {
-          if (pts[j] === sample[i]) continue;
-          const d = Math.hypot(sample[i][0] - pts[j][0], sample[i][1] - pts[j][1]);
-          if (d < best) best = d;
-        }
-        if (isFinite(best)) nn.push(best);
+    const pts = (data.symbols || []).map(s => ({ id: s.id, pt: proj(s), sym: s }));
+    for (let i = 0; i < pts.length; i++) {
+      let minDist = Infinity;
+      for (let j = 0; j < pts.length; j++) {
+        if (i === j) continue;
+        const d = Math.hypot(pts[i].pt[0] - pts[j].pt[0], pts[i].pt[1] - pts[j].pt[1]);
+        if (d < minDist) minDist = d;
       }
-      nn.sort((a, b) => a - b);
-      const medianNN = nn.length ? nn[Math.floor(nn.length / 2)] : base;
-      // Clamp default symbol size to a legible range [16, base]
-      symSz = Math.max(16, Math.min(base, medianNN * 0.85));
-    } else {
-      symSz = base;
-    }
-
-    // Now calculate block-specific symbol sizes to prevent overlaps in congested blocks
-    if (data.blocks && data.blocks.length > 0) {
-      for (const blk of data.blocks) {
-        const blkPts = blk.points && blk.points.length >= 3 ? blk.points : [
-          { lat: blk.south, lng: blk.west },
-          { lat: blk.north, lng: blk.west },
-          { lat: blk.north, lng: blk.east },
-          { lat: blk.south, lng: blk.east },
-        ];
-        const blkSyms = (data.symbols || []).filter(s => {
-          if (blk.points && blk.points.length >= 3) {
-            return pointInPolygon(s, blk.points);
+      
+      let multiplier = 1.0;
+      if (data.blocks && data.blocks.length > 0) {
+        const blk = data.blocks.find(b => {
+          if (b.points && b.points.length >= 3) {
+            return pointInPolygon(pts[i].sym, b.points);
           }
-          return s.lat >= blk.south && s.lat <= blk.north && s.lng >= blk.west && s.lng <= blk.east;
+          return pts[i].sym.lat >= b.south && pts[i].sym.lat <= b.north && pts[i].sym.lng >= b.west && pts[i].sym.lng <= b.east;
         });
-        if (blkSyms.length >= 2) {
-          const bpts = blkSyms.map(s => proj(s));
-          const nn: number[] = [];
-          for (let i = 0; i < bpts.length; i++) {
-            let best = Infinity;
-            for (let j = 0; j < bpts.length; j++) {
-              if (i === j) continue;
-              const d = Math.hypot(bpts[i][0] - bpts[j][0], bpts[i][1] - bpts[j][1]);
-              if (d < best) best = d;
-            }
-            if (isFinite(best)) nn.push(best);
-          }
-          nn.sort((a, b) => a - b);
-          const blockMedianNN = nn.length ? nn[Math.floor(nn.length / 2)] : base;
-          // Box ~85% of local spacing inside this block, clamped to a legible range [17, 32]
-          const multiplier = (blk as any).symbolSizeMultiplier ?? 1.0;
-          const blkSymSz = Math.max(17, Math.min(32, blockMedianNN * 0.85)) * multiplier;
-          for (const s of blkSyms) {
-            symbolSizes.set(s.id, blkSymSz);
-          }
-        } else if (blkSyms.length === 1) {
-          const multiplier = (blk as any).symbolSizeMultiplier ?? 1.0;
-          symbolSizes.set(blkSyms[0].id, 30 * multiplier);
+        if (blk) {
+          multiplier = (blk as any).symbolSizeMultiplier ?? 1.0;
         }
       }
+      
+      // Box ~85% of nearest-neighbor local spacing, clamped to [10, symSz]
+      const localSz = minDist < Infinity ? Math.max(10, Math.min(symSz, minDist * 0.85)) : symSz;
+      symbolSizes.set(pts[i].id, localSz * multiplier);
     }
   }
 

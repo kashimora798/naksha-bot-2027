@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { idbStore, SurveySession } from '../lib/idb';
@@ -14,6 +14,7 @@ export interface Project {
   updated_at: string;
   payment_status: string;
   export_count: number;
+  isAssigned?: boolean;
 }
 
 interface Props {
@@ -31,6 +32,7 @@ interface Props {
 export default function DashboardScreen({ user, userProfile, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap, onCanvasBlockMap, onProfileUpdated }: Props) {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [assignedProjects, setAssignedProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showProfile, setShowProfile] = useState(false);
@@ -43,6 +45,9 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
 
   // WhatsApp Group Popup
   const [showWhatsApp, setShowWhatsApp] = useState(false);
+
+  // Only one popup fires per browser session
+  const sessionPopupShown = useRef(false);
 
   const handleStartCanvasMap = () => {
     const hasSeen = localStorage.getItem('seen_canvas_tutorial_video');
@@ -70,12 +75,15 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [donateHindi, setDonateHindi] = useState(true);
 
   useEffect(() => {
+    if (sessionPopupShown.current) return;
     if (!localStorage.getItem('naksha_demo_done')) {
       setShowDemoModal(true);
       localStorage.setItem('naksha_demo_done', 'true');
+      sessionPopupShown.current = true;
     } else if (!localStorage.getItem('naksha_whatsapp_popup')) {
       setShowWhatsApp(true);
       localStorage.setItem('naksha_whatsapp_popup', 'true');
+      sessionPopupShown.current = true;
     }
   }, []);
 
@@ -83,20 +91,38 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
     async function loadProjects() {
       if (!user?.id) return;
       try {
-        const { data, error } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('updated_at', { ascending: false });
+        // Own projects + assigned project IDs in parallel
+        const [ownResult, assignmentsResult] = await Promise.all([
+          supabase
+            .from('projects')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('updated_at', { ascending: false }),
+          supabase
+            .from('project_assignments')
+            .select('project_id')
+            .eq('user_id', user.id),
+        ]);
 
-        if (error) throw error;
-        const visibleProjects = (data || []).filter(p => !p.data?.deletedUI);
+        if (ownResult.error) throw ownResult.error;
+        const visibleProjects = (ownResult.data || []).filter(p => !p.data?.deletedUI);
         setProjects(visibleProjects);
 
-        // Show feedback if they have maps and haven't seen it yet
-        if (visibleProjects.length > 0 && !localStorage.getItem('naksha_dashboard_feedback')) {
+        // Fetch the actual assigned project rows
+        const assignedIds = (assignmentsResult.data || []).map((a: any) => a.project_id);
+        if (assignedIds.length) {
+          const { data: sharedData } = await supabase
+            .from('projects')
+            .select('*')
+            .in('id', assignedIds)
+            .order('updated_at', { ascending: false });
+          setAssignedProjects((sharedData || []).map(p => ({ ...p, isAssigned: true })));
+        }
+
+        if (visibleProjects.length >= 3 && !localStorage.getItem('naksha_dashboard_feedback') && !sessionPopupShown.current) {
           setShowFeedback(true);
           localStorage.setItem('naksha_dashboard_feedback', 'true');
+          sessionPopupShown.current = true;
         }
       } catch (err: any) {
         console.error('Error fetching projects:', err);
@@ -222,40 +248,69 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
         )}
 
         {/* ── Primary action cards ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <button
             onClick={() => onNewProject(undefined)}
-            className="group text-left p-5 rounded-2xl bg-[var(--color-saffron-container)] text-white shadow-[var(--shadow-warm-2)] hover:brightness-105 active:scale-[0.99] transition-all"
+            className="group text-left p-4 rounded-2xl bg-[var(--color-saffron-container)] text-white shadow-[var(--shadow-warm-2)] hover:brightness-105 active:scale-[0.99] transition-all"
           >
-            <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center text-2xl mb-3">🗺️</div>
-            <p className="font-bold text-base font-public-sans">Create New Map</p>
-            <p className="text-xs text-white/80 mt-0.5">Build an HLB map from satellite imagery</p>
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl mb-2.5">🗺️</div>
+            <p className="font-bold text-sm font-public-sans leading-tight">नक्शा बनाएं</p>
+            <p className="text-[11px] text-white/75 mt-0.5 leading-snug">Make a Map</p>
+            <p className="text-[10px] text-white/60 mt-1 leading-snug hidden sm:block">सैटेलाइट से HLB नक्शा बनाएं</p>
           </button>
           <button
             onClick={handleStartCanvasMap}
-            className="group text-left p-5 rounded-2xl bg-white border border-emerald-100 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
+            className="group text-left p-4 rounded-2xl bg-white border border-emerald-100 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
           >
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-2xl mb-3">🧩</div>
-            <p className="font-bold text-base font-public-sans text-[var(--color-charcoal)]">Canvas Blocks <span className="text-[10px] align-top text-emerald-600 font-bold">NEW</span></p>
-            <p className="text-xs text-gray-500 mt-0.5">Auto-detect blocks from roads &amp; place houses</p>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-xl mb-2.5">🧩</div>
+            <p className="font-bold text-sm font-public-sans text-[var(--color-charcoal)] leading-tight">ब्लॉक नक्शा</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">Block Map</p>
+            <p className="text-[10px] text-gray-400 mt-1 leading-snug hidden sm:block">सड़कों से ब्लॉक अपने-आप बनेंगे</p>
           </button>
           <button
             onClick={() => navigate('/live-dashboard')}
-            className="group text-left p-5 rounded-2xl bg-white border border-[var(--color-saffron)]/15 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
+            className="group text-left p-4 rounded-2xl bg-white border border-[var(--color-saffron)]/15 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
           >
-            <div className="w-11 h-11 rounded-xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-2xl mb-3">🚶</div>
-            <p className="font-bold text-base font-public-sans text-[var(--color-charcoal)]">Live Survey</p>
-            <p className="text-xs text-gray-500 mt-0.5">Walk the area with GPS recording</p>
+            <div className="w-10 h-10 rounded-xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-xl mb-2.5">🚶</div>
+            <p className="font-bold text-sm font-public-sans text-[var(--color-charcoal)] leading-tight">फील्ड सर्वे</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">Field Survey</p>
+            <p className="text-[10px] text-gray-400 mt-1 leading-snug hidden sm:block">GPS से घर दर्ज करें</p>
           </button>
           <button
             onClick={onDemoMap}
-            className="group text-left p-5 rounded-2xl bg-white border border-blue-100 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
+            className="group text-left p-4 rounded-2xl bg-white border border-blue-100 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
           >
-            <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-2xl mb-3">🎓</div>
-            <p className="font-bold text-base font-public-sans text-[var(--color-charcoal)]">Take the Tour</p>
-            <p className="text-xs text-gray-500 mt-0.5">2-minute guided walkthrough</p>
+            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-xl mb-2.5">🎓</div>
+            <p className="font-bold text-sm font-public-sans text-[var(--color-charcoal)] leading-tight">सीखें</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">Learn</p>
+            <p className="text-[10px] text-gray-400 mt-1 leading-snug hidden sm:block">2 मिनट का guided tour</p>
           </button>
         </div>
+
+        {/* ── How it works strip (shown only for new users with no projects) ── */}
+        {projects.length === 0 && assignedProjects.length === 0 && (
+          <div className="bg-white rounded-2xl border border-[var(--color-saffron)]/10 shadow-[var(--shadow-warm-1)] px-4 py-3 mb-6">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2.5">नक्शा कैसे बनता है / How it works</p>
+            <div className="flex items-center gap-1 overflow-x-auto pb-1">
+              {[
+                { icon: '📩', label: 'SMS paste', sub: 'HLB area' },
+                { icon: '📐', label: 'सीमा खींचें', sub: 'Boundary' },
+                { icon: '🏠', label: 'मकान डालें', sub: 'Buildings' },
+                { icon: '🔢', label: 'नंबर दें', sub: 'Number' },
+                { icon: '🖨️', label: 'Print करें', sub: 'Export' },
+              ].map((s, i, arr) => (
+                <div key={i} className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex flex-col items-center">
+                    <span className="text-lg">{s.icon}</span>
+                    <span className="text-[10px] font-bold text-[var(--color-charcoal)] text-center leading-tight mt-0.5">{s.label}</span>
+                    <span className="text-[9px] text-gray-400 text-center">{s.sub}</span>
+                  </div>
+                  {i < arr.length - 1 && <span className="text-gray-300 text-sm font-bold mx-1">→</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Stats strip ── */}
         {(projects.length > 0 || liveSessions.length > 0) && (
@@ -348,11 +403,17 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
           const canvasProjects = projects.filter((p: any) => p.data?.mode === 'canvas');
           const deskProjects = projects.filter((p: any) => p.data?.mode !== 'canvas');
 
-          const renderCard = (project: any, isCanvas = false) => (
+          const renderCard = (project: any, isCanvas = false) => {
+            const syms: any[] = project.data?.symbols || [];
+            const totalBuildings = syms.filter((s: any) => ['pucca_house','kutcha_house','apartment','non_residential'].includes(s.symbol_type)).length;
+            const numberedBuildings = syms.filter((s: any) => ['pucca_house','kutcha_house','apartment','non_residential'].includes(s.symbol_type) && s.number !== null).length;
+            const allNumbered = totalBuildings > 0 && numberedBuildings === totalBuildings;
+            const hlb = project.data?.hlbNumber;
+            return (
             <div
               key={project.id}
               onClick={() => onLoadProject(project.id, { ...project.data, paymentStatus: project.payment_status, exportCount: project.export_count })}
-              className={`bg-white rounded-2xl p-5 shadow-[var(--shadow-warm-1)] cursor-pointer hover:shadow-[var(--shadow-warm-2)] hover:-translate-y-0.5 transition-all group relative overflow-hidden border ${isCanvas ? 'border-emerald-100' : 'border-[var(--color-saffron)]/10'}`}
+              className={`bg-white rounded-2xl p-4 shadow-[var(--shadow-warm-1)] cursor-pointer hover:shadow-[var(--shadow-warm-2)] hover:-translate-y-0.5 transition-all group relative overflow-hidden border ${isCanvas ? 'border-emerald-100' : 'border-[var(--color-saffron)]/10'}`}
             >
               <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${isCanvas ? 'bg-emerald-400' : 'bg-[var(--color-india-green)]'}`} />
               <button
@@ -365,66 +426,103 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                 </svg>
               </button>
               <div className="pl-2">
-                <div className="flex items-start justify-between mb-3 pr-6">
-                  <h3 className="text-base font-bold font-public-sans text-[var(--color-charcoal)] group-hover:text-[var(--color-saffron)] transition-colors truncate">
+                <div className="flex items-start justify-between mb-2 pr-6">
+                  <h3 className="text-sm font-bold font-public-sans text-[var(--color-charcoal)] group-hover:text-[var(--color-saffron)] transition-colors truncate">
                     {isCanvas && <span className="mr-1">🧩</span>}{project.name || 'Untitled Map'}
                   </h3>
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5 mb-3">
-                  <span className={`text-[11px] font-bold px-2 py-1 rounded-full font-jetbrains-mono ${isCanvas ? 'bg-emerald-50 text-emerald-700' : 'bg-[var(--color-india-green)]/10 text-[var(--color-india-green)]'}`}>{project.data?.blocks?.length || 0} Blocks</span>
-                  <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-jetbrains-mono">HLB {project.data?.hlbNumber || '—'}</span>
-                  <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-jetbrains-mono">Draft</span>
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                  {totalBuildings > 0 && (
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full font-jetbrains-mono ${allNumbered ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                      {allNumbered ? `✓ ${totalBuildings} मकान` : `${numberedBuildings}/${totalBuildings} नंबर`}
+                    </span>
+                  )}
+                  {hlb && <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-jetbrains-mono">HLB {hlb}</span>}
                 </div>
-                <div className="text-xs text-gray-500 space-y-1 font-jetbrains-mono">
-                  <p className="truncate">📍 {project.data?.district || '—'}, {project.data?.state || '—'}</p>
-                  <p className="text-[10px] text-gray-400 pt-2 border-t border-gray-100">Edited {new Date(project.updated_at).toLocaleDateString()}</p>
+                <div className="text-xs text-gray-500 space-y-0.5 font-jetbrains-mono">
+                  {(project.data?.district || project.data?.state) && (
+                    <p className="truncate text-[11px]">📍 {[project.data?.district, project.data?.state].filter(Boolean).join(', ')}</p>
+                  )}
+                  <p className="text-[10px] text-gray-400 pt-1.5 border-t border-gray-100">{new Date(project.updated_at).toLocaleDateString('hi-IN')}</p>
                 </div>
               </div>
             </div>
-          );
+            );
+          };
 
           return (
             <div className="space-y-8">
               {/* ── Regular Desk Maps ── */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">🗺️ Your Maps</h2>
-                  {deskProjects.length > 0 && <span className="text-xs text-gray-400 font-semibold">{deskProjects.length} total</span>}
+                  <h2 className="text-base font-bold font-public-sans text-[var(--color-charcoal)]">🗺️ आपके नक्शे <span className="text-gray-400 font-normal text-sm">/ Your Maps</span></h2>
+                  {deskProjects.length > 0 && <span className="text-xs text-gray-400 font-semibold">{deskProjects.length}</span>}
                 </div>
                 {deskProjects.length === 0 ? (
-                  <div className="bg-white rounded-[24px] p-10 sm:p-12 text-center shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10">
-                    <div className="w-16 h-16 rounded-2xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-4xl mx-auto mb-4">🗺️</div>
-                    <h3 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)] mb-2">No maps yet</h3>
-                    <p className="text-sm text-gray-600 max-w-sm mx-auto mb-6">Create your first census map, or take the 2-minute guided tour to see how it works.</p>
+                  <div className="bg-white rounded-[24px] p-8 text-center shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10">
+                    <div className="w-14 h-14 rounded-2xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-3xl mx-auto mb-3">🗺️</div>
+                    <h3 className="text-base font-bold font-public-sans text-[var(--color-charcoal)] mb-1">अभी तक कोई नक्शा नहीं</h3>
+                    <p className="text-xs text-gray-500 mb-1">No maps yet</p>
+                    <p className="text-sm text-gray-600 max-w-sm mx-auto mb-5">पहले tour लें — 2 मिनट में पूरा तरीका समझें। फिर अपना नक्शा बनाएं।</p>
                     <div className="flex flex-wrap gap-3 justify-center">
-                      <button onClick={onDemoMap} className="px-5 py-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]">🎓 Take the Tour</button>
-                      <button onClick={() => onNewProject(undefined)} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">Start First Map</button>
+                      <button onClick={onDemoMap} className="px-5 py-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]">🎓 Tour देखें / Take Tour</button>
+                      <button onClick={() => onNewProject(undefined)} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold text-sm shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">नक्शा बनाएं →</button>
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {deskProjects.map((p: any) => renderCard(p, false))}
                   </div>
                 )}
               </div>
 
               {/* ── Canvas Block Maps ── */}
+              {canvasProjects.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">🧩 Canvas Block Maps</h2>
-                  <button onClick={handleStartCanvasMap} className="px-3.5 py-2 bg-emerald-500 text-white rounded-xl font-bold text-xs shadow active:scale-95 transition-all">+ New Canvas Map</button>
+                  <h2 className="text-base font-bold font-public-sans text-[var(--color-charcoal)]">🧩 ब्लॉक नक्शे <span className="text-gray-400 font-normal text-sm">/ Block Maps</span></h2>
+                  <button onClick={handleStartCanvasMap} className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl font-bold text-xs shadow active:scale-95 transition-all">+ नया</button>
                 </div>
-                {canvasProjects.length === 0 ? (
-                  <div className="bg-emerald-50 rounded-[24px] p-8 text-center border border-emerald-100">
-                    <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center text-3xl mx-auto mb-3">🧩</div>
-                    <h3 className="text-base font-bold font-public-sans text-emerald-800 mb-1">No canvas maps yet</h3>
-                    <p className="text-sm text-emerald-700 max-w-xs mx-auto mb-4">Use Canvas Blocks mode to auto-detect blocks from roads and place houses with mixed types.</p>
-                    <button onClick={handleStartCanvasMap} className="px-5 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-sm shadow hover:bg-emerald-600 transition-colors">Start Canvas Map</button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{canvasProjects.map(p => renderCard(p, true))}</div>
-                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{canvasProjects.map(p => renderCard(p, true))}</div>
               </div>
+              )}
+
+              {/* ── Shared with me ── */}
+              {assignedProjects.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-lg font-bold font-public-sans text-[var(--color-charcoal)]">📋 Shared with Me</h2>
+                    <span className="text-xs text-gray-400 font-semibold">{assignedProjects.length} project{assignedProjects.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {assignedProjects.map(project => (
+                      <div
+                        key={project.id}
+                        onClick={() => onLoadProject(project.id, { ...project.data, paymentStatus: project.payment_status, exportCount: project.export_count })}
+                        className="bg-white rounded-2xl p-5 shadow-[var(--shadow-warm-1)] cursor-pointer hover:shadow-[var(--shadow-warm-2)] hover:-translate-y-0.5 transition-all group relative overflow-hidden border border-purple-100"
+                      >
+                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-purple-400 rounded-l-2xl" />
+                        <div className="pl-2">
+                          <div className="flex items-start gap-2 mb-3">
+                            <h3 className="text-base font-bold font-public-sans text-[var(--color-charcoal)] group-hover:text-purple-600 transition-colors truncate flex-1">
+                              {project.name || 'Untitled Map'}
+                            </h3>
+                            <span className="flex-shrink-0 text-[10px] font-bold bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">Shared</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                            <span className="text-[11px] font-bold bg-purple-50 text-purple-700 px-2 py-1 rounded-full font-jetbrains-mono">{project.data?.blocks?.length || 0} Blocks</span>
+                            <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-1 rounded-full font-jetbrains-mono">HLB {project.data?.hlbNumber || '—'}</span>
+                          </div>
+                          <div className="text-xs text-gray-500 space-y-1 font-jetbrains-mono">
+                            <p className="truncate">📍 {project.data?.district || '—'}, {project.data?.state || '—'}</p>
+                            <p className="text-[10px] text-gray-400 pt-2 border-t border-gray-100">Edited {new Date(project.updated_at).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}

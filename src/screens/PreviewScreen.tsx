@@ -86,12 +86,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
 
-  useEffect(() => {
-    if (!localStorage.getItem('naksha_preview_feedback')) {
-      setShowFeedback(true);
-      localStorage.setItem('naksha_preview_feedback', 'true');
-    }
-  }, []);
+
 
   // ─── LOAD SAVED AI IMAGES FROM SUPABASE ────────────────
   useEffect(() => {
@@ -338,6 +333,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
         await new Promise(r => setTimeout(r, 100));
         await exportBlockPDF(buildExportData(), orient, progressFn);
         setExported(true);
+        setFeedbackSubmitted(false);
+        setShowFeedback(true);
       } catch (err) {
         console.error(err);
         alert('Export failed — please try again.');
@@ -382,6 +379,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
         setExportStep('done');
       }
       setExported(true);
+      setFeedbackSubmitted(false);
+      setShowFeedback(true);
     } catch (err) {
       console.error(err);
       alert('Export failed — please try again.');
@@ -698,33 +697,84 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
             {!feedbackSubmitted ? (
               <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
-                <h3 className="font-bold text-slate-800 mb-2 font-[Baloo_2] text-xl">Help us improve! 🚀</h3>
-                <p className="text-sm text-slate-500 mb-6">We are currently in the active development phase. Your feedback is extremely valuable to us.</p>
+                <h3 className="font-bold text-slate-800 mb-2 font-[Baloo_2] text-xl">नक्शा कैसा लगा? / How is the Map? 🚀</h3>
+                <div className="text-xs text-slate-500 mb-5 leading-relaxed space-y-2">
+                  <p>
+                    मैं एक छात्र हूँ जिसने अकेले यह ऐप बनाया है। आपका फीडबैक मेरे लिए सबसे बड़ी मदद है — <strong>कृपया 1 मिनट निकालकर जरूर बताएं कि ऐप कैसा लगा!</strong>
+                  </p>
+                  <p className="border-t border-slate-100 pt-1">
+                    I am a student who built this app solo. Your feedback is my biggest help — <strong>please take 1 minute to let me know how it was!</strong>
+                  </p>
+                </div>
                 <div className="space-y-5">
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-3">1. How was it? Was it useful?</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-2">
+                      1. ऐप कितना उपयोगी रहा? / How useful was the app?
+                    </label>
                     <div className="flex gap-2">
-                      {['Very Useful', 'Okay', 'Not Useful'].map(opt => (
-                        <button key={opt} onClick={() => setFeedbackUseful(opt)} className={`flex-1 py-3 text-xs font-semibold rounded-xl border transition-colors ${feedbackUseful === opt ? 'bg-orange-500 text-white border-orange-500 shadow-md' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>{opt}</button>
+                      {[
+                        { label: 'बहुत बढ़िया', eng: 'Very Useful' },
+                        { label: 'ठीक-ठाक', eng: 'Okay' },
+                        { label: 'काम का नहीं', eng: 'Not Useful' }
+                      ].map(opt => (
+                        <button 
+                          key={opt.eng} 
+                          onClick={() => setFeedbackUseful(opt.eng)} 
+                          className={`flex-grow flex flex-col items-center justify-center py-2 px-1 text-[10px] font-semibold rounded-xl border transition-all ${feedbackUseful === opt.eng ? 'bg-orange-500 text-white border-orange-500 shadow-md scale-105' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                          style={{ minHeight: '44px' }}
+                        >
+                          <span>{opt.label}</span>
+                          <span className="opacity-75 text-[9px] font-normal">({opt.eng})</span>
+                        </button>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-3">2. What features or improvements would you suggest?</label>
-                    <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} placeholder="Tell us what's missing..." className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm h-32 focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none" />
+                    <label className="block text-xs font-bold text-slate-700 mb-2">
+                      2. कोई समस्या आई या कोई सुझाव है? / Any issues or suggestions?
+                    </label>
+                    <textarea 
+                      value={feedbackText} 
+                      onChange={e => setFeedbackText(e.target.value)} 
+                      placeholder="यहाँ लिखें... / Write here..." 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs h-24 focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none" 
+                    />
                   </div>
                   <div className="flex gap-3 pt-2">
-                    <button onClick={() => setShowFeedback(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors">Skip</button>
-                    <button onClick={submitFeedback} disabled={feedbackLoading} className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold shadow-lg hover:bg-slate-800 disabled:opacity-70 transition-all">{feedbackLoading ? 'Submitting...' : 'Submit'}</button>
+                    <button 
+                      onClick={() => setShowFeedback(false)} 
+                      className="flex-1 py-2 text-xs bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors"
+                      style={{ minHeight: '40px' }}
+                    >
+                      छोड़ें / Skip
+                    </button>
+                    <button 
+                      onClick={submitFeedback} 
+                      disabled={feedbackLoading} 
+                      className="flex-1 py-2 text-xs bg-slate-900 text-white rounded-xl font-bold shadow-lg hover:bg-slate-800 disabled:opacity-70 transition-all"
+                      style={{ minHeight: '40px' }}
+                    >
+                      {feedbackLoading ? 'Submitting...' : 'जमा करें / Submit'}
+                    </button>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8 text-center relative">
                 <div className="text-6xl mb-4">🙏</div>
-                <h3 className="font-bold text-green-800 text-2xl mb-2 font-[Baloo_2]">Thank You!</h3>
-                <p className="text-sm text-slate-600 mb-6">Your feedback has been recorded. It helps us shape the future of NakshaBot.</p>
-                <button onClick={() => setShowFeedback(false)} className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-[Baloo_2] shadow hover:bg-orange-600">Close</button>
+                <h3 className="font-bold text-green-800 text-2xl mb-2 font-[Baloo_2]">धन्यवाद! / Thank You!</h3>
+                <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                  आपका फीडबैक मिल गया है। इससे ऐप को बेहतर बनाने में बहुत मदद मिलेगी।
+                  <br />
+                  <span className="text-xs text-slate-500">Your feedback has been received. This will help make the app much better.</span>
+                </p>
+                <button 
+                  onClick={() => setShowFeedback(false)} 
+                  className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-[Baloo_2] shadow hover:bg-orange-600"
+                  style={{ minHeight: '48px' }}
+                >
+                  बंद करें / Close
+                </button>
               </div>
             )}
           </div>

@@ -254,24 +254,31 @@ function longestEdgeAngle(blk: Block): number {
 /**
  * Order houses inside one block in a true serpentine (boustrophedon) path,
  * aligned to the block's longest edge so arrows run parallel to the road frontage.
- * Returns coordinates in numbering order.
+ * Returns coordinates in numbering order (NW corner first, NW→SE direction).
  */
 function serpentineInBlock(houses: PlacedSymbol[], blk: Block): Coordinate[] {
   if (!houses.length) return [];
   const c = blockCentroid(blk);
   const theta = longestEdgeAngle(blk); // bearing of longest edge (radians)
-  const sin = Math.sin(theta), cos = Math.cos(theta);
+  const sinT = Math.sin(theta), cosT = Math.cos(theta);
   const mLat = 111320, mLng = 111320 * Math.cos(c.lat * Math.PI / 180);
 
   // Project each house into the block's local (u along edge, v perpendicular) frame
   const local = houses.map(h => {
-    const de = (h.lng - c.lng) * mLng; // east displacement (m)
-    const dn = (h.lat - c.lat) * mLat; // north displacement (m)
-    return { h, u: de * cos + dn * sin, v: -de * sin + dn * cos };
+    const de = (h.lng - c.lng) * mLng;
+    const dn = (h.lat - c.lat) * mLat;
+    return { h, u: de * cosT + dn * sinT, v: -de * sinT + dn * cosT };
   });
 
+  // Helper: convert local (u,v) back to global lat/lng
+  const toGlobal = (u: number, v: number): Coordinate => {
+    const de = (u * cosT - v * sinT) / mLng;
+    const dn = (u * sinT + v * cosT) / mLat;
+    return { lat: c.lat + dn, lng: c.lng + de };
+  };
+
   // Adaptive row height: ~1.5× median nearest-neighbour distance in v, clamped
-  const vs = local.map(l => l.v).sort((a, b) => a - b);
+  const vs = [...local.map(l => l.v)].sort((a, b) => a - b);
   let rowH = 3; // default 3 m
   if (vs.length >= 2) {
     const gaps = vs.slice(1).map((v, i) => v - vs[i]).filter(g => g > 0.1);
@@ -282,7 +289,7 @@ function serpentineInBlock(houses: PlacedSymbol[], blk: Block): Coordinate[] {
   }
 
   // Assign to rows
-  const vMin = Math.min(...local.map(l => l.v));
+  const vMin = vs[0], vMax = vs[vs.length - 1];
   const rows = new Map<number, typeof local>();
   for (const lp of local) {
     const row = Math.round((lp.v - vMin) / rowH);
@@ -290,13 +297,31 @@ function serpentineInBlock(houses: PlacedSymbol[], blk: Block): Coordinate[] {
     rows.get(row)!.push(lp);
   }
 
-  // Sort rows by v (top = most negative v = "NW" in local frame → first)
-  const sortedRowKeys = [...rows.keys()].sort((a, b) => a - b);
+  // Determine which end of the v-axis is globally NW.
+  // nwseScore = -lat + lng; lower score = more NW.
+  const gVMin = toGlobal(0, vMin);
+  const gVMax = toGlobal(0, vMax);
+  const vAscIsNW = nwseScore(gVMin.lat, gVMin.lng) <= nwseScore(gVMax.lat, gVMax.lng);
+
+  const sortedRowKeys = [...rows.keys()].sort((a, b) => vAscIsNW ? a - b : b - a);
+
+  // Determine u-direction for row 0: use only that row's own u-range and average v.
+  // Using global allUs can include extremes from other rows that skew the result.
+  const firstRowHouses = rows.get(sortedRowKeys[0])!;
+  const firstRowUs = firstRowHouses.map(lp => lp.u);
+  const firstRowUMin = Math.min(...firstRowUs);
+  const firstRowUMax = Math.max(...firstRowUs);
+  const firstRowVAvg = firstRowHouses.reduce((s, lp) => s + lp.v, 0) / firstRowHouses.length;
+  const gUMin = toGlobal(firstRowUMin, firstRowVAvg);
+  const gUMax = toGlobal(firstRowUMax, firstRowVAvg);
+  const uAscIsNW = nwseScore(gUMin.lat, gUMin.lng) <= nwseScore(gUMax.lat, gUMax.lng);
+
   const path: Coordinate[] = [];
   for (let ri = 0; ri < sortedRowKeys.length; ri++) {
     const row = rows.get(sortedRowKeys[ri])!;
-    // Alternating: even rows W→E (ascending u), odd rows E→W (descending u)
-    row.sort((a, b) => ri % 2 === 0 ? a.u - b.u : b.u - a.u);
+    // Even rows start from NW end; odd rows reverse (serpentine S-shape).
+    const goAsc = ri % 2 === 0 ? uAscIsNW : !uAscIsNW;
+    row.sort((a, b) => goAsc ? a.u - b.u : b.u - a.u);
     for (const lp of row) path.push({ lat: lp.h.lat, lng: lp.h.lng });
   }
   return path;
@@ -387,10 +412,24 @@ function uLoopInBlock(houses: PlacedSymbol[], blk: Block): Coordinate[] {
 export function generateSerpentinePath(
   symbols: PlacedSymbol[],
   blocks?: Block[],
-  numberingSystem?: 'serpentine' | 'census_u_loop'
+  numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine',
+  boundaryPins?: Coordinate[]
 ): Coordinate[] {
   const houses = symbols.filter(s => isNumberableSymbol(s.symbol_type));
   if (!houses.length) return [];
+
+  // Boundary-wise: treat the entire HLB boundary polygon as one block, ignore sub-blocks
+  if (numberingSystem === 'boundary_serpentine') {
+    const boundaryBlock: Block = {
+      id: 'boundary', label: 'BOUNDARY',
+      south: Math.min(...houses.map(h => h.lat)),
+      north: Math.max(...houses.map(h => h.lat)),
+      west:  Math.min(...houses.map(h => h.lng)),
+      east:  Math.max(...houses.map(h => h.lng)),
+      points: boundaryPins && boundaryPins.length >= 3 ? boundaryPins : undefined,
+    };
+    return serpentineInBlock(houses, boundaryBlock);
+  }
 
   if (blocks && blocks.length > 0) {
     const sortedBlocks = [...blocks].sort((a, b) => {
@@ -436,9 +475,10 @@ export function generateSerpentinePath(
 export function getSerpentineOrder(
   symbols: PlacedSymbol[],
   blocks?: Block[],
-  numberingSystem?: 'serpentine' | 'census_u_loop'
+  numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine',
+  boundaryPins?: Coordinate[]
 ): string[] {
-  const path = generateSerpentinePath(symbols, blocks, numberingSystem);
+  const path = generateSerpentinePath(symbols, blocks, numberingSystem, boundaryPins);
   const houses = symbols.filter(s => isNumberableSymbol(s.symbol_type));
   const seen = new Set<string>();
   const order: string[] = [];

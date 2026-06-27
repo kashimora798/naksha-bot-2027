@@ -1118,7 +1118,9 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
 
   // Assign serpentine house numbers across all blocks (reuses census ordering).
   function renumber(syms: PlacedSymbol[]): PlacedSymbol[] {
-    const order = getSerpentineOrder(syms, blocks.length ? blocks : undefined, mapData.numberingSystem);
+    const bp = mapData.boundaryPins && mapData.boundaryPins.length >= 3 ? mapData.boundaryPins : undefined;
+    const blksForOrder = mapData.numberingSystem === 'boundary_serpentine' ? undefined : (blocks.length ? blocks : undefined);
+    const order = getSerpentineOrder(syms, blksForOrder, mapData.numberingSystem, bp);
     const num = new Map<string, number>();
     let currentNum = 1;
     order.forEach((id) => {
@@ -1608,8 +1610,10 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                   <select
                     value={mapData.numberingSystem || 'serpentine'}
                     onChange={(e) => {
-                      const val = e.target.value as 'serpentine' | 'census_u_loop';
-                      const order = getSerpentineOrder(symbols, blocks.length ? blocks : undefined, val);
+                      const val = e.target.value as 'serpentine' | 'census_u_loop' | 'boundary_serpentine';
+                      const bp = mapData.boundaryPins && mapData.boundaryPins.length >= 3 ? mapData.boundaryPins : undefined;
+                      const blksForOrder = val === 'boundary_serpentine' ? undefined : (blocks.length ? blocks : undefined);
+                      const order = getSerpentineOrder(symbols, blksForOrder, val, bp);
                       const num = new Map<string, number>();
                       let currentNum = 1;
                       order.forEach((id) => {
@@ -1626,6 +1630,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                   >
                     <option value="serpentine">🐍 Serpentine</option>
                     <option value="census_u_loop">🏛️ U-Loop</option>
+                    <option value="boundary_serpentine">🗺️ Full-Map (NW→SE)</option>
                   </select>
                   <label className={`px-3 py-2 rounded-lg border text-xs font-bold cursor-pointer transition-all ${arrangeMode ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200'}`} style={{ minHeight: '38px', display: 'inline-flex', alignItems: 'center' }}>
                     <input type="checkbox" className="hidden" checked={arrangeMode} onChange={e => { setArrangeMode(e.target.checked); if (e.target.checked) { setSwapMode(false); setSwapFirst(null); setManualNumMode(false); setDeleteSymbolMode(false); } }} />

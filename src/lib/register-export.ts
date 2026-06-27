@@ -17,7 +17,7 @@ function getDisplayVal(key: string, val: any): string {
  * Builds the data rows for export.
  * Groups symbols and maps them sequentially.
  */
-export function buildRegisterRows(symbols: PlacedSymbol[], numberingSystem?: 'serpentine' | 'census_u_loop'): any[][] {
+export function buildRegisterRows(symbols: PlacedSymbol[], numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine'): any[][] {
   const buildingSymbols = symbols.filter(s =>
     ['pucca_house', 'kutcha_house', 'apartment', 'non_residential'].includes(s.symbol_type)
   );
@@ -81,7 +81,9 @@ export function buildRegisterRows(symbols: PlacedSymbol[], numberingSystem?: 'se
         rows.push(row);
       }
     } else {
-      const houseNo = data.col_3_house_no || (sym.number ? String(sym.number) : '');
+      // Bata sub-number: display as "4/1" in col 3
+      const baseHouseNo = sym.number ? String(sym.number) : '';
+      const houseNo = data.col_3_house_no || ((sym as any).subNumber ? `${baseHouseNo}/${(sym as any).subNumber}` : baseHouseNo);
       const row = [
         lineNo++,                                      // Col 1: Line number
         bldNo,                                         // Col 2: Building number
@@ -132,7 +134,7 @@ export function exportRegisterPDF(
   sessionName: string,
   hlbNumber: string,
   symbols: PlacedSymbol[],
-  numberingSystem?: 'serpentine' | 'census_u_loop'
+  numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine'
 ): void {
   const doc = new jsPDF({
     orientation: 'landscape',
@@ -231,7 +233,7 @@ export function exportRegisterXLSX(
   sessionName: string,
   hlbNumber: string,
   symbols: PlacedSymbol[],
-  numberingSystem?: 'serpentine' | 'census_u_loop'
+  numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine'
 ): void {
   // --- SHEET 1: HLO REGISTER DATA ---
   const headers = HLO_SCHEDULE.map(f => `Col ${f.col}: ${f.labelEn} (${f.labelHi})`);

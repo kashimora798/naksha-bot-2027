@@ -29,10 +29,65 @@ interface Props {
   onStepComplete: () => void; onJumpToPreview: () => void;
   isDemoMode?: boolean;
   onDemoComplete?: () => void;
-  numberingSystem?: 'serpentine' | 'census_u_loop';
+  numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine';
 }
 
 const BC = ['#E74C3C','#3498DB','#27AE60','#F39C12','#9B59B6','#1ABC9C','#E67E22','#2980B9','#C0392B','#16A085','#D35400','#8E44AD'];
+
+// ── Bata sub-number panel ────────────────────────────────────────────────────
+function BataPanel({ symbols, onUpdateSymbols }: { symbols: PlacedSymbol[]; onUpdateSymbols: (s: PlacedSymbol[]) => void }) {
+  const [buildingNo, setBuildingNo] = useState('');
+  const [subNo, setSubNo] = useState('');
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const apply = () => {
+    const num = parseInt(buildingNo);
+    const sub = subNo.trim();
+    if (isNaN(num) || !sub) return;
+    const target = symbols.find(s => s.number === num);
+    if (!target) { setMsg({ text: `No building with number ${num} found.`, ok: false }); return; }
+    onUpdateSymbols(symbols.map(s => s.id === target.id ? { ...s, subNumber: sub } : s));
+    setMsg({ text: `Building ${num} now shows as ${num}/${sub}.`, ok: true });
+    setBuildingNo(''); setSubNo('');
+    setTimeout(() => setMsg(null), 3000);
+  };
+
+  const clear = (num: number) => {
+    onUpdateSymbols(symbols.map(s => s.number === num ? { ...s, subNumber: null } : s));
+    setMsg({ text: `Sub-number cleared for building ${num}.`, ok: true });
+    setTimeout(() => setMsg(null), 2000);
+  };
+
+  const bataSubs = symbols.filter(s => (s as any).subNumber && s.number !== null);
+
+  return (
+    <div className="border border-amber-200 rounded-xl bg-amber-50 p-3 space-y-2">
+      <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Bata Sub-Numbers (4/1 system)</p>
+      <div className="flex gap-2 items-end">
+        <div className="flex-1">
+          <label className="text-[10px] text-gray-500 font-semibold block mb-0.5">Building #</label>
+          <input type="number" min="1" value={buildingNo} onChange={e => setBuildingNo(e.target.value)} placeholder="e.g. 4" className="w-full border border-gray-200 rounded-lg p-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-400" />
+        </div>
+        <div className="flex-1">
+          <label className="text-[10px] text-gray-500 font-semibold block mb-0.5">Sub-No (1 or A)</label>
+          <input type="text" value={subNo} onChange={e => setSubNo(e.target.value.slice(0, 4))} placeholder="e.g. 1" className="w-full border border-gray-200 rounded-lg p-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-400" />
+        </div>
+        <button onClick={apply} disabled={!buildingNo || !subNo.trim()} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white rounded-lg text-xs font-bold flex-shrink-0">Apply</button>
+      </div>
+      {msg && <p className={`text-[10px] font-semibold ${msg.ok ? 'text-green-700' : 'text-red-600'}`}>{msg.text}</p>}
+      {bataSubs.length > 0 && (
+        <div className="space-y-1">
+          {bataSubs.map(s => (
+            <div key={s.id} className="flex items-center justify-between bg-white rounded-lg px-2 py-1 border border-amber-100">
+              <span className="text-xs font-mono text-amber-800">{s.number}/{(s as any).subNumber}</span>
+              <button onClick={() => clear(s.number!)} className="text-[10px] text-red-400 hover:text-red-600">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function MapWorkspace({
   step, center, boundaryPins, boundaryClosed, roads, symbols, hlbNumber, blocks, farmlandBlocks,
@@ -364,7 +419,7 @@ export default function MapWorkspace({
     }
   }, [step]);
   useEffect(() => { if(boundaryClosed&&boundaryPins.length>=4) onUpdateOrientation(getBestOrientation(boundaryPins)); }, [boundaryClosed]);
-  useEffect(() => { if(step===6&&symbols.length>0){const p=generateSerpentinePath(symbols,blocks.length>0?blocks:undefined,numberingSystem);const o=getSerpentineOrder(symbols,blocks.length>0?blocks:undefined,numberingSystem);setSerpPath(p);setSerpOrd(o);setShowGuide(true);const f=o.find(id=>{const s=symbols.find(x=>x.id===id);return s&&isHouseType(s.symbol_type)&&s.number===null;});if(f)setSugId(f);} }, [step, numberingSystem]);
+  useEffect(() => { if(step===6&&symbols.length>0){const bp=boundaryPins.length>=3?boundaryPins:undefined;const blksArg=numberingSystem==='boundary_serpentine'?undefined:(blocks.length>0?blocks:undefined);const p=generateSerpentinePath(symbols,blksArg,numberingSystem,bp);const o=getSerpentineOrder(symbols,blksArg,numberingSystem,bp);setSerpPath(p);setSerpOrd(o);if(step===6)setShowGuide(true);const f=o.find(id=>{const s=symbols.find(x=>x.id===id);return s&&isHouseType(s.symbol_type)&&s.number===null;});if(f)setSugId(f);}else if(step===6&&symbols.length===0){setSerpPath([]);} }, [step, numberingSystem, blocks, boundaryPins, symbols]);
 
 
 
@@ -613,7 +668,12 @@ export default function MapWorkspace({
   function closePolyDraw(){if(polyPts.length<3)return;if(drawMode==='farmland'){onUpdateFarmland([...farmlandBlocks,{id:crypto.randomUUID(),label:farmLbl,points:[...polyPts]}]);setFarmLbl(String.fromCharCode(farmLbl.charCodeAt(0)+1));}else{const bb=getBbox(polyPts);onUpdateBlocks([...blocks,{id:crypto.randomUUID(),label:blkLbl,south:bb.south,north:bb.north,west:bb.west,east:bb.east,points:[...polyPts]}]);setBlkLbl(String.fromCharCode(blkLbl.charCodeAt(0)+1));setShowBlk(true);}setDrawMode('none');setPolyPts([]);setPanelOpen(true);drwGrp.current.clearLayers();}
   function cancelDraw(){setDrawMode('none');setPolyPts([]);setPanelOpen(true);drwGrp.current.clearLayers();}
   function autoNum(){
-    const o=getSerpentineOrder(symbols,blocks.length>0?blocks:undefined,numberingSystem);
+    const bp=boundaryPins.length>=3?boundaryPins:undefined;
+    const blksArg=numberingSystem==='boundary_serpentine'?undefined:(blocks.length>0?blocks:undefined);
+    const o=getSerpentineOrder(symbols,blksArg,numberingSystem,bp);
+    // Always sync serpPath with the exact same computation so START/END badges stay correct.
+    const freshPath=generateSerpentinePath(symbols,blksArg,numberingSystem,bp);
+    setSerpPath(freshPath);
     const u=symbols.map(s=>({...s}));
     let n=1;
     for(const id of o){
@@ -627,7 +687,7 @@ export default function MapWorkspace({
     numHist.current=o;
     setTimeout(()=>u.forEach(s=>refreshMk(s)),10);
   }
-  function clearNum(){const u=symbols.map(s=>({...s,number:null}));onUpdateSymbols(u);setNextNum(1);numHist.current=[];setSugId(null);setTimeout(()=>u.forEach(s=>refreshMk(s)),10);}
+  function clearNum(){const u=symbols.map(s=>({...s,number:null}));onUpdateSymbols(u);setNextNum(1);numHist.current=[];setSugId(null);setSerpPath([]);setTimeout(()=>u.forEach(s=>refreshMk(s)),10);}
   function undoNum(){
     if(!numHist.current.length)return;
     const id=numHist.current.pop()!;
@@ -848,8 +908,8 @@ export default function MapWorkspace({
               </div>
             )}
             {placing && selSym && <button onClick={cancelPlacing} className="w-full py-2 rounded-xl text-xs font-bold bg-white border border-gray-200 text-gray-600">✕ Stop placing {SYMBOL_DEFS.find(d=>d.type===selSym)?.labelHi}</button>}
-            <Btn green disabled={totH===0} onClick={onStepComplete}>{totH>0 ? `Number ${totH} Houses →` : 'Place houses to continue'}</Btn>
-            <button onClick={onJumpToPreview} className="w-full py-1.5 text-xs text-gray-500 font-bold">Skip to Preview →</button>
+            <Btn green disabled={totH===0} onClick={onStepComplete}>{totH>0 ? `नंबरिंग करें →` : 'मकान डालें, फिर नंबर दें'}</Btn>
+            <button onClick={onJumpToPreview} className="w-full py-1.5 text-xs text-gray-500 font-bold">Preview छोड़ें →</button>
           </div>
         }>
         {bldgMsg && (
@@ -860,24 +920,26 @@ export default function MapWorkspace({
         )}
 
         {/* Symbol picker */}
-        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Place a symbol</p>
+        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">मकान / घर का प्रकार चुनें</p>
         <SymbolDrawer selectedType={selSym} onSelect={selSymbol} placedCount={symbols.length} />
 
         {/* Auto + draw tools */}
-        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mt-3 mb-1.5">Auto-detect &amp; zones</p>
+        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mt-3 mb-1.5">मकान डालें / Add Buildings</p>
+        <button
+          onClick={() => fetchBuildingsForBlock(false)}
+          className="w-full py-3 rounded-xl text-sm font-bold bg-[var(--color-saffron-container)] text-white shadow mb-2"
+        >🏠 मकान खोजें / Auto-detect buildings</button>
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => fetchBuildingsForBlock(false)} className="py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">🏠 Auto-Detect (MS+OSM)</button>
           <button
             onClick={() => fetchBuildingsForBlock(true)}
             className="py-2.5 rounded-xl text-xs font-bold bg-yellow-50 text-yellow-700 border border-yellow-200"
             title="Google has more buildings but may over-detect in dense areas"
-          >⚠️ Try Google too</button>
+          >📡 Google से भी</button>
           {!hasAuto
-            ? <button onClick={autoDetectArea} className="py-2.5 rounded-xl text-xs font-bold bg-purple-500 text-white">✨ Auto-Detect Area</button>
+            ? <button onClick={autoDetectArea} className="py-2.5 rounded-xl text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">🗺️ Area detect</button>
             : <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="py-2.5 rounded-xl text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">🏷️ Place Name</button>}
-          <button onClick={startFarmDraw} className="py-2.5 rounded-xl text-xs font-semibold bg-green-50 text-green-700 border border-green-200">🌾 Draw Farm</button>
-          <button onClick={startBlkDraw} className="py-2.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">🔲 Draw Block</button>
-          {hasAuto && <button onClick={() => { setDrawMode('label'); setPanelOpen(false); setPlacing(false); setSelSym(null); }} className="py-2.5 rounded-xl text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200 col-span-2">🏷️ Place Name</button>}
+          <button onClick={startFarmDraw} className="py-2.5 rounded-xl text-xs font-semibold bg-green-50 text-green-700 border border-green-200">🌾 खेत</button>
+          <button onClick={startBlkDraw} className="py-2.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">🔲 Block</button>
         </div>
 
         {/* Delete tools */}
@@ -991,36 +1053,43 @@ export default function MapWorkspace({
 
   function pNumFull(){
     const done = numDone===totH && totH>0;
+    const hintText = numDone === 0
+      ? 'नीचे Auto-Number दबाएं → सब मकानों को क्रम से नंबर मिलेंगे'
+      : done
+        ? `सभी ${totH} मकान नंबर हो गए ✓`
+        : `${totH - numDone} मकान बाकी हैं`;
     return (
-      <Sheet icon="🔢" title="Numbering" status={`${numDone}/${totH}`} statusTone={done ? 'green' : 'default'}
+      <Sheet icon="🔢" title="नंबरिंग / Numbering" status={`${numDone}/${totH}`} statusTone={done ? 'green' : 'default'}
         footer={
           <div className="space-y-1.5">
             {done
-              ? <Btn green onClick={onStepComplete}>Continue to AI Map →</Btn>
-              : <Btn onClick={autoNum}>⚡ Auto-Number All Houses</Btn>}
-            {!done && <button onClick={onJumpToPreview} className="w-full py-1.5 text-xs text-gray-500 font-bold">Skip to Preview →</button>}
+              ? <Btn green onClick={onStepComplete}>नक्शा देखें →</Btn>
+              : <Btn onClick={autoNum}>⚡ सब नंबर करें</Btn>}
+            {!done && <button onClick={onJumpToPreview} className="w-full py-1.5 text-xs text-gray-500 font-bold">Preview छोड़ें →</button>}
           </div>
         }>
         {done
-          ? <div className="text-center py-2"><div className="text-green-500 text-2xl">✓</div><p className="text-sm font-semibold text-green-700">{totH} houses numbered ({totU} units)</p></div>
-          : <p className="text-xs text-gray-600 text-center mb-3"><span className="font-bold text-blue-600">{numDone}</span> of {totH} numbered. {editMode ? 'Tap a house on the map to clear its number.' : 'Tap a house to number it, or use Auto-Number below.'}</p>}
+          ? <div className="text-center py-2"><div className="text-green-500 text-2xl">✓</div><p className="text-sm font-semibold text-green-700">{totH} मकान नंबर हो गए ({totU} units)</p></div>
+          : <p className="text-xs text-gray-600 text-center mb-3"><span className="font-bold text-blue-600">{numDone}</span> / {totH} नंबर हुए। {editMode ? 'नक्शे पर मकान tap करें → नंबर हटाएं।' : 'मकान tap करें नंबर दें, या नीचे Auto-Number दबाएं।'}</p>}
 
         <div className="space-y-2">
           <div className="bg-white rounded-xl p-3 border border-gray-100 space-y-3">
+            <p className="text-[11px] text-blue-600 font-semibold bg-blue-50 rounded-lg px-2 py-1.5">{hintText}</p>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">Numbering System</label>
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">नंबरिंग का तरीका / Numbering System</label>
               <select
                 value={numberingSystem || 'serpentine'}
                 onChange={(e) => {
-                  const val = e.target.value as 'serpentine' | 'census_u_loop';
+                  const val = e.target.value as 'serpentine' | 'census_u_loop' | 'boundary_serpentine';
                   if (onUpdateMapData) {
                     onUpdateMapData({ numberingSystem: val });
                   }
                 }}
                 className="w-full border border-gray-200 rounded-lg p-2 text-xs bg-gray-50 text-gray-700 font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--color-saffron)]"
               >
-                <option value="serpentine">🐍 Diagonal Serpentine</option>
-                <option value="census_u_loop">🏛️ Census Houselisting (U-Loop)</option>
+                <option value="serpentine">🏘️ गली दर गली / Street by street (block-wise)</option>
+                <option value="census_u_loop">🏛️ जनगणना क्रम / Census houselisting (U-loop)</option>
+                <option value="boundary_serpentine">🗺️ पूरे क्षेत्र में / Whole area NW→SE</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -1044,12 +1113,12 @@ export default function MapWorkspace({
           </div>
           {serpPath.length>1 && (
             <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2 border border-gray-100">
-              <span className="text-xs font-bold text-red-700">🐍 Serpentine guide</span>
+              <span className="text-xs font-bold text-red-700">🐍 नंबरिंग रास्ता दिखाएं</span>
               <button onClick={()=>setShowGuide(g=>!g)} className={`px-3 py-1 rounded-full text-xs font-bold ${showGuide?'bg-red-500 text-white':'bg-gray-200 text-gray-600'}`}>{showGuide?'ON':'OFF'}</button>
             </div>
           )}
           <div className="flex items-center justify-between bg-white rounded-xl px-3 py-2 border border-gray-100">
-            <span className="text-xs font-bold text-yellow-700">✏️ Edit mode {editMode && <span className="text-gray-400 font-normal">· tap to clear</span>}</span>
+            <span className="text-xs font-bold text-yellow-700">✏️ नंबर हटाएं {editMode && <span className="text-gray-400 font-normal">· tap to clear</span>}</span>
             <button onClick={()=>setEditMode(e=>!e)} className={`px-3 py-1 rounded-full text-xs font-bold ${editMode?'bg-yellow-500 text-white':'bg-gray-200 text-gray-600'}`}>{editMode?'ON':'OFF'}</button>
           </div>
           <div className="flex gap-2">
@@ -1057,6 +1126,8 @@ export default function MapWorkspace({
             <button onClick={clearNum} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl text-xs font-bold">🗑 Clear</button>
             {numHist.current.length>0 && <button onClick={undoNum} className="px-4 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-xs font-bold">↩ {numHist.current.length}</button>}
           </div>
+          {/* ── Bata sub-number assignment ── */}
+          <BataPanel symbols={symbols} onUpdateSymbols={s => { onUpdateSymbols(s); setTimeout(() => s.forEach(sym => refreshMk(sym)), 10); }} />
         </div>
       </Sheet>
     );

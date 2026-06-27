@@ -15,6 +15,7 @@ import SessionsDashboard from './screens/SessionsDashboard';
 import SessionDetailScreen from './screens/SessionDetailScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import DonationPopup from './components/DonationPopup';
 
 const DEFAULT_MAP_DATA: MapData = {
   hlbNumber: '', center: { lat: 26.4499, lng: 80.3319 },
@@ -44,6 +45,11 @@ export default function App() {
   const [resumeSessionId, setResumeSessionId] = useState<string | null>(null);
   // Which step launched PreviewScreen (7 = desk AIMapStep, 11 = canvas block screen)
   const [previewSource, setPreviewSource] = useState(7);
+
+  // Donation popup states
+  const [showDonationPopup, setShowDonationPopup] = useState(false);
+  const [popupSource, setPopupSource] = useState<'login' | 'print' | null>(null);
+  const hasShownOnLogin = useRef(false);
 
   const update = useCallback((u: Partial<MapData>) => setMapData(p => ({ ...p, ...u })), []);
   // inMap: true for all map-workspace steps (3–6). MapWorkspace is ALWAYS mounted
@@ -290,6 +296,24 @@ export default function App() {
       document.body.style.overflow = 'auto';
       document.body.style.height = 'auto';
       document.documentElement.style.height = 'auto';
+    }
+  }, [isSignedIn, step]);
+
+  useEffect(() => {
+    if (isSignedIn) {
+      if (step === 0 && !hasShownOnLogin.current) {
+        // Check if muted for 24h
+        const mutedUntil = localStorage.getItem('donation_popup_muted_until');
+        const isMuted = mutedUntil && Number(mutedUntil) > Date.now();
+        if (!isMuted) {
+          setPopupSource('login');
+          setShowDonationPopup(true);
+        }
+        hasShownOnLogin.current = true;
+      } else if (step === 8) {
+        setPopupSource('print');
+        setShowDonationPopup(true);
+      }
     }
   }, [isSignedIn, step]);
 
@@ -579,6 +603,15 @@ export default function App() {
           </ErrorBoundary>
         )}
       </div>
+      <DonationPopup
+        isOpen={showDonationPopup}
+        onClose={() => setShowDonationPopup(false)}
+        onMute24h={() => {
+          localStorage.setItem('donation_popup_muted_until', (Date.now() + 24 * 60 * 60 * 1000).toString());
+          setShowDonationPopup(false);
+        }}
+        isPrintArea={popupSource === 'print'}
+      />
     </div>
   );
 }

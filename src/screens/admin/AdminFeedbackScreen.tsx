@@ -20,7 +20,8 @@ export default function AdminFeedbackScreen() {
     return (
       (f.suggestions || '').toLowerCase().includes(q) ||
       (f.useful || '').toLowerCase().includes(q) ||
-      (f.owner_name || '').toLowerCase().includes(q)
+      (f.owner_name || '').toLowerCase().includes(q) ||
+      (f.owner_mobile || '').toLowerCase().includes(q)
     );
   });
 
@@ -56,12 +57,22 @@ export default function AdminFeedbackScreen() {
               <div className="flex items-start justify-between gap-4 mb-3">
                 <div>
                   {f.user_id ? (
-                    <Link
-                      to={`/kratagya/users/${f.user_id}`}
-                      className="text-orange-400 hover:text-orange-300 text-sm font-medium"
-                    >
-                      {f.owner_name || 'Unknown user'}
-                    </Link>
+                    <span className="inline-flex items-center gap-2 flex-wrap">
+                      <Link
+                        to={`/kratagya/users/${f.user_id}`}
+                        className="text-orange-400 hover:text-orange-300 text-sm font-medium"
+                      >
+                        {f.owner_name || 'Unknown user'}
+                      </Link>
+                      {f.owner_mobile && (
+                        <a 
+                          href={`tel:${f.owner_mobile}`}
+                          className="text-gray-400 hover:text-gray-300 text-xs bg-gray-800 px-2 py-0.5 rounded flex items-center gap-1 transition-colors"
+                        >
+                          📞 {f.owner_mobile}
+                        </a>
+                      )}
+                    </span>
                   ) : (
                     <span className="text-gray-500 text-sm">Anonymous</span>
                   )}

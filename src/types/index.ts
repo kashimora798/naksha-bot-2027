@@ -88,6 +88,8 @@ export interface PlacedSymbol {
   schedule1_complete?: boolean;
   schedule_a_complete?: boolean;
   form_fill_percentage?: number;
+  /** Bata sub-number: "1" renders as 4/1, "A" renders as 4A. Assigned manually after initial numbering. */
+  subNumber?: string | null;
 }
 
 export interface RoadFeature {
@@ -178,7 +180,7 @@ export interface MapData {
   neighbours?: { north?: string; south?: string; east?: string; west?: string };
   /** Project creation mode: 'canvas' = Canvas Block screen, 'desk' (default) = Desk flow */
   mode?: 'canvas' | 'desk';
-  numberingSystem?: 'serpentine' | 'census_u_loop';
+  numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine';
 }
 
 export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; isHouse: boolean }[] = [

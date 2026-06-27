@@ -61,6 +61,18 @@ export interface AdminFeedback {
   created_at: string;
   // joined
   owner_name?: string | null;
+  owner_mobile?: string | null;
+}
+
+export interface AdminAssignment {
+  id: string;
+  project_id: string;
+  user_id: string;
+  assigned_by: string | null;
+  assigned_at: string;
+  // joined
+  user_name?: string | null;
+  user_mobile?: string | null;
 }
 
 export interface AdminStats {
@@ -212,6 +224,62 @@ export async function fetchAdminSessions(): Promise<AdminSession[]> {
   }));
 }
 
+// ─── Project Assignments ──────────────────────────────────────────────────────
+
+export async function createAdminProject(name: string): Promise<AdminProject> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({ user_id: session.user.id, name, data: {} })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchProjectAssignments(projectId: string): Promise<AdminAssignment[]> {
+  const { data, error } = await supabase
+    .from('project_assignments')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('assigned_at', { ascending: false });
+  if (error) throw error;
+  if (!data?.length) return [];
+
+  const userIds = data.map(a => a.user_id);
+  const { data: profiles } = await supabase
+    .from('user_profiles')
+    .select('id, full_name, mobile')
+    .in('id', userIds);
+
+  const profileMap: Record<string, any> = {};
+  (profiles || []).forEach(p => { profileMap[p.id] = p; });
+
+  return data.map(a => ({
+    ...a,
+    user_name: profileMap[a.user_id]?.full_name ?? null,
+    user_mobile: profileMap[a.user_id]?.mobile ?? null,
+  }));
+}
+
+export async function assignProjectToUser(projectId: string, userId: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const { error } = await supabase
+    .from('project_assignments')
+    .insert({ project_id: projectId, user_id: userId, assigned_by: session?.user?.id ?? null });
+  if (error) throw error;
+}
+
+export async function revokeProjectAssignment(projectId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('project_assignments')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
 // ─── Feedback ─────────────────────────────────────────────────────────────────
 
 export async function fetchAdminFeedback(): Promise<AdminFeedback[]> {
@@ -227,7 +295,7 @@ export async function fetchAdminFeedback(): Promise<AdminFeedback[]> {
   if (userIds.length) {
     const { data: profiles } = await supabase
       .from('user_profiles')
-      .select('id, full_name')
+      .select('id, full_name, mobile')
       .in('id', userIds);
     (profiles || []).forEach(p => { profileMap[p.id] = p; });
   }
@@ -235,5 +303,6 @@ export async function fetchAdminFeedback(): Promise<AdminFeedback[]> {
   return (data || []).map(f => ({
     ...f,
     owner_name: f.user_id ? (profileMap[f.user_id]?.full_name ?? null) : null,
+    owner_mobile: f.user_id ? (profileMap[f.user_id]?.mobile ?? null) : null,
   }));
 }

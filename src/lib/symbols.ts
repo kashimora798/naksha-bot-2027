@@ -114,7 +114,7 @@ export function drawSymbolOnCanvas(
   x: number, y: number, size: number,
   angle: number = 0,
   inkMode: 'color' | 'black' | 'blue' = 'color',
-  numberingSystem?: 'serpentine' | 'census_u_loop'
+  numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine'
 ) {
   ctx.save();
   ctx.translate(x, y);
@@ -127,14 +127,21 @@ export function drawSymbolOnCanvas(
 
   // Building number written INSIDE the box (spec). For an apartment we still show
   // the unit range; census-house sub-numbers (N(1)..N(k)) are drawn BELOW the box.
+  // Bata sub-numbers (4/1, 4A) override the plain number label when set.
   const drawNum = (nx: number, ny: number) => {
     const num = sym.number;
     if (num === null || num === undefined) return;
     const units = getUnitCount(sym as PlacedSymbol);
-    const lbl = numberingSystem === 'census_u_loop'
-      ? (units > 1 ? `${num}(${units})` : String(num))
-      : (units > 1 ? `${num}-${num + units - 1}` : String(num));
-    ctx.font = `bold ${Math.max(11, size * 0.6)}px sans-serif`;
+    let lbl: string;
+    if ((sym as any).subNumber) {
+      lbl = `${num}/${(sym as any).subNumber}`;
+    } else {
+      lbl = numberingSystem === 'census_u_loop'
+        ? (units > 1 ? `${num}(${units})` : String(num))
+        : (units > 1 ? `${num}-${num + units - 1}` : String(num));
+    }
+    const fontSize = lbl.length > 4 ? Math.max(9, size * 0.48) : Math.max(11, size * 0.6);
+    ctx.font = `bold ${fontSize}px sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     // White halo for readability over roads
     ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 4; ctx.lineJoin = 'round';

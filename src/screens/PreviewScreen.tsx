@@ -36,6 +36,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [showDonation, setShowDonation] = useState(false);
   const [donationStage, setDonationStage] = useState<'ask' | 'appreciate' | 'share'>('ask');
   const [donationHindi, setDonationHindi] = useState(true);
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const [exportProgress, setExportProgress] = useState('');
   const [exportStep, setExportStep] = useState(''); // current step key for modal
   const [aiOpacity, setAiOpacity] = useState(1);
@@ -586,13 +587,21 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   </button>
                 </div>
                 <div className="px-6 pb-6 space-y-2">
-                  <a
-                    href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
-                    onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
-                    className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
-                  >
-                    {donationHindi ? 'UPI से Donate करें' : 'Donate via UPI'}
-                  </a>
+                  {isMobile ? (
+                    <a
+                      href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
+                      onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
+                      className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
+                    >
+                      {donationHindi ? 'UPI से Donate करें' : 'Donate via UPI'}
+                    </a>
+                  ) : (
+                    <div className="w-full p-3.5 bg-rose-50 border border-rose-100 rounded-2xl text-[11px] text-rose-800 font-semibold leading-relaxed text-center">
+                      ⚠️ {donationHindi 
+                        ? 'डेस्कटॉप पर कोई UPI ऐप नहीं मिला (No UPI App Available)। कृपया अपने मोबाइल से ऊपर दिए गए QR कोड को स्कैन करके भुगतान करें।' 
+                        : 'No UPI apps available on desktop. Please scan the QR code above using any UPI app on your phone.'}
+                    </div>
+                  )}
                   <p className="text-center text-[10px] text-slate-400">UPI: 8318810984-1@nyes</p>
                   <button onClick={() => setDonationStage('appreciate')} className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors">
                     {donationHindi ? 'बाद में' : 'Maybe later'}
@@ -656,13 +665,21 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   </button>
                 </div>
                 <div className="px-6 pb-6 space-y-2">
-                  <a
-                    href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
-                    onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
-                    className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
-                  >
-                    {donationHindi ? 'ठीक है, contribute करूँगा — UPI' : 'Okay, I\'ll contribute — UPI'}
-                  </a>
+                  {isMobile ? (
+                    <a
+                      href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
+                      onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
+                      className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
+                    >
+                      {donationHindi ? 'ठीक है, contribute करूँगा — UPI' : 'Okay, I\'ll contribute — UPI'}
+                    </a>
+                  ) : (
+                    <div className="w-full p-3.5 bg-rose-50 border border-rose-100 rounded-2xl text-[11px] text-rose-800 font-semibold leading-relaxed text-center">
+                      ⚠️ {donationHindi 
+                        ? 'डेस्कटॉप पर कोई UPI ऐप नहीं मिला (No UPI App Available)। कृपया अपने मोबाइल से ऊपर दिए गए QR कोड को स्कैन करके भुगतान करें।' 
+                        : 'No UPI apps available on desktop. Please scan the QR code above using any UPI app on your phone.'}
+                    </div>
+                  )}
                   <p className="text-center text-[10px] text-slate-400">UPI: 8318810984-1@nyes</p>
                   <button onClick={() => setDonationStage('share')} className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors">
                     {donationHindi ? 'बाद में' : 'Maybe later'}

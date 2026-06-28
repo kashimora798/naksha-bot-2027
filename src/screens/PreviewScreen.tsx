@@ -37,6 +37,17 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [donationStage, setDonationStage] = useState<'ask' | 'appreciate' | 'share'>('ask');
   const [donationHindi, setDonationHindi] = useState(true);
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  const [copiedText, setCopiedText] = useState<'upi' | 'phone' | null>(null);
+
+  const handleCopy = (text: string, type: 'upi' | 'phone') => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedText(type);
+      setTimeout(() => setCopiedText(null), 1500);
+    } catch (err) {
+      console.error('Clipboard copy failed:', err);
+    }
+  };
   const [exportProgress, setExportProgress] = useState('');
   const [exportStep, setExportStep] = useState(''); // current step key for modal
   const [aiOpacity, setAiOpacity] = useState(1);
@@ -585,6 +596,41 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                     {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
                   </button>
+
+                  {/* Backup Manual Payment Methods (inside scroll area) */}
+                  <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-left">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
+                      {donationHindi ? '⚠️ QR काम न करने पर बैकअप भुगतान विकल्प' : '⚠️ Manual Pay Option (If QR Fails)'}
+                    </p>
+                    <div className="flex flex-col gap-1.5 text-xs font-mono">
+                      <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-400">UPI ID</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-700 font-bold select-all text-[11px]">8318810984-1@nyes</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy('8318810984-1@nyes', 'upi')}
+                            className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
+                          >
+                            {copiedText === 'upi' ? 'Copied!' : 'Copy'}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-400">PHONE</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-700 font-bold select-all text-[11px]">8318810984</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy('8318810984', 'phone')}
+                            className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
+                          >
+                            {copiedText === 'phone' ? 'Copied!' : 'Copy'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="px-6 pb-6 space-y-2">
                   {isMobile ? (
@@ -663,13 +709,48 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                     {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
                   </button>
+
+                  {/* Backup Manual Payment Methods (inside scroll area) */}
+                  <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-left">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
+                      {donationHindi ? '⚠️ QR काम न करने पर बैकअप भुगतान विकल्प' : '⚠️ Manual Pay Option (If QR Fails)'}
+                    </p>
+                    <div className="flex flex-col gap-1.5 text-xs font-mono">
+                      <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-400">UPI ID</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-700 font-bold select-all text-[11px]">8318810984-1@nyes</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy('8318810984-1@nyes', 'upi')}
+                            className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
+                          >
+                            {copiedText === 'upi' ? 'Copied!' : 'Copy'}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-400">PHONE</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-700 font-bold select-all text-[11px]">8318810984</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy('8318810984', 'phone')}
+                            className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
+                          >
+                            {copiedText === 'phone' ? 'Copied!' : 'Copy'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="px-6 pb-6 space-y-2">
                   {isMobile ? (
                     <a
                       href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
                       onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
-                      className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
+                      className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
                     >
                       {donationHindi ? 'ठीक है, contribute करूँगा — UPI' : 'Okay, I\'ll contribute — UPI'}
                     </a>
@@ -680,7 +761,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                         : 'No UPI apps available on desktop. Please scan the QR code above using any UPI app on your phone.'}
                     </div>
                   )}
-                  <p className="text-center text-[10px] text-slate-400">UPI: 8318810984-1@nyes</p>
+                  <p className="text-center text-[10px] text-slate-400 mt-1">UPI: 8318810984-1@nyes</p>
                   <button onClick={() => setDonationStage('share')} className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors">
                     {donationHindi ? 'बाद में' : 'Maybe later'}
                   </button>
@@ -751,7 +832,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
             {!feedbackSubmitted ? (
               <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
                 <h3 className="font-bold text-slate-800 mb-2 font-[Baloo_2] text-xl">नक्शा कैसा लगा? / How is the Map? 🚀</h3>
-                <div className="text-xs text-slate-500 mb-5 leading-relaxed space-y-2">
+                <div className="text-xs text-slate-500 mb-4 leading-relaxed space-y-2">
                   <p>
                     मैं एक छात्र हूँ जिसने अकेले यह ऐप बनाया है। आपका फीडबैक मेरे लिए सबसे बड़ी मदद है — <strong>कृपया 1 मिनट निकालकर जरूर बताएं कि ऐप कैसा लगा!</strong>
                   </p>
@@ -759,6 +840,24 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                     I am a student who built this app solo. Your feedback is my biggest help — <strong>please take 1 minute to let me know how it was!</strong>
                   </p>
                 </div>
+
+                {/* Donate Appeal Box */}
+                <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 mb-4 text-center">
+                  <p className="text-xs text-orange-950 font-bold leading-snug">
+                    {donationHindi ? '💖 ऐप उपयोगी लगा? आप छात्र की मदद कर सकते हैं' : '💖 Found it useful? You can help a student'}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowFeedback(false);
+                      setShowDonation(true);
+                      setDonationStage('ask');
+                    }}
+                    className="mt-2 w-full py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xs rounded-lg shadow active:scale-95 transition-all"
+                  >
+                    🤝 {donationHindi ? 'मदद करें (Donate / Help Student)' : 'Help a Student (Donate)'}
+                  </button>
+                </div>
+
                 <div className="space-y-5">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">
@@ -813,14 +912,32 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                 </div>
               </div>
             ) : (
-              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8 text-center relative">
+              <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8 text-center relative animate-in fade-in zoom-in duration-300">
                 <div className="text-6xl mb-4">🙏</div>
                 <h3 className="font-bold text-green-800 text-2xl mb-2 font-[Baloo_2]">धन्यवाद! / Thank You!</h3>
-                <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                <p className="text-sm text-slate-600 mb-4 leading-relaxed">
                   आपका फीडबैक मिल गया है। इससे ऐप को बेहतर बनाने में बहुत मदद मिलेगी।
                   <br />
                   <span className="text-xs text-slate-500">Your feedback has been received. This will help make the app much better.</span>
                 </p>
+
+                {/* Donate Appeal Box */}
+                <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 mb-5 text-center">
+                  <p className="text-xs text-orange-950 font-bold leading-snug">
+                    Class 12 के छात्र की पढ़ाई में सहायता करें / Support Class 12 student's studies
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowFeedback(false);
+                      setShowDonation(true);
+                      setDonationStage('ask');
+                    }}
+                    className="mt-2 w-full py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xs rounded-lg shadow active:scale-95 transition-all"
+                  >
+                    🤝 {donationHindi ? 'मदद करें (Donate / Help Student)' : 'Help a Student (Donate)'}
+                  </button>
+                </div>
+
                 <button 
                   onClick={() => setShowFeedback(false)} 
                   className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-[Baloo_2] shadow hover:bg-orange-600"

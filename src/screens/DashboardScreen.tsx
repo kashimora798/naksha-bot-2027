@@ -569,8 +569,24 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
               <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mb-4 text-2xl">✨</div>
               <h3 className="font-bold text-slate-800 mb-2 font-[Baloo_2] text-xl">How is your experience?</h3>
-              <p className="text-sm text-slate-500 mb-6">You've created some maps! We'd love to hear your thoughts or any suggestions you have.</p>
+              <p className="text-sm text-slate-500 mb-4">You've created some maps! We'd love to hear your thoughts or any suggestions you have.</p>
               
+              {/* Donate Appeal Box */}
+              <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 mb-4 text-center">
+                <p className="text-xs text-orange-950 font-bold leading-snug">
+                  💖 App useful? You can support this solo student developer!
+                </p>
+                <button
+                  onClick={() => {
+                    setShowFeedback(false);
+                    setShowDonate(true);
+                  }}
+                  className="mt-2 w-full py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xs rounded-lg shadow active:scale-95 transition-all"
+                >
+                  🤝 Donate / Help Student
+                </button>
+              </div>
+
               <div className="space-y-4">
                 <textarea 
                   value={feedbackText} onChange={e => setFeedbackText(e.target.value)}
@@ -592,7 +608,24 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8 text-center relative">
               <div className="text-6xl mb-4">🙏</div>
               <h3 className="font-bold text-green-800 text-2xl mb-2 font-[Baloo_2]">Thank You!</h3>
-              <p className="text-sm text-slate-600 mb-6">Your feedback has been recorded.</p>
+              <p className="text-sm text-slate-600 mb-4">Your feedback has been recorded.</p>
+
+              {/* Donate Appeal Box */}
+              <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 mb-5 text-center">
+                <p className="text-xs text-orange-950 font-bold leading-snug">
+                  Class 12 के छात्र की पढ़ाई में सहायता करें / Support Class 12 student's studies
+                </p>
+                <button
+                  onClick={() => {
+                    setShowFeedback(false);
+                    setShowDonate(true);
+                  }}
+                  className="mt-2 w-full py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xs rounded-lg shadow active:scale-95 transition-all"
+                >
+                  🤝 Donate / Help Student
+                </button>
+              </div>
+
               <button onClick={() => setShowFeedback(false)} className="w-full py-3 bg-[var(--color-saffron)] text-white rounded-xl font-bold font-[Baloo_2] shadow hover:bg-orange-600">
                 Close
               </button>

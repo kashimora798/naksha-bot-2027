@@ -12,6 +12,17 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
   const [isHindi, setIsHindi] = useState(true);
   const [customAmount, setCustomAmount] = useState('');
   const [customNote, setCustomNote] = useState('');
+  const [copiedText, setCopiedText] = useState<'upi' | 'phone' | null>(null);
+
+  const handleCopy = (text: string, type: 'upi' | 'phone') => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedText(type);
+      setTimeout(() => setCopiedText(null), 1500);
+    } catch (err) {
+      console.error('Clipboard copy failed:', err);
+    }
+  };
   const [generatedPayment, setGeneratedPayment] = useState<{
     amount: string;
     note: string;
@@ -225,9 +236,44 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
                 </div>
               )}
 
+              {/* Backup Manual Payment Methods (inside generatedPayment scroll area) */}
+              <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3 space-y-2 text-left">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
+                  {isHindi ? '⚠️ QR काम न करने पर बैकअप भुगतान विकल्प' : '⚠️ Manual Pay Option (If QR Fails)'}
+                </p>
+                <div className="flex flex-col gap-1.5 text-xs font-mono">
+                  <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400">UPI ID</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-700 font-bold select-all text-[11px]">8318810984-1@nyes</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('8318810984-1@nyes', 'upi')}
+                        className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
+                      >
+                        {copiedText === 'upi' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400">PHONE</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-700 font-bold select-all text-[11px]">8318810984</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('8318810984', 'phone')}
+                        className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
+                      >
+                        {copiedText === 'phone' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <button
                 onClick={() => setGeneratedPayment(null)}
-                className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors animate-pulse"
               >
                 ← {isHindi ? 'दूसरी राशि चुनें' : 'Choose different amount'}
               </button>
@@ -304,12 +350,47 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
                   🚀 {isHindi ? 'UPI QR कोड जेनरेट करें' : 'Generate UPI QR Code'}
                 </button>
               </form>
+
+              {/* Backup Manual Payment Methods (inside form scroll area) */}
+              <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-left">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
+                  {isHindi ? '⚠️ QR काम न करने पर बैकअप भुगतान विकल्प' : '⚠️ Manual Pay Option (If QR Fails)'}
+                </p>
+                <div className="flex flex-col gap-1.5 text-xs font-mono">
+                  <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
+                    <span className="text-[10px] font-bold text-slate-400">UPI ID</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-700 font-bold select-all text-[11px]">8318810984-1@nyes</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('8318810984-1@nyes', 'upi')}
+                        className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
+                      >
+                        {copiedText === 'upi' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
+                    <span className="text-[10px] font-bold text-slate-400">PHONE</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-700 font-bold select-all text-[11px]">8318810984</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('8318810984', 'phone')}
+                        className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
+                      >
+                        {copiedText === 'phone' ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </div>
 
         {/* Footer actions */}
-        <div className="px-6 pb-5 pt-1 border-t border-slate-50 bg-slate-50/50 flex flex-col items-center gap-1.5">
+        <div className="px-6 pb-5 pt-2.5 border-t border-slate-50 bg-slate-50/50 flex flex-col items-center gap-2">
           <p className="text-center text-[10px] text-slate-400 font-medium font-mono">UPI: 8318810984-1@nyes</p>
           {isPrintArea ? (
             <button 

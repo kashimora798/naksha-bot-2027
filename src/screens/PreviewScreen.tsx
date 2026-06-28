@@ -515,7 +515,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
             {/* Stage 1: Donate ask */}
             {donationStage === 'ask' && (
-              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
                 <div className="bg-gradient-to-br from-orange-500 to-amber-500 px-6 py-6 text-white text-center">
                   <div className="text-4xl mb-2">🙏</div>
                   {donationHindi ? (
@@ -539,6 +539,11 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                       <p className="leading-relaxed">
                         जो नक्शा आपने अभी बनाया, उसे हाथ से बनाने में <strong>3–4 घंटे</strong> लगते और cyber café में <strong>₹50–100</strong> का खर्च होता। NakshaBot ने यह मिनटों में किया।
                       </p>
+                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-orange-500 rounded-r-xl p-3.5 my-2.5 text-left">
+                        <p className="text-orange-950 text-xs font-bold leading-relaxed">
+                          📢 "आपकी छोटी-छोटी मदद से किसी की बहुत बड़ी मदद हो सकती है, थोड़ा सा दिल बड़ा करके एक छात्र के सपनों को सहारा दें।"
+                        </p>
+                      </div>
                       <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
                         <p className="text-xs text-orange-800 font-semibold">सर्वर का खर्च असली है। ₹10 भी बहुत मदद करता है।</p>
                         <p className="text-[11px] text-orange-600 mt-0.5">हर रुपया इसे सबके लिए मुफ्त रखने में जाता है।</p>
@@ -552,12 +557,30 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                       <p className="leading-relaxed">
                         The map you just downloaded would take <strong>3–4 hours by hand</strong> and cost ₹50–100 at a cyber café. NakshaBot did it in minutes, free, for every enumerator in India.
                       </p>
+                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-orange-500 rounded-r-xl p-3.5 my-2.5 text-left">
+                        <p className="text-orange-950 text-xs font-bold leading-relaxed">
+                          📢 "Your small contributions can provide huge support to someone in need. Open your heart a little to help a student's dreams come true."
+                        </p>
+                      </div>
                       <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
                         <p className="text-xs text-orange-800 font-semibold">Server costs are real. Even ₹10 helps a lot.</p>
                         <p className="text-[11px] text-orange-600 mt-0.5">Every rupee goes toward keeping NakshaBot free.</p>
                       </div>
                     </>
                   )}
+
+                  {/* QR Code Section */}
+                  <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-2xl border border-slate-100/80 my-1">
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      {donationHindi ? 'QR कोड स्कैन करके पे करें' : 'Scan QR Code to Pay'}
+                    </p>
+                    <img 
+                      src="/images/donation_qr.jpg" 
+                      alt="UPI QR Code" 
+                      className="w-40 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
+                    />
+                  </div>
+
                   <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                     {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
                   </button>
@@ -580,7 +603,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
             {/* Stage 2: Appreciate — heartfelt, zero guilt */}
             {donationStage === 'appreciate' && (
-              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
                 <div className="bg-gradient-to-br from-slate-700 to-slate-800 px-6 py-7 text-white text-center">
                   <div className="text-5xl mb-3">✨</div>
                   {donationHindi ? (
@@ -615,6 +638,19 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                       </p>
                     </>
                   )}
+
+                  {/* QR Code Section */}
+                  <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-2xl border border-slate-100/80 my-1">
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      {donationHindi ? 'QR कोड स्कैन करके पे करें' : 'Scan QR Code to Pay'}
+                    </p>
+                    <img 
+                      src="/images/donation_qr.jpg" 
+                      alt="UPI QR Code" 
+                      className="w-40 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
+                    />
+                  </div>
+
                   <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
                     {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
                   </button>
@@ -637,7 +673,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
             {/* Stage 3: Share on WhatsApp */}
             {donationStage === 'share' && (
-              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
                 <div className="bg-gradient-to-br from-green-600 to-emerald-600 px-6 py-7 text-white text-center">
                   <div className="text-5xl mb-3">📲</div>
                   {donationHindi ? (

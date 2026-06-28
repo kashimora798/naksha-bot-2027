@@ -87,6 +87,11 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
               <p className="leading-relaxed">
                 नक्शा बनाने में cyber café में <strong>₹50–100</strong> का खर्च होता। NakshaBot ने यह मुफ्त किया। अगर आपको यह उपयोगी लगा, तो कृपया मुझे अपनी पढ़ाई जारी रखने में सहायता करें।
               </p>
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-orange-500 rounded-r-xl p-3.5 my-2.5">
+                <p className="text-orange-950 text-xs font-bold leading-relaxed">
+                  📢 "आपकी छोटी-छोटी मदद से किसी की बहुत बड़ी मदद हो सकती है, थोड़ा सा दिल बड़ा करके एक छात्र के सपनों को सहारा दें।"
+                </p>
+              </div>
               <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center text-xs">
                 <p className="text-orange-800 font-bold">पेमेंट नोट में अपना नाम या संदेश अवश्य लिखें!</p>
                 <p className="text-orange-600 mt-0.5 text-[11px]">ताकि मुझे पता चले कि किस शुभचिंतक ने सहायता की है।</p>
@@ -100,6 +105,11 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
               <p className="leading-relaxed">
                 Cyber cafés charge <strong>₹50–100</strong> for a map. NakshaBot did it instantly for free. If this app helped you, please contribute toward my studies.
               </p>
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-orange-500 rounded-r-xl p-3.5 my-2.5">
+                <p className="text-orange-950 text-xs font-bold leading-relaxed">
+                  📢 "Your small contributions can provide huge support to someone in need. Open your heart a little to help a student's dreams come true."
+                </p>
+              </div>
               <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center text-xs">
                 <p className="text-orange-800 font-bold">Please write your name or message in the UPI note!</p>
                 <p className="text-orange-600 mt-0.5 text-[11px]">So that I know who supported my education.</p>
@@ -115,6 +125,18 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
           >
             {isHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
           </button>
+
+          {/* QR Code Section */}
+          <div className="flex flex-col items-center justify-center p-3.5 bg-slate-50 rounded-2xl border border-slate-100/80">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+              {isHindi ? 'QR कोड स्कैन करें (Scan QR Code)' : 'Scan QR Code to Pay'}
+            </p>
+            <img 
+              src="/images/donation_qr.jpg" 
+              alt="UPI QR Code" 
+              className="w-48 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
+            />
+          </div>
 
           {/* Fixed Amount Buttons */}
           <div className="space-y-1.5 pt-2 border-t border-slate-100">

@@ -314,6 +314,7 @@ export interface AdminDonation {
   name: string | null;
   note: string | null;
   created_at: string;
+  is_paid?: boolean | null;
   // joined
   owner_name?: string | null;
   owner_mobile?: string | null;
@@ -342,4 +343,20 @@ export async function fetchAdminDonations(): Promise<AdminDonation[]> {
     owner_name: d.user_id ? (profileMap[d.user_id]?.full_name ?? null) : null,
     owner_mobile: d.user_id ? (profileMap[d.user_id]?.mobile ?? null) : null,
   }));
+}
+
+export async function verifyDonation(id: string, isPaid: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('donations')
+    .update({ is_paid: isPaid })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteDonation(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('donations')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
 }

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchAdminDonations, type AdminDonation } from '../../lib/admin-api';
+import { fetchAdminDonations, type AdminDonation, verifyDonation, deleteDonation } from '../../lib/admin-api';
 
 export default function AdminDonationsScreen() {
   const [donations, setDonations] = useState<AdminDonation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [filterTab, setFilterTab] = useState<'pending' | 'paid' | 'all'>('pending');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAdminDonations()
@@ -15,30 +17,120 @@ export default function AdminDonationsScreen() {
       .finally(() => setLoading(false));
   }, []);
 
+  const handleMarkPaid = async (id: string) => {
+    setUpdatingId(id);
+    try {
+      await verifyDonation(id, true);
+      setDonations(prev => prev.map(d => d.id === id ? { ...d, is_paid: true } : d));
+    } catch (err: any) {
+      console.error(err);
+      alert(
+        "Failed to mark as paid: " + err.message + 
+        "\n\nMake sure the database migration has been run! File is located at supabase/migrations/20260628_add_is_paid_to_donations.sql"
+      );
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure this record is unpaid/unwanted and you want to remove it?')) return;
+    setUpdatingId(id);
+    try {
+      await deleteDonation(id);
+      setDonations(prev => prev.filter(d => d.id !== id));
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to delete record: " + err.message);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const filtered = donations.filter(d => {
+    // Search query filter
     const q = search.toLowerCase();
-    return (
+    const matchesSearch = (
       (d.name || '').toLowerCase().includes(q) ||
       (d.note || '').toLowerCase().includes(q) ||
       (d.owner_name || '').toLowerCase().includes(q) ||
       (d.owner_mobile || '').toLowerCase().includes(q) ||
       String(d.amount).includes(q)
     );
+    if (!matchesSearch) return false;
+
+    // Tab filter
+    if (filterTab === 'pending') return !d.is_paid;
+    if (filterTab === 'paid') return !!d.is_paid;
+    return true;
   });
 
-  const totalRaised = donations.reduce((sum, d) => sum + Number(d.amount), 0);
+  const totalIntents = donations.reduce((sum, d) => sum + Number(d.amount), 0);
+  const totalVerifiedPaid = donations.filter(d => d.is_paid).reduce((sum, d) => sum + Number(d.amount), 0);
+
+  const pendingCount = donations.filter(d => !d.is_paid).length;
+  const paidCount = donations.filter(d => d.is_paid).length;
 
   return (
     <div className="p-8">
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100 mb-1">Donation Clicks / Intents</h1>
-          <p className="text-gray-500 text-sm">{donations.length} records</p>
+          <h1 className="text-2xl font-bold text-gray-100 mb-1">Donation Verifications</h1>
+          <p className="text-gray-500 text-sm">{donations.length} total records clicked</p>
         </div>
-        <div className="bg-orange-500/10 border border-orange-500/30 px-4 py-2.5 rounded-xl text-right">
-          <span className="text-xs text-orange-400 block font-semibold uppercase tracking-wider">Total Intent Value</span>
-          <span className="text-xl font-bold text-orange-300">₹{totalRaised.toLocaleString('en-IN')}</span>
+        <div className="flex gap-4">
+          <div className="bg-gray-900 border border-gray-800 px-4 py-2.5 rounded-xl text-right">
+            <span className="text-[10px] text-gray-500 block font-semibold uppercase tracking-wider">Total Intent Value</span>
+            <span className="text-lg font-bold text-gray-400">₹{totalIntents.toLocaleString('en-IN')}</span>
+          </div>
+          <div className="bg-emerald-500/10 border border-emerald-500/30 px-4 py-2.5 rounded-xl text-right">
+            <span className="text-[10px] text-emerald-400 block font-semibold uppercase tracking-wider">Verified Paid Value</span>
+            <span className="text-lg font-bold text-emerald-300">₹{totalVerifiedPaid.toLocaleString('en-IN')}</span>
+          </div>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-gray-800 pb-px mb-6">
+        <button
+          onClick={() => setFilterTab('pending')}
+          className={`pb-2.5 px-4 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+            filterTab === 'pending'
+              ? 'border-orange-500 text-orange-400 font-bold'
+              : 'border-transparent text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          Pending Intents
+          <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full font-mono">
+            {pendingCount}
+          </span>
+        </button>
+        <button
+          onClick={() => setFilterTab('paid')}
+          className={`pb-2.5 px-4 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+            filterTab === 'paid'
+              ? 'border-orange-500 text-orange-400 font-bold'
+              : 'border-transparent text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          Verified Paid (Kept)
+          <span className="text-xs bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded-full font-mono">
+            {paidCount}
+          </span>
+        </button>
+        <button
+          onClick={() => setFilterTab('all')}
+          className={`pb-2.5 px-4 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+            filterTab === 'all'
+              ? 'border-orange-500 text-orange-400 font-bold'
+              : 'border-transparent text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          All Logs
+          <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full font-mono">
+            {donations.length}
+          </span>
+        </button>
       </div>
 
       <input
@@ -63,11 +155,22 @@ export default function AdminDonationsScreen() {
           {filtered.map(d => (
             <div
               key={d.id}
-              className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-gray-700 transition-colors"
+              className={`bg-gray-900 border rounded-xl p-5 hover:border-gray-700 transition-colors ${
+                d.is_paid ? 'border-emerald-950/65' : 'border-gray-800'
+              }`}
             >
               <div className="flex items-start justify-between gap-4 mb-3">
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-lg font-black text-orange-400 font-mono">₹{d.amount}</span>
+                  {d.is_paid ? (
+                    <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/20 font-semibold font-mono">
+                      ✓ Paid / Verified
+                    </span>
+                  ) : (
+                    <span className="bg-amber-500/10 text-amber-400 text-[10px] px-2 py-0.5 rounded-full border border-amber-500/20 font-semibold font-mono">
+                      ⏳ Pending Click
+                    </span>
+                  )}
                   {d.user_id ? (
                     <span className="inline-flex items-center gap-2 flex-wrap">
                       <Link
@@ -97,7 +200,7 @@ export default function AdminDonationsScreen() {
                 </span>
               </div>
               
-              <div className="bg-gray-950/60 rounded-lg p-3 border border-gray-800/40 text-sm">
+              <div className="bg-gray-950/60 rounded-lg p-3 border border-gray-800/40 text-sm mb-4">
                 <div className="flex gap-2 mb-1.5 text-xs text-gray-500">
                   <span className="font-semibold">Submitter Name/Note:</span>
                   <span className="text-gray-300 font-medium">{d.name || <span className="italic text-gray-600">None specified</span>}</span>
@@ -107,10 +210,30 @@ export default function AdminDonationsScreen() {
                   <span className="text-gray-300 font-medium">{d.note || <span className="italic text-gray-600">None specified</span>}</span>
                 </div>
               </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 items-center">
+                {!d.is_paid && (
+                  <button
+                    disabled={updatingId !== null}
+                    onClick={() => handleMarkPaid(d.id)}
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-lg shadow disabled:opacity-50 transition-colors"
+                  >
+                    {updatingId === d.id ? 'Saving...' : 'Yes, Mark Paid'}
+                  </button>
+                )}
+                <button
+                  disabled={updatingId !== null}
+                  onClick={() => handleDelete(d.id)}
+                  className="px-4 py-1.5 border border-red-900/50 hover:bg-red-950/20 text-red-400 font-semibold text-xs rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  {updatingId === d.id ? 'Deleting...' : 'Delete / Not Paid'}
+                </button>
+              </div>
             </div>
           ))}
           {filtered.length === 0 && (
-            <p className="text-center text-gray-600 py-12">No donations found</p>
+            <p className="text-center text-gray-600 py-12">No records in this tab</p>
           )}
         </div>
       )}

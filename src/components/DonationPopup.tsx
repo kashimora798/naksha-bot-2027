@@ -52,7 +52,8 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
     const finalNote = noteStr.trim() || defaultNote;
 
     const upiUrl = `upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR&am=${amt}&tn=${encodeURIComponent(finalNote)}`;
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiUrl)}&margin=10`;
+    const redirectUrl = `https://examsetu.dev/pay?am=${amt}&tn=${encodeURIComponent(finalNote)}`;
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(redirectUrl)}&margin=10`;
 
     setGeneratedPayment({
       amount: String(amt),
@@ -240,7 +241,7 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
                   {isHindi ? 'त्वरित स्कैन (Scan for Quick Pay)' : 'Scan for Quick Pay'}
                 </p>
                 <img 
-                  src="/images/donation_qr.jpg" 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent('https://examsetu.dev/pay')}&margin=10`}
                   alt="UPI QR Code" 
                   className="w-44 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
                 />

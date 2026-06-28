@@ -53,6 +53,7 @@ import AdminProjectsScreen from "./screens/admin/AdminProjectsScreen";
 import AdminSessionsScreen from "./screens/admin/AdminSessionsScreen";
 import AdminFeedbackScreen from "./screens/admin/AdminFeedbackScreen";
 import AdminDonationsScreen from "./screens/admin/AdminDonationsScreen";
+import UpiRedirectScreen from "./screens/UpiRedirectScreen";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -117,6 +118,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/contact.html" element={<ContactScreen />} />
           <Route path="/sign-in" element={<SignInScreen />} />
           <Route path="/sign-up" element={<SignUpScreen />} />
+          <Route path="/pay" element={<UpiRedirectScreen />} />
 
           {/* Admin — invisible, route only */}
           <Route path="/kratagya" element={<AdminLayout />}>

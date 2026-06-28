@@ -576,7 +576,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                       {donationHindi ? 'QR कोड स्कैन करके पे करें' : 'Scan QR Code to Pay'}
                     </p>
                     <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent('https://examsetu.dev/pay')}&margin=10`}
+                      src="/images/donation_qr.jpg" 
                       alt="UPI QR Code" 
                       className="w-40 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
                     />
@@ -654,7 +654,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                       {donationHindi ? 'QR कोड स्कैन करके पे करें' : 'Scan QR Code to Pay'}
                     </p>
                     <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent('https://examsetu.dev/pay')}&margin=10`}
+                      src="/images/donation_qr.jpg" 
                       alt="UPI QR Code" 
                       className="w-40 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
                     />

@@ -26,6 +26,11 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } },
     )
 
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    )
+
     const { data: { user } } = await supabaseClient.auth.getUser()
  
     const { projectId, sessionId, kind } = await req.json()
@@ -67,23 +72,43 @@ serve(async (req) => {
         throw new Error('Live survey must be paid for before purchasing extra generations')
       }
     } else if (targetKind === 'project') {
-      const { data: project } = await supabaseClient
+      const { data: project } = await admin
         .from('projects')
-        .select('id, payment_status')
+        .select('id, user_id, payment_status')
         .eq('id', targetId)
-        .eq('user_id', user!.id)
-        .single()
-      if (!project) throw new Error('Project not found or unauthorized')
+        .maybeSingle()
+
+      if (!project) throw new Error('Project not found')
+      
+      // If project has an owner and it doesn't match the current user, reject
+      if (project.user_id && project.user_id !== user!.id) {
+        throw new Error('Unauthorized project access')
+      }
+
+      // If project has no owner (guest project), retroactively link it to the user
+      if (!project.user_id) {
+        await admin.from('projects').update({ user_id: user!.id }).eq('id', targetId)
+      }
+
       if (project.payment_status === 'paid') isAlreadyPaid = true;
     } else if (targetKind === 'regen') {
       // For regen, make sure the project exists and is already paid for first
-      const { data: project } = await supabaseClient
+      const { data: project } = await admin
         .from('projects')
-        .select('id, payment_status')
+        .select('id, user_id, payment_status')
         .eq('id', targetId)
-        .eq('user_id', user!.id)
-        .single()
-      if (!project) throw new Error('Project not found or unauthorized')
+        .maybeSingle()
+
+      if (!project) throw new Error('Project not found')
+      
+      if (project.user_id && project.user_id !== user!.id) {
+        throw new Error('Unauthorized project access')
+      }
+
+      if (!project.user_id) {
+        await admin.from('projects').update({ user_id: user!.id }).eq('id', targetId)
+      }
+
       if (project.payment_status !== 'paid') {
         throw new Error('Project must be paid for before purchasing extra generations')
       }
@@ -156,10 +181,6 @@ serve(async (req) => {
  
     // Persist the order id so the webhook / verify-payment can find this project/live-export/donation.
     // MUST use the service role.
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    )
     if (targetKind === 'donation') {
       const { error: donErr } = await admin
         .from('donations')

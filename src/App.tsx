@@ -258,8 +258,8 @@ export default function App() {
         }
       });
       window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (isPaymentSuccess && params.get('kind') === 'donation') {
-      // Keep query parameters intact so DashboardScreen can parse and verify the donation
+    } else if (params.get('donation_return')) {
+      // Keep donation_return param intact so DashboardScreen can pick it up and verify
     } else if (isPaymentSuccess) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }

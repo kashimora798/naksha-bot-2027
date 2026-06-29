@@ -158,9 +158,9 @@ serve(async (req) => {
         customer_name: customerName,
       },
       order_meta: {
-        // Return URL with the correct kind so we know how to handle it
+        // Return URL: neutral param so we can distinguish real success from cancel/fail via Cashfree API
         return_url: targetKind === 'donation'
-          ? `${siteUrl}/app?payment=success&donation_id=${targetId}&kind=donation`
+          ? `${siteUrl}/app?donation_return=${targetId}`
           : (targetKind === 'live' || targetKind === 'live_regen')
           ? `${siteUrl}/live-session/${targetId}?payment=success&kind=${targetKind}`
           : `${siteUrl}/app?payment=success&project_id=${targetId}&kind=${targetKind}`,

@@ -31,7 +31,7 @@ serve(async (req) => {
     const { data: { user } } = await userClient.auth.getUser()
     if (!user) return json({ error: 'Not authenticated' }, 401)
 
-    const { projectId, kind, forceLocalVerify } = await req.json()
+    const { projectId, kind } = await req.json()
     if (!projectId) return json({ error: 'Missing projectId' }, 400)
     const isLive = kind === 'live'
     const isRegen = kind === 'regen'
@@ -50,34 +50,34 @@ serve(async (req) => {
         .eq('id', projectId).maybeSingle()
       if (!don) return json({ error: 'Donation not found' }, 404)
  
+      // Already marked paid — idempotent success
       if (don.payment_status === 'paid' || don.is_paid) return json({ paid: true, donation: don })
 
-      let verifySuccess = false
-      if (forceLocalVerify) {
-        verifySuccess = true
-      } else if (don.payment_id) {
-        try {
-          const cf = await fetch(`${CASHFREE_BASE}/orders/${encodeURIComponent(don.payment_id)}`, {
-            headers: {
-              'x-client-id': Deno.env.get('CASHFREE_APP_ID') ?? '',
-              'x-client-secret': Deno.env.get('CASHFREE_SECRET_KEY') ?? '',
-              'x-api-version': '2025-01-01',
-            },
-          })
-          const order = await cf.json()
-          if (cf.ok && order?.order_status === 'PAID') {
-            verifySuccess = true
-          } else if (order?.order_status === 'FAILED') {
-            await admin.from('donations').update({ payment_status: 'failed' }).eq('id', projectId)
-          } else if (order?.order_status === 'EXPIRED') {
-            await admin.from('donations').update({ payment_status: 'abandoned' }).eq('id', projectId)
-          }
-        } catch (e) {
-          console.error('Cashfree donation check failed:', e)
-        }
+      if (!don.payment_id) {
+        return json({ paid: false, reason: 'no_order', status: 'PENDING' })
       }
 
-      if (verifySuccess) {
+      // Ask Cashfree directly for the real order status
+      let order: any = null
+      let cfOk = false
+      try {
+        const cf = await fetch(`${CASHFREE_BASE}/orders/${encodeURIComponent(don.payment_id)}`, {
+          headers: {
+            'x-client-id': Deno.env.get('CASHFREE_APP_ID') ?? '',
+            'x-client-secret': Deno.env.get('CASHFREE_SECRET_KEY') ?? '',
+            'x-api-version': '2025-01-01',
+          },
+        })
+        order = await cf.json()
+        cfOk = cf.ok
+      } catch (e) {
+        console.error('Cashfree order fetch error:', e)
+        return json({ paid: false, reason: 'technical_error', status: 'ERROR' })
+      }
+
+      const orderStatus = order?.order_status ?? 'UNKNOWN'
+
+      if (cfOk && orderStatus === 'PAID') {
         const { data: updatedDon } = await admin
           .from('donations')
           .update({ is_paid: true, payment_status: 'paid' })
@@ -86,7 +86,23 @@ serve(async (req) => {
           .single()
         return json({ paid: true, donation: updatedDon })
       }
-      return json({ paid: false, reason: 'unconfirmed' })
+
+      if (orderStatus === 'FAILED') {
+        await admin.from('donations').update({ payment_status: 'failed' }).eq('id', projectId)
+        return json({ paid: false, reason: 'payment_failed', status: 'FAILED' })
+      }
+
+      if (orderStatus === 'EXPIRED') {
+        await admin.from('donations').update({ payment_status: 'abandoned' }).eq('id', projectId)
+        return json({ paid: false, reason: 'payment_expired', status: 'EXPIRED' })
+      }
+
+      // ACTIVE = user cancelled or closed the checkout before paying
+      if (orderStatus === 'ACTIVE') {
+        return json({ paid: false, reason: 'payment_cancelled', status: 'ACTIVE' })
+      }
+
+      return json({ paid: false, reason: 'unconfirmed', status: orderStatus })
     } else if (isLive || isLiveRegen) {
       const { data: liveExport } = await admin
         .from('live_exports')

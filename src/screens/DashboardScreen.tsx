@@ -78,32 +78,46 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [verifyingDonation, setVerifyingDonation] = useState(false);
   const [showThankYouDonation, setShowThankYouDonation] = useState(false);
   const [verifiedDonationDetails, setVerifiedDonationDetails] = useState<any | null>(null);
+  const [donationFailReason, setDonationFailReason] = useState<'cancelled' | 'failed' | 'technical_error' | null>(null);
+  const [donationFailAmount, setDonationFailAmount] = useState<number | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const isPaymentSuccess = params.get('payment') === 'success';
-    const donationId = params.get('donation_id');
-    const kind = params.get('kind');
+    const donationId = params.get('donation_return');
 
-    if (isPaymentSuccess && kind === 'donation' && donationId) {
+    if (donationId) {
       window.history.replaceState({}, document.title, window.location.pathname);
-      
       setVerifyingDonation(true);
+
       supabase.functions.invoke('verify-payment', {
-        body: { projectId: donationId, kind: 'donation', forceLocalVerify: true }
+        body: { projectId: donationId, kind: 'donation' }
       }).then(({ data, error }) => {
         setVerifyingDonation(false);
-        if (error || !data?.paid) {
-          alert("Donation verification pending. If money was debited, it will reflect in the admin panel shortly.");
-        } else {
-          if (data?.donation) {
-            setVerifiedDonationDetails(data.donation);
-          }
-          setShowThankYouDonation(true);
+        if (error) {
+          setDonationFailReason('technical_error');
+          return;
         }
-      }).catch(err => {
-        console.error('Error verifying donation:', err);
+        if (data?.paid) {
+          if (data?.donation) setVerifiedDonationDetails(data.donation);
+          setShowThankYouDonation(true);
+        } else {
+          const reason = data?.reason ?? '';
+          if (reason === 'payment_cancelled') {
+            setDonationFailAmount(data?.donation?.amount ?? null);
+            setDonationFailReason('cancelled');
+          } else if (reason === 'payment_failed') {
+            setDonationFailAmount(data?.donation?.amount ?? null);
+            setDonationFailReason('failed');
+          } else if (reason === 'technical_error') {
+            setDonationFailReason('technical_error');
+          } else {
+            // Any other unconfirmed state — treat as cancelled (order still ACTIVE)
+            setDonationFailReason('cancelled');
+          }
+        }
+      }).catch(() => {
         setVerifyingDonation(false);
+        setDonationFailReason('technical_error');
       });
     }
   }, []);
@@ -903,6 +917,99 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                 Close / बंद करें
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Donation Cancelled Modal ── */}
+      {donationFailReason === 'cancelled' && (
+        <div className="fixed inset-0 z-[5000] bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-7 text-center max-w-md w-full shadow-2xl animate-in zoom-in duration-200 relative border border-slate-100">
+            <button onClick={() => setDonationFailReason(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 text-xl font-bold leading-none cursor-pointer">×</button>
+            <div className="text-5xl mb-4">🙏</div>
+            <h3 className="font-extrabold text-orange-500 text-xl mb-1 font-[Baloo_2]">कोई बात नहीं, फिर कोशिश करें!</h3>
+            <h4 className="font-black text-slate-700 text-sm mb-4 uppercase tracking-wider">No Worries — Try Again!</h4>
+            <div className="space-y-3 text-left text-xs text-slate-600 border-t border-b border-slate-100 py-4 mb-4">
+              <p className="bg-orange-50 border-l-4 border-orange-400 p-3 rounded-xl font-semibold text-orange-900">
+                🇮🇳 <strong>हिन्दी:</strong> आपने भुगतान रद्द कर दिया, लेकिन कोई बात नहीं — हम जानते हैं कि नीयत साफ है! जब भी मन हो, आप दोबारा कोशिश कर सकते हैं। आपकी दुआएं और प्रोत्साहन भी हमारे लिए किसी खजाने से कम नहीं।
+              </p>
+              <p className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded-xl font-semibold text-blue-900">
+                🌍 <strong>English:</strong> You cancelled the payment — but that's absolutely okay! We know your heart is in the right place. Whenever you feel ready, please try again. Your encouragement and goodwill mean the world to us even without money.
+              </p>
+            </div>
+            {donationFailAmount && <p className="text-xs text-slate-400 mb-4 font-mono">Attempted amount: ₹{donationFailAmount}</p>}
+            <button onClick={() => { setDonationFailReason(null); setShowDonate(true); }}
+              className="w-full mb-2 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black text-xs rounded-xl shadow-md active:scale-[0.98] transition-all cursor-pointer">
+              💖 दोबारा प्रयास करें / Try Again
+            </button>
+            <button onClick={() => setDonationFailReason(null)}
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer">
+              बाद में / Maybe Later
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Donation Failed Modal ── */}
+      {donationFailReason === 'failed' && (
+        <div className="fixed inset-0 z-[5000] bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-7 text-center max-w-md w-full shadow-2xl animate-in zoom-in duration-200 relative border border-slate-100">
+            <button onClick={() => setDonationFailReason(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 text-xl font-bold leading-none cursor-pointer">×</button>
+            <div className="text-5xl mb-4">😔</div>
+            <h3 className="font-extrabold text-rose-500 text-xl mb-1 font-[Baloo_2]">भुगतान विफल हो गया!</h3>
+            <h4 className="font-black text-slate-700 text-sm mb-4 uppercase tracking-wider">Payment Failed</h4>
+            <div className="space-y-3 text-left text-xs text-slate-600 border-t border-b border-slate-100 py-4 mb-4">
+              <p className="bg-rose-50 border-l-4 border-rose-400 p-3 rounded-xl font-semibold text-rose-900">
+                🇮🇳 <strong>हिन्दी:</strong> आपका भुगतान किसी तकनीकी कारण से पूर्ण नहीं हो सका। अगर राशि आपके खाते से कट गई है तो चिंता न करें — 3-5 कार्यदिवसों में वापस हो जाएगी। कृपया दोबारा प्रयास करें।
+              </p>
+              <p className="bg-rose-50 border-l-4 border-rose-400 p-3 rounded-xl font-semibold text-rose-900">
+                🌍 <strong>English:</strong> Your payment could not be completed due to a technical issue. If any amount was deducted, it will be refunded within 3–5 business days. Please try again.
+              </p>
+            </div>
+            {donationFailAmount && <p className="text-xs text-slate-400 mb-4 font-mono">Failed amount: ₹{donationFailAmount}</p>}
+            <button onClick={() => { setDonationFailReason(null); setShowDonate(true); }}
+              className="w-full mb-2 py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white font-black text-xs rounded-xl shadow-md active:scale-[0.98] transition-all cursor-pointer">
+              🔁 दोबारा प्रयास करें / Retry Payment
+            </button>
+            <button onClick={() => setDonationFailReason(null)}
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer">
+              बाद में / Maybe Later
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Technical Error Modal ── */}
+      {donationFailReason === 'technical_error' && (
+        <div className="fixed inset-0 z-[5000] bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-7 text-center max-w-md w-full shadow-2xl animate-in zoom-in duration-200 relative border border-slate-100">
+            <button onClick={() => setDonationFailReason(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 text-xl font-bold leading-none cursor-pointer">×</button>
+            <div className="text-5xl mb-4">🔧</div>
+            <h3 className="font-extrabold text-amber-600 text-xl mb-1 font-[Baloo_2]">तकनीकी गड़बड़ी! माफ करें 🙏</h3>
+            <h4 className="font-black text-slate-700 text-sm mb-4 uppercase tracking-wider">Technical Error — We're Sorry!</h4>
+            <div className="space-y-3 text-left text-xs text-slate-600 border-t border-b border-slate-100 py-4 mb-4">
+              <p className="bg-amber-50 border-l-4 border-amber-400 p-3 rounded-xl font-semibold text-amber-900">
+                🇮🇳 <strong>हिन्दी:</strong> हमारी तरफ से एक तकनीकी गड़बड़ी हो गई जिसके लिए हम दिल से माफी मांगते हैं। अगर पैसे कटे हैं तो कृपया नीचे WhatsApp बटन से तुरंत सूचित करें — हम तुरंत समाधान करेंगे।
+              </p>
+              <p className="bg-amber-50 border-l-4 border-amber-400 p-3 rounded-xl font-semibold text-amber-900">
+                🌍 <strong>English:</strong> A technical error occurred on our end and we sincerely apologise. If money was debited, please report it via WhatsApp below — we will resolve it immediately.
+              </p>
+            </div>
+            <button onClick={() => {
+              const text = `नमस्ते / Hello,\n\nNakshaBot पर दान करने का प्रयास करते समय तकनीकी त्रुटि आई!\nI faced a technical error while trying to donate on NakshaBot!\n\nकृपया जांचें / Please check and resolve 🙏`;
+              window.open(`https://wa.me/919696240590?text=${encodeURIComponent(text)}`, '_blank');
+            }}
+              className="w-full mb-2 py-3 bg-green-500 hover:bg-green-600 text-white font-black text-xs rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+              💬 WhatsApp पर रिपोर्ट करें / Report on WhatsApp
+            </button>
+            <button onClick={() => { setDonationFailReason(null); setShowDonate(true); }}
+              className="w-full mb-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-black text-xs rounded-xl transition-all cursor-pointer">
+              🔁 दोबारा प्रयास / Retry
+            </button>
+            <button onClick={() => setDonationFailReason(null)}
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer">
+              बंद करें / Close
+            </button>
           </div>
         </div>
       )}

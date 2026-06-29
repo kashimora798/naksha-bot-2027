@@ -295,7 +295,7 @@ export default function SessionDetailScreen() {
       if (error) throw error;
       if (data?.paymentSessionId) {
         const cashfree = await load({
-          mode: import.meta.env.VITE_CASHFREE_MODE === 'production' ? 'production' : 'sandbox'
+          mode: data.cashfreeMode === 'production' ? 'production' : 'sandbox'
         });
         if (cashfree) {
           cashfree.checkout({ paymentSessionId: data.paymentSessionId, redirectTarget: '_self' });
@@ -320,7 +320,7 @@ export default function SessionDetailScreen() {
       if (error) throw error;
       if (data?.paymentSessionId) {
         const cashfree = await load({
-          mode: import.meta.env.VITE_CASHFREE_MODE === 'production' ? 'production' : 'sandbox'
+          mode: data.cashfreeMode === 'production' ? 'production' : 'sandbox'
         });
         if (cashfree) {
           cashfree.checkout({ paymentSessionId: data.paymentSessionId, redirectTarget: '_self' });

@@ -72,9 +72,9 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
         throw new Error(cfErr?.message || 'Failed to initiate Cashfree checkout session');
       }
 
-      // 3. Load Cashfree JS SDK and checkout
+      // 3. Load Cashfree JS SDK using the mode returned by the server — always in sync
       const cashfree = await load({
-        mode: import.meta.env.VITE_CASHFREE_MODE === 'production' ? 'production' : 'sandbox'
+        mode: (cfRes.cashfreeMode === 'production') ? 'production' : 'sandbox'
       });
 
       if (cashfree) {

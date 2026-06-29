@@ -224,7 +224,10 @@ serve(async (req) => {
       }
     }
  
-    return new Response(JSON.stringify({ paymentSessionId: cashfreeData.payment_session_id }), {
+    return new Response(JSON.stringify({
+      paymentSessionId: cashfreeData.payment_session_id,
+      cashfreeMode: Deno.env.get('CASHFREE_ENV') === 'production' ? 'production' : 'sandbox',
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     })

@@ -103,6 +103,8 @@ export function renderMapToCanvas(
     includeMappedRoads?: boolean;
     satCanvas?: any;
     inkMode?: 'color' | 'black' | 'blue';
+    hideSerpentineArrows?: boolean;
+    hideHouseNumbers?: boolean;
   }
 ): void {
   const orient = data.orientation || 'portrait';
@@ -472,7 +474,7 @@ export function renderMapToCanvas(
   //   • Inter-block jump: single bezier curve arc (thin grey, distinct)
   //   • Row-turn: slightly enlarged arrowhead marks serpentine reversal
   //   • Skipped when houses are too close (gap < 1.2 × symSz) to avoid clutter
-  if (!options?.hideSymbols) {
+  if (!options?.hideSymbols && !options?.hideSerpentineArrows) {
     const serp = generateSerpentinePath(data.symbols, data.blocks?.length > 0 ? data.blocks : undefined);
     if (serp.length >= 2) {
       const blocks2 = data.blocks && data.blocks.length > 0 ? data.blocks : [];
@@ -657,19 +659,24 @@ export function renderMapToCanvas(
       // Limit angle to [-PI/2, PI/2] to ensure the building number is always upright and readable
       if (angle > Math.PI / 2) angle -= Math.PI;
       if (angle < -Math.PI / 2) angle += Math.PI;
-      drawSymbolOnCanvas(ctx as any, sym, x, y, getSymbolSize(sym.id), angle, inkMode, data.numberingSystem);
+      const symToDraw = options?.hideHouseNumbers
+        ? { ...sym, number: undefined, census_house_count: 0 }
+        : sym;
+      drawSymbolOnCanvas(ctx as any, symToDraw, x, y, getSymbolSize(sym.id), angle, inkMode, data.numberingSystem);
     }
 
-    const housesOrder = getSerpentineOrder(data.symbols, data.blocks, data.numberingSystem);
-    if (housesOrder.length > 0) {
-      const firstId = housesOrder[0];
-      const lastId = housesOrder[housesOrder.length - 1];
-      for (const { x, y, sym } of snappedSymbols) {
-        const size = getSymbolSize(sym.id);
-        if (sym.id === firstId) {
-          drawStartEndBadge(ctx, 'START', x, y, size);
-        } else if (sym.id === lastId && housesOrder.length >= 2) {
-          drawStartEndBadge(ctx, 'END', x, y, size);
+    if (!options?.hideSerpentineArrows) {
+      const housesOrder = getSerpentineOrder(data.symbols, data.blocks, data.numberingSystem);
+      if (housesOrder.length > 0) {
+        const firstId = housesOrder[0];
+        const lastId = housesOrder[housesOrder.length - 1];
+        for (const { x, y, sym } of snappedSymbols) {
+          const size = getSymbolSize(sym.id);
+          if (sym.id === firstId) {
+            drawStartEndBadge(ctx, 'START', x, y, size);
+          } else if (sym.id === lastId && housesOrder.length >= 2) {
+            drawStartEndBadge(ctx, 'END', x, y, size);
+          }
         }
       }
     }

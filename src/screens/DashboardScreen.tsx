@@ -73,6 +73,18 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [showDonate, setShowDonate] = useState(false);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+
+  useEffect(() => {
+    supabase
+      .from('announcements')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setAnnouncements(data);
+      });
+  }, []);
 
   useEffect(() => {
     if (sessionPopupShown.current) return;
@@ -242,6 +254,45 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">Pick up where you left off, or start something new.</p>
         </div>
+
+        {/* ── Announcements Banner ── */}
+        {announcements.length > 0 && (
+          <div className="mb-6 space-y-4">
+            {announcements.map(ann => (
+              <div 
+                key={ann.id} 
+                className="bg-white border border-orange-100 rounded-2xl shadow-[var(--shadow-warm-1)] overflow-hidden flex flex-col md:flex-row hover:border-orange-200 transition-all group"
+              >
+                {ann.image_url && (
+                  <div className="md:w-1/3 h-32 md:h-auto relative overflow-hidden shrink-0 bg-gray-50 flex items-center justify-center">
+                    <img 
+                      src={ann.image_url} 
+                      alt={ann.title} 
+                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500" 
+                      onError={(e) => { (e.target as any).style.display = 'none'; }}
+                    />
+                  </div>
+                )}
+                <div className="p-5 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[9px] font-black uppercase tracking-wider bg-orange-100 text-orange-700 px-2 py-0.5 rounded-md">
+                      📢 Update / सूचना
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-mono">
+                      {new Date(ann.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-base sm:text-lg mb-1.5 leading-tight font-public-sans">
+                    {ann.title}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-sans whitespace-pre-line">
+                    {ann.content}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 border border-red-100 text-sm">{error}</div>

@@ -62,6 +62,8 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [tourOpen, setTourOpen] = useState(true);
   const [includeBlocks, setIncludeBlocks] = useState(true);
   const [inkMode, setInkMode] = useState<'color' | 'black' | 'blue'>('color');
+  const [hideSerpentineArrows, setHideSerpentineArrows] = useState(false);
+  const [hideHouseNumbers, setHideHouseNumbers] = useState(false);
 
   // Tab system
   const [activeTab, setActiveTab] = useState<ViewTab>('sketch');
@@ -169,9 +171,14 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     const isL = orient === 'landscape';
     const long = 2000;
     const short = 1400;
-    renderMapToCanvas(c, { ...mapData, orientation: orient }, isL ? long : short, isL ? short : long, { watermark: false, inkMode });
+    renderMapToCanvas(c, { ...mapData, orientation: orient }, isL ? long : short, isL ? short : long, {
+      watermark: false,
+      inkMode,
+      hideSerpentineArrows,
+      hideHouseNumbers
+    });
     setMapImg(c.toDataURL('image/jpeg', 0.9));
-  }, [mapData, orient, inkMode]);
+  }, [mapData, orient, inkMode, hideSerpentineArrows, hideHouseNumbers]);
 
   useEffect(() => { if (mapImg) { setZoom(1); setRotate(0); setPanX(0); setPanY(0); } }, [mapImg]);
 
@@ -302,7 +309,9 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     (exportData as any).includeBlockSheets = includeBlocks;
     (exportData as any).renderOptions = {
       ...((mapData as any).renderOptions || {}),
-      inkMode
+      inkMode,
+      hideSerpentineArrows,
+      hideHouseNumbers
     };
     if (aiChunks && aiChunks.length > 0) {
       exportData.aiMapChunks = aiChunks;
@@ -1085,6 +1094,36 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                         {mode === 'color' ? '🎨 Color' : mode === 'black' ? '⬛ Black' : '🟦 Blue'}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-3">
+                  <p className="text-xs font-bold text-slate-500 mb-2">नक्शा अनुकूलन / Map Toggles</p>
+                  <div className="space-y-2 bg-gray-50 border border-slate-200/50 rounded-xl p-3">
+                    <label className="flex items-center justify-between cursor-pointer select-none">
+                      <div className="flex flex-col pr-2">
+                        <span className="text-xs font-bold text-slate-700">🔄 ऑटो सर्पीला मार्ग (Route Arrows)</span>
+                        <span className="text-[9px] text-slate-400 font-normal">Show serpentine arrows & START/END badges</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={!hideSerpentineArrows}
+                        onChange={(e) => setHideSerpentineArrows(!e.target.checked)}
+                        className="w-4 h-4 text-orange-500 border-gray-300 rounded focus:ring-orange-400 cursor-pointer"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between border-t border-slate-200/40 pt-2 cursor-pointer select-none">
+                      <div className="flex flex-col pr-2">
+                        <span className="text-xs font-bold text-slate-700">🔢 मकान नंबर (House Numbers)</span>
+                        <span className="text-[9px] text-slate-400 font-normal">Show house numbers inside shapes</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={!hideHouseNumbers}
+                        onChange={(e) => setHideHouseNumbers(!e.target.checked)}
+                        className="w-4 h-4 text-orange-500 border-gray-300 rounded focus:ring-orange-400 cursor-pointer"
+                      />
+                    </label>
                   </div>
                 </div>
               </div>

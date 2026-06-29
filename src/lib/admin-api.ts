@@ -368,3 +368,64 @@ export async function deleteDonation(id: string): Promise<void> {
     throw new Error("No rows deleted. Make sure the database schema is updated and policies allow deletes.");
   }
 }
+
+export interface DailyStat {
+  date: string;
+  newUsers: number;
+  newProjects: number;
+}
+
+export async function fetchAdminTimelineStats(days: number = 14): Promise<DailyStat[]> {
+  const [usersRes, projectsRes] = await Promise.all([
+    supabase.from('user_profiles').select('created_at'),
+    supabase.from('projects').select('created_at')
+  ]);
+
+  if (usersRes.error) throw usersRes.error;
+  if (projectsRes.error) throw projectsRes.error;
+
+  const users = usersRes.data || [];
+  const projects = projectsRes.data || [];
+
+  const statsMap: Record<string, { newUsers: number; newProjects: number }> = {};
+
+  const toLocalDateString = (dateInput: string) => {
+    const d = new Date(dateInput);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Initialize the last N days
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    const dateStr = toLocalDateString(d.toISOString());
+    statsMap[dateStr] = { newUsers: 0, newProjects: 0 };
+  }
+
+  // Aggregate users
+  users.forEach(u => {
+    if (!u.created_at) return;
+    const dateStr = toLocalDateString(u.created_at);
+    if (statsMap[dateStr]) {
+      statsMap[dateStr].newUsers += 1;
+    }
+  });
+
+  // Aggregate projects
+  projects.forEach(p => {
+    if (!p.created_at) return;
+    const dateStr = toLocalDateString(p.created_at);
+    if (statsMap[dateStr]) {
+      statsMap[dateStr].newProjects += 1;
+    }
+  });
+
+  return Object.keys(statsMap).sort().map(date => ({
+    date,
+    newUsers: statsMap[date].newUsers,
+    newProjects: statsMap[date].newProjects
+  }));
+}

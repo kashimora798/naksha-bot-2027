@@ -346,17 +346,25 @@ export async function fetchAdminDonations(): Promise<AdminDonation[]> {
 }
 
 export async function verifyDonation(id: string, isPaid: boolean): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('donations')
     .update({ is_paid: isPaid })
-    .eq('id', id);
+    .eq('id', id)
+    .select();
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("No rows updated. Make sure the database schema is updated and policies allow updates.");
+  }
 }
 
 export async function deleteDonation(id: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('donations')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .select();
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error("No rows deleted. Make sure the database schema is updated and policies allow deletes.");
+  }
 }

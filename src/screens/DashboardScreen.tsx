@@ -74,7 +74,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [showDonate, setShowDonate] = useState(false);
   const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [selectedAnnouncement, setSelectedAnnouncement] = useState<any | null>(null);
+  const [showAnnouncementsModal, setShowAnnouncementsModal] = useState(false);
 
   const checkLimitAndStart = (action: () => void) => {
     if (projects.length >= 7) {
@@ -227,6 +227,18 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {announcements.length > 0 && (
+              <button
+                onClick={() => setShowAnnouncementsModal(true)}
+                className="relative p-2 bg-orange-50 border border-orange-200 rounded-xl text-sm font-semibold text-orange-600 hover:bg-orange-100 transition-colors flex items-center justify-center min-w-[36px] min-h-[36px] sm:min-w-[40px] sm:min-h-[40px]"
+                title="View Announcements / सूचनाएं"
+              >
+                <span className="text-base sm:text-lg">🔔</span>
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white font-bold text-[9px] w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
+                  {announcements.length}
+                </span>
+              </button>
+            )}
             <button
               onClick={() => setShowWhatsApp(true)}
               className="px-3 sm:px-4 py-2 bg-green-50 border border-green-200 rounded-xl text-sm font-semibold text-green-700 hover:bg-green-100 transition-colors flex items-center gap-1.5"
@@ -267,48 +279,6 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">Pick up where you left off, or start something new.</p>
         </div>
-
-        {/* ── Announcements Banner ── */}
-        {announcements.length > 0 && (
-          <div className="mb-6 space-y-4">
-            {announcements.map(ann => (
-              <div 
-                key={ann.id} 
-                onClick={() => setSelectedAnnouncement(ann)}
-                className="bg-white border border-orange-100 rounded-2xl shadow-[var(--shadow-warm-1)] overflow-hidden flex flex-col md:flex-row hover:border-orange-200 hover:shadow-[var(--shadow-warm-2)] hover:scale-[0.995] active:scale-[0.99] cursor-pointer transition-all group"
-                title="Click to view details / विवरण देखने के लिए क्लिक करें"
-              >
-                {ann.image_url && (
-                  <div className="md:w-1/3 h-32 md:h-auto relative overflow-hidden shrink-0 bg-gray-50 flex items-center justify-center">
-                    <img 
-                      src={ann.image_url} 
-                      alt={ann.title} 
-                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500" 
-                      onError={(e) => { (e.target as any).style.display = 'none'; }}
-                    />
-                  </div>
-                )}
-                <div className="p-5 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[9px] font-black uppercase tracking-wider bg-orange-100 text-orange-700 px-2 py-0.5 rounded-md">
-                      📢 Update / सूचना
-                    </span>
-                    <span className="text-[10px] text-gray-400 font-mono">
-                      {new Date(ann.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <h3 className="font-bold text-slate-800 text-base sm:text-lg mb-1.5 leading-tight font-public-sans">
-                    {ann.title}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-sans line-clamp-2">
-                    {ann.content}
-                  </p>
-                  <span className="text-[10px] text-orange-500 font-bold mt-2 hover:underline">Read details →</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
 
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 border border-red-100 text-sm">{error}</div>
@@ -843,46 +813,60 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
           </div>
         </div>
       )}
-      {/* Announcement Detail Modal */}
-      {selectedAnnouncement && (
+      {/* Announcements List Modal */}
+      {showAnnouncementsModal && (
         <div className="fixed inset-0 z-[3000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden relative max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
-            <button 
-              onClick={() => setSelectedAnnouncement(null)} 
-              className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center font-bold text-lg transition-colors"
-              aria-label="Close"
-            >
-              ×
-            </button>
-            {selectedAnnouncement.image_url && (
-              <div className="w-full h-48 sm:h-56 relative overflow-hidden shrink-0 bg-gray-100">
-                <img 
-                  src={selectedAnnouncement.image_url} 
-                  alt={selectedAnnouncement.title} 
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            )}
-            <div className="p-6 overflow-y-auto flex-1">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-[9px] font-black uppercase tracking-wider bg-orange-100 text-orange-700 px-2 py-0.5 rounded-md">
-                  📢 Update / सूचना
-                </span>
-                <span className="text-[10px] text-gray-400 font-mono">
-                  {new Date(selectedAnnouncement.created_at).toLocaleDateString()}
-                </span>
-              </div>
-              <h3 className="font-bold text-slate-800 text-lg sm:text-xl mb-3 leading-tight font-public-sans">
-                {selectedAnnouncement.title}
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-sans whitespace-pre-line">
-                {selectedAnnouncement.content}
-              </p>
-            </div>
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden relative max-h-[85vh] flex flex-col animate-in fade-in zoom-in duration-200">
+            {/* Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+              <span className="font-bold flex items-center gap-2 text-base font-[Baloo_2]">
+                🔔 घोषणाएं / Announcements
+              </span>
               <button 
-                onClick={() => setSelectedAnnouncement(null)}
-                className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl shadow transition-colors"
+                onClick={() => setShowAnnouncementsModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-lg font-bold transition-all"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Announcements List */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {announcements.map((ann, idx) => (
+                <div key={ann.id} className={`flex flex-col gap-3 pb-6 ${idx < announcements.length - 1 ? 'border-b border-slate-100' : ''}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-wider bg-orange-100 text-orange-700 px-2 py-0.5 rounded-md">
+                      Update {idx + 1}
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-mono">
+                      {new Date(ann.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-base leading-tight font-public-sans">
+                    {ann.title}
+                  </h3>
+                  {ann.image_url && (
+                    <div className="w-full h-44 relative overflow-hidden rounded-2xl bg-gray-50 border border-slate-100 shrink-0">
+                      <img 
+                        src={ann.image_url} 
+                        alt={ann.title} 
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as any).style.display = 'none'; }}
+                      />
+                    </div>
+                  )}
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-sans whitespace-pre-line">
+                    {ann.content}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
+              <button 
+                onClick={() => setShowAnnouncementsModal(false)}
+                className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl shadow transition-colors w-full sm:w-auto"
               >
                 Close / बंद करें
               </button>

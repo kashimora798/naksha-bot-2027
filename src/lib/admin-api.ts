@@ -370,6 +370,8 @@ export interface AdminDonation {
   note: string | null;
   created_at: string;
   is_paid?: boolean | null;
+  payment_id?: string | null;
+  payment_status?: string | null;
   // joined
   owner_name?: string | null;
   owner_mobile?: string | null;

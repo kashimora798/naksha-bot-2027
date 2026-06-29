@@ -27,20 +27,32 @@ serve(async (req) => {
     )
 
     const { data: { user } } = await supabaseClient.auth.getUser()
-    if (!user) throw new Error('Not authenticated')
  
     const { projectId, sessionId, kind } = await req.json()
-    const targetKind = kind === 'live' ? 'live' : kind === 'regen' ? 'regen' : kind === 'live_regen' ? 'live_regen' : 'project'
+    const targetKind = kind === 'live' ? 'live' : kind === 'regen' ? 'regen' : kind === 'live_regen' ? 'live_regen' : kind === 'donation' ? 'donation' : 'project'
     const targetId = (targetKind === 'live' || targetKind === 'live_regen') ? (sessionId || projectId) : projectId
     if (!targetId) throw new Error(`Missing ${targetKind.startsWith('live') ? 'sessionId' : 'projectId'}`)
+
+    if (!user && targetKind !== 'donation') throw new Error('Not authenticated')
  
     let isAlreadyPaid = false;
-    if (targetKind === 'live') {
+    let donationAmount = MAP_PRICE;
+
+    if (targetKind === 'donation') {
+      const { data: don } = await supabaseClient
+        .from('donations')
+        .select('*')
+        .eq('id', targetId)
+        .maybeSingle()
+      if (!don) throw new Error('Donation record not found')
+      if (don.is_paid || don.payment_status === 'paid') isAlreadyPaid = true;
+      donationAmount = Number(don.amount);
+    } else if (targetKind === 'live') {
       const { data: liveExport } = await supabaseClient
         .from('live_exports')
         .select('session_id, payment_status')
         .eq('session_id', targetId)
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .maybeSingle()
       if (liveExport?.payment_status === 'paid') isAlreadyPaid = true;
     } else if (targetKind === 'live_regen') {
@@ -48,7 +60,7 @@ serve(async (req) => {
         .from('live_exports')
         .select('session_id, payment_status')
         .eq('session_id', targetId)
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .maybeSingle()
       if (!liveExport) throw new Error('Live survey session not found')
       if (liveExport.payment_status !== 'paid') {
@@ -59,7 +71,7 @@ serve(async (req) => {
         .from('projects')
         .select('id, payment_status')
         .eq('id', targetId)
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .single()
       if (!project) throw new Error('Project not found or unauthorized')
       if (project.payment_status === 'paid') isAlreadyPaid = true;
@@ -69,7 +81,7 @@ serve(async (req) => {
         .from('projects')
         .select('id, payment_status')
         .eq('id', targetId)
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .single()
       if (!project) throw new Error('Project not found or unauthorized')
       if (project.payment_status !== 'paid') {
@@ -77,17 +89,24 @@ serve(async (req) => {
       }
     }
  
-    if (targetKind !== 'regen' && isAlreadyPaid) {
+    if (targetKind !== 'regen' && targetKind !== 'donation' && isAlreadyPaid) {
       return new Response(JSON.stringify({ error: 'Already paid' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
  
-    // Real customer phone from the profile (Cashfree needs a valid 10-digit number).
-    const { data: profile } = await supabaseClient
-      .from('user_profiles').select('mobile').eq('id', user.id).maybeSingle()
-    const phone = (profile?.mobile || '').replace(/\D/g, '').slice(-10)
-    const customerPhone = phone.length === 10 ? phone : '9999999999'
+    // Real customer details
+    const customerId = user ? user.id.replace(/-/g, '') : 'guest_donator'
+    const customerEmail = user ? (user.email || 'surveyor@example.com') : 'guest@example.com'
+    const customerName = user ? (user.user_metadata?.full_name || user.email || 'Surveyor') : 'Guest Donator'
+
+    let customerPhone = '9999999999'
+    if (user) {
+      const { data: profile } = await supabaseClient
+        .from('user_profiles').select('mobile').eq('id', user.id).maybeSingle()
+      const phone = (profile?.mobile || '').replace(/\D/g, '').slice(-10)
+      if (phone.length === 10) customerPhone = phone
+    }
  
     const APP_ID = Deno.env.get('CASHFREE_APP_ID')
     const SECRET_KEY = Deno.env.get('CASHFREE_SECRET_KEY')
@@ -95,22 +114,24 @@ serve(async (req) => {
     // Unique order id per attempt — reusing the projectId breaks retries after a
     // failed/expired order (Cashfree rejects duplicate order_id). We store it in
     // projects.payment_id or live_exports.payment_id; the webhook matches on that.
-    const orderPrefix = targetKind === 'live' ? 'live' : targetKind === 'regen' ? 'reg' : targetKind === 'live_regen' ? 'lrg' : 'ord'
+    const orderPrefix = targetKind === 'live' ? 'live' : targetKind === 'regen' ? 'reg' : targetKind === 'live_regen' ? 'lrg' : targetKind === 'donation' ? 'don' : 'ord'
     const orderId = `${orderPrefix}_${targetId.replace(/-/g, '')}_${Date.now().toString(36)}`.slice(0, 45)
  
     const orderPayload = {
-      order_amount: MAP_PRICE,
+      order_amount: targetKind === 'donation' ? donationAmount : MAP_PRICE,
       order_currency: 'INR',
       order_id: orderId,
       customer_details: {
-        customer_id: user.id.replace(/-/g, ''),
-        customer_email: user.email || 'surveyor@example.com',
+        customer_id: customerId,
+        customer_email: customerEmail,
         customer_phone: customerPhone,
-        customer_name: user.user_metadata?.full_name || user.email || 'Surveyor',
+        customer_name: customerName,
       },
       order_meta: {
         // Return URL with the correct kind so we know how to handle it
-        return_url: (targetKind === 'live' || targetKind === 'live_regen')
+        return_url: targetKind === 'donation'
+          ? `${req.headers.get('origin')}/app?payment=success&donation_id=${targetId}&kind=donation`
+          : (targetKind === 'live' || targetKind === 'live_regen')
           ? `${req.headers.get('origin')}/live-session/${targetId}?payment=success&kind=${targetKind}`
           : `${req.headers.get('origin')}/app?payment=success&project_id=${targetId}&kind=${targetKind}`,
       },
@@ -133,18 +154,27 @@ serve(async (req) => {
       throw new Error('Failed to create Cashfree order: ' + JSON.stringify(cashfreeData))
     }
  
-    // Persist the order id so the webhook / verify-payment can find this project/live-export.
-    // MUST use the service role: payment_id is locked by the guard trigger.
+    // Persist the order id so the webhook / verify-payment can find this project/live-export/donation.
+    // MUST use the service role.
     const admin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
-    if (targetKind === 'live_regen') {
+    if (targetKind === 'donation') {
+      const { error: donErr } = await admin
+        .from('donations')
+        .update({ payment_id: cashfreeData.order_id, payment_session_id: cashfreeData.payment_session_id, payment_status: 'unpaid' })
+        .eq('id', targetId)
+      if (donErr) {
+        console.error('Failed to store donation payment_id:', donErr)
+        throw new Error('Could not record the donation order')
+      }
+    } else if (targetKind === 'live_regen') {
       const { error: liveErr } = await admin
         .from('live_exports')
         .update({ payment_id: cashfreeData.order_id })
         .eq('session_id', targetId)
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
       if (liveErr) {
         console.error('Failed to store live regen payment_id:', liveErr)
         throw new Error('Could not record the live regen order')
@@ -152,7 +182,7 @@ serve(async (req) => {
     } else if (targetKind === 'live') {
       const { error: liveErr } = await admin
         .from('live_exports')
-        .upsert({ session_id: targetId, user_id: user.id, payment_id: cashfreeData.order_id, payment_status: 'unpaid' })
+        .upsert({ session_id: targetId, user_id: user!.id, payment_id: cashfreeData.order_id, payment_status: 'unpaid' })
       if (liveErr) {
         console.error('Failed to store live payment_id:', liveErr)
         throw new Error('Could not record the live order')

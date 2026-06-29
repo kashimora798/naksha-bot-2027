@@ -75,6 +75,46 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [showDonate, setShowDonate] = useState(false);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [showAnnouncementsModal, setShowAnnouncementsModal] = useState(false);
+  const [verifyingDonation, setVerifyingDonation] = useState(false);
+  const [showThankYouDonation, setShowThankYouDonation] = useState(false);
+  const [verifiedDonationDetails, setVerifiedDonationDetails] = useState<any | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isPaymentSuccess = params.get('payment') === 'success';
+    const donationId = params.get('donation_id');
+    const kind = params.get('kind');
+
+    if (isPaymentSuccess && kind === 'donation' && donationId) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      setVerifyingDonation(true);
+      supabase.functions.invoke('verify-payment', {
+        body: { projectId: donationId, kind: 'donation' }
+      }).then(({ data, error }) => {
+        if (error || !data?.paid) {
+          setVerifyingDonation(false);
+          alert("Donation verification pending. If money was debited, it will reflect in the admin panel shortly.");
+        } else {
+          // Fetch the donation details to show and share
+          supabase.from('donations')
+            .select('*')
+            .eq('id', donationId)
+            .maybeSingle()
+            .then(({ data: donRecord }) => {
+              setVerifyingDonation(false);
+              if (donRecord) {
+                setVerifiedDonationDetails(donRecord);
+              }
+              setShowThankYouDonation(true);
+            });
+        }
+      }).catch(err => {
+        console.error('Error verifying donation:', err);
+        setVerifyingDonation(false);
+      });
+    }
+  }, []);
 
   const checkLimitAndStart = (action: () => void) => {
     if (projects.length >= 7) {
@@ -871,6 +911,66 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                 Close / बंद करें
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Donation Verifying Loader Modal ── */}
+      {verifyingDonation && (
+        <div className="fixed inset-0 z-[5000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 text-center max-w-sm w-full shadow-2xl animate-in zoom-in duration-200">
+            <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <h3 className="font-bold text-slate-800 text-lg mb-1 font-[Baloo_2]">Verifying Donation...</h3>
+            <p className="text-xs text-slate-500">कृपया प्रतीक्षा करें, आपका योगदान सत्यापित किया जा रहा है...</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Donation Thank You Success Modal ── */}
+      {showThankYouDonation && (
+        <div className="fixed inset-0 z-[5000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-8 text-center max-w-sm w-full shadow-2xl animate-in zoom-in duration-200 relative">
+            <button
+              onClick={() => setShowThankYouDonation(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-650 text-xl font-bold leading-none"
+            >×</button>
+            <div className="text-6xl mb-4 animate-bounce">❤️</div>
+            <h3 className="font-bold text-orange-600 text-2xl mb-2 font-[Baloo_2]">योगदान के लिए धन्यवाद!</h3>
+            <h4 className="font-bold text-slate-700 text-sm mb-4 font-sans">Thank You for Your Support!</h4>
+            <p className="text-xs text-slate-500 leading-relaxed mb-5">
+              आपकी मदद एक छात्र के सपनों और शिक्षा को जारी रखने में बेहद बहुमूल्य है। NakshaBot को सहारा देने के लिए आपका हृदय से आभार!
+            </p>
+
+            {verifiedDonationDetails && (
+              <button
+                onClick={() => {
+                  const text = `नमस्ते / Hello,
+
+मैंने NakshaBot (Nazri Naksha Maker) की पढ़ाई में सहायता के लिए सफलतापूर्वक योगदान दिया है!
+I have successfully contributed to support your studies!
+
+💖 विवरण (Donation Details):
+- नाम (Name): ${verifiedDonationDetails.name || 'Anonymous'}
+- राशि (Amount): ₹${verifiedDonationDetails.amount}
+- संदेश (Message): ${verifiedDonationDetails.note || 'Study Support'}
+- भुगतान आईडी (Payment ID): ${verifiedDonationDetails.payment_id || verifiedDonationDetails.id}
+
+शुभकामनाएं / Best wishes!`;
+                  const waUrl = `https://wa.me/919696240590?text=${encodeURIComponent(text)}`;
+                  window.open(waUrl, '_blank');
+                }}
+                className="w-full mb-2 py-3 bg-green-500 hover:bg-green-600 text-white font-black text-xs rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+              >
+                💬 व्हाट्सएप पर रसीद भेजें (Share Proof)
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowThankYouDonation(false)}
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+            >
+              Close / बंद करें
+            </button>
           </div>
         </div>
       )}

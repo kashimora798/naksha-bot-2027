@@ -162,13 +162,21 @@ export default function AdminDonationsScreen() {
               <div className="flex items-start justify-between gap-4 mb-3">
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-lg font-black text-orange-400 font-mono">₹{d.amount}</span>
-                  {d.is_paid ? (
+                  {d.is_paid || d.payment_status === 'paid' ? (
                     <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/20 font-semibold font-mono">
-                      ✓ Paid / Verified
+                      ✓ Paid (Success)
+                    </span>
+                  ) : d.payment_status === 'failed' ? (
+                    <span className="bg-rose-500/10 text-rose-400 text-[10px] px-2 py-0.5 rounded-full border border-rose-500/20 font-semibold font-mono">
+                      ❌ Failed
+                    </span>
+                  ) : d.payment_status === 'abandoned' ? (
+                    <span className="bg-gray-500/15 text-gray-400 text-[10px] px-2 py-0.5 rounded-full border border-gray-800 font-semibold font-mono">
+                      🏳️ Abandoned
                     </span>
                   ) : (
                     <span className="bg-amber-500/10 text-amber-400 text-[10px] px-2 py-0.5 rounded-full border border-amber-500/20 font-semibold font-mono">
-                      ⏳ Pending Click
+                      ⏳ Unpaid / Pending
                     </span>
                   )}
                   {d.user_id ? (
@@ -200,13 +208,19 @@ export default function AdminDonationsScreen() {
                 </span>
               </div>
               
-              <div className="bg-gray-950/60 rounded-lg p-3 border border-gray-800/40 text-sm mb-4">
-                <div className="flex gap-2 mb-1.5 text-xs text-gray-500">
-                  <span className="font-semibold">Submitter Name/Note:</span>
+              <div className="bg-gray-950/60 rounded-lg p-3 border border-gray-800/40 text-sm mb-4 space-y-1.5">
+                <div className="flex gap-2 text-xs text-gray-500">
+                  <span className="font-semibold w-24 shrink-0">Donor Name:</span>
                   <span className="text-gray-300 font-medium">{d.name || <span className="italic text-gray-600">None specified</span>}</span>
                 </div>
+                {d.payment_id && (
+                  <div className="flex gap-2 text-xs text-gray-500">
+                    <span className="font-semibold w-24 shrink-0">Cashfree ID:</span>
+                    <span className="text-orange-400 font-mono select-all">{d.payment_id}</span>
+                  </div>
+                )}
                 <div className="flex gap-2 text-xs text-gray-500">
-                  <span className="font-semibold">UPI Pre-filled Note:</span>
+                  <span className="font-semibold w-24 shrink-0">Message/Note:</span>
                   <span className="text-gray-300 font-medium">{d.note || <span className="italic text-gray-600">None specified</span>}</span>
                 </div>
               </div>

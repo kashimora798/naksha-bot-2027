@@ -36,13 +36,43 @@ serve(async (req) => {
     const isLive = kind === 'live'
     const isRegen = kind === 'regen'
     const isLiveRegen = kind === 'live_regen'
+    const isDonation = kind === 'donation'
  
     const admin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
  
-    if (isLive || isLiveRegen) {
+    if (isDonation) {
+      const { data: don } = await admin
+        .from('donations')
+        .select('id, payment_status, payment_id, is_paid')
+        .eq('id', projectId).maybeSingle()
+      if (!don) return json({ error: 'Donation not found' }, 404)
+ 
+      if (don.payment_status === 'paid' || don.is_paid) return json({ paid: true })
+      if (!don.payment_id) return json({ paid: false, reason: 'no order' })
+ 
+      const cf = await fetch(`${CASHFREE_BASE}/orders/${encodeURIComponent(don.payment_id)}`, {
+        headers: {
+          'x-client-id': Deno.env.get('CASHFREE_APP_ID') ?? '',
+          'x-client-secret': Deno.env.get('CASHFREE_SECRET_KEY') ?? '',
+          'x-api-version': '2025-01-01',
+        },
+      })
+      const order = await cf.json()
+      if (!cf.ok || order?.order_status !== 'PAID') {
+        if (order?.order_status === 'FAILED') {
+          await admin.from('donations').update({ payment_status: 'failed' }).eq('id', projectId)
+        } else if (order?.order_status === 'EXPIRED') {
+          await admin.from('donations').update({ payment_status: 'abandoned' }).eq('id', projectId)
+        }
+        return json({ paid: false, reason: order?.order_status || 'unconfirmed' })
+      }
+ 
+      await admin.from('donations').update({ is_paid: true, payment_status: 'paid' }).eq('id', projectId)
+      return json({ paid: true })
+    } else if (isLive || isLiveRegen) {
       const { data: liveExport } = await admin
         .from('live_exports')
         .select('session_id, user_id, payment_status, payment_id')

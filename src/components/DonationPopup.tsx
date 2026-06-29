@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { load } from '@cashfreepayments/cashfree-js';
 
 interface Props {
   isOpen: boolean;
@@ -13,6 +14,7 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
   const [customAmount, setCustomAmount] = useState('');
   const [customNote, setCustomNote] = useState('');
   const [copiedText, setCopiedText] = useState<'upi' | 'phone' | null>(null);
+  const [loadingPayment, setLoadingPayment] = useState(false);
 
   const handleCopy = (text: string, type: 'upi' | 'phone') => {
     try {
@@ -23,28 +25,6 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
       console.error('Clipboard copy failed:', err);
     }
   };
-  const [generatedPayment, setGeneratedPayment] = useState<{
-    amount: string;
-    note: string;
-    upiUrl: string;
-    qrCodeUrl: string;
-    expiresAt: number;
-  } | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number>(300);
-
-  useEffect(() => {
-    if (!generatedPayment) return;
-
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.round((generatedPayment.expiresAt - Date.now()) / 1000));
-      setTimeLeft(remaining);
-      if (remaining === 0) {
-        clearInterval(interval);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [generatedPayment]);
 
   if (!isOpen) return null;
 
@@ -62,29 +42,57 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
       : 'School fees & stationery help';
     const finalNote = noteStr.trim() || defaultNote;
 
-    const upiUrl = `upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR&am=${amt}&tn=${encodeURIComponent(finalNote)}`;
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiUrl)}&margin=10`;
-
-    setGeneratedPayment({
-      amount: String(amt),
-      note: finalNote,
-      upiUrl,
-      qrCodeUrl,
-      expiresAt: Date.now() + 5 * 60 * 1000
-    });
-    setTimeLeft(300);
-
-    // Save intent to DB (persistent)
+    setLoadingPayment(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('donations').insert({
-        amount: amt,
-        name: finalNote,
-        note: finalNote,
-        user_id: user?.id || null
+
+      // 1. Save unpaid intent to DB to get a unique donation id
+      const { data: don, error: donErr } = await supabase
+        .from('donations')
+        .insert({
+          amount: amt,
+          name: finalNote,
+          note: finalNote,
+          user_id: user?.id || null,
+          payment_status: 'unpaid'
+        })
+        .select('id')
+        .single();
+
+      if (donErr || !don) {
+        throw new Error(donErr?.message || 'Failed to create donation intent');
+      }
+
+      // 2. Invoke create-cashfree-payment edge function
+      const { data: cfRes, error: cfErr } = await supabase.functions.invoke('create-cashfree-payment', {
+        body: { kind: 'donation', projectId: don.id }
       });
-    } catch (err) {
-      console.error('Error saving donation intent to DB:', err);
+
+      if (cfErr || !cfRes?.paymentSessionId) {
+        throw new Error(cfErr?.message || 'Failed to initiate Cashfree checkout session');
+      }
+
+      // 3. Load Cashfree JS SDK and checkout
+      const cashfree = await load({
+        mode: import.meta.env.VITE_CASHFREE_MODE === 'production' ? 'production' : 'sandbox'
+      });
+
+      if (cashfree) {
+        await cashfree.checkout({ 
+          paymentSessionId: cfRes.paymentSessionId, 
+          redirectTarget: '_self' 
+        });
+      } else {
+        throw new Error('Cashfree SDK failed to load');
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(isHindi 
+        ? 'भुगतान शुरू करने में त्रुटि: ' + err.message 
+        : 'Error starting payment: ' + err.message
+      );
+    } finally {
+      setLoadingPayment(false);
     }
   };
 
@@ -93,14 +101,6 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
     handleGeneratePayment(customAmount, customNote);
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
   return (
     <div className="fixed inset-0 z-[4000] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden my-8 transition-all animate-in fade-in zoom-in duration-200">
@@ -108,7 +108,8 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
         <div className="bg-gradient-to-br from-orange-500 to-amber-500 px-6 py-5 text-white text-center relative">
           <button 
             onClick={onClose}
-            className="absolute top-3 right-4 text-white/70 hover:text-white text-xl font-bold leading-none"
+            disabled={loadingPayment}
+            className="absolute top-3 right-4 text-white/70 hover:text-white text-xl font-bold leading-none disabled:opacity-50"
             aria-label="Close"
             style={{ minHeight: 'auto' }}
           >
@@ -162,231 +163,131 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
 
           {/* Language Toggle Button */}
           <button 
+            type="button"
+            disabled={loadingPayment}
             onClick={() => setIsHindi(!isHindi)}
-            className="w-full py-1.5 text-[11px] text-slate-400 font-semibold border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors"
+            className="w-full py-1.5 text-[11px] text-slate-400 font-semibold border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
             style={{ minHeight: '32px' }}
           >
             {isHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
           </button>
 
-          {/* Dynamic Payment State Panel */}
-          {generatedPayment ? (
-            <div className="space-y-4 pt-3 border-t border-slate-100 text-center animate-in fade-in slide-in-from-bottom-2 duration-200">
-              <div className="bg-orange-50/70 border border-orange-100/80 rounded-2xl p-4 flex flex-col items-center">
-                <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 mb-0.5">
-                  {isHindi ? 'भुगतान की राशि' : 'Contribution Amount'}
-                </span>
-                <span className="text-3xl font-black text-orange-500 font-mono">₹{generatedPayment.amount}</span>
-                {generatedPayment.note && (
-                  <span className="text-xs text-slate-500 mt-1 italic font-medium">
-                    "{generatedPayment.note}"
-                  </span>
-                )}
-              </div>
+          {/* Static Quick Scan Option */}
+          <div className="flex flex-col items-center justify-center p-3.5 bg-slate-50 rounded-2xl border border-slate-100/80">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+              {isHindi ? 'त्वरित स्कैन (Scan for Quick Pay)' : 'Scan for Quick Pay'}
+            </p>
+            <img 
+              src="/images/donation_qr.jpg" 
+              alt="UPI QR Code" 
+              className="w-44 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
+              onError={(e) => { (e.target as any).style.display = 'none'; }}
+            />
+          </div>
 
-              {timeLeft > 0 ? (
-                <div className="flex flex-col items-center gap-3.5">
-                  {/* QR Code Container */}
-                  <div className="bg-white p-3 rounded-3xl border border-slate-200 shadow-sm relative">
-                    <img 
-                      src={generatedPayment.qrCodeUrl} 
-                      alt="UPI QR Code" 
-                      className="w-48 h-48 rounded-xl"
-                    />
-                  </div>
-
-                  {/* Countdown Timer */}
-                  <div className="text-xs font-bold text-slate-600 flex items-center gap-1.5 bg-slate-100 px-4 py-1.5 rounded-full font-mono shadow-sm">
-                    <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping"></span>
-                    <span>
-                      {isHindi 
-                        ? `QR कोड सक्रिय (समय शेष: ${formatTime(timeLeft)})` 
-                        : `QR Code Active (Expires in: ${formatTime(timeLeft)})`}
-                    </span>
-                  </div>
-
-                  {/* Payment Button or No-App Warning */}
-                  {isMobile ? (
-                    <a
-                      href={generatedPayment.upiUrl}
-                      className="w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
-                    >
-                      📱 {isHindi ? 'UPI ऐप से भुगतान करें' : 'Pay via UPI App'}
-                    </a>
-                  ) : (
-                    <div className="w-full p-3.5 bg-rose-50 border border-rose-100 rounded-2xl text-[11px] text-rose-800 font-semibold leading-relaxed">
-                      ⚠️ {isHindi 
-                        ? 'डेस्कटॉप पर कोई UPI ऐप नहीं मिला (No UPI App Available)। कृपया अपने मोबाइल से ऊपर दिए गए QR कोड को स्कैन करके भुगतान करें।' 
-                        : 'No UPI apps available on desktop. Please scan the QR code above using any UPI app on your phone.'}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-3 py-6 text-center">
-                  <div className="text-4xl animate-bounce">⏰</div>
-                  <p className="text-sm font-black text-rose-500">
-                    {isHindi ? 'QR कोड की समय सीमा समाप्त (Expired)' : 'QR Code has expired'}
-                  </p>
+          {/* Fixed Amount Selection */}
+          <div className="space-y-1.5 pt-2 border-t border-slate-100">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              {isHindi ? 'मदद के लिए राशि चुनें (Select Support Amount)' : 'Choose support amount'}
+            </p>
+            <div className="grid grid-cols-4 gap-1.5 font-jetbrains-mono">
+              {fixedAmounts.map(amt => {
+                const isSelected = customAmount === String(amt);
+                return (
                   <button
-                    onClick={() => handleGeneratePayment(generatedPayment.amount, generatedPayment.note)}
-                    className="px-6 py-2.5 bg-orange-500 text-white font-black text-xs rounded-xl hover:bg-orange-600 transition-colors shadow-md active:scale-95"
+                    type="button"
+                    key={amt}
+                    disabled={loadingPayment}
+                    onClick={() => setCustomAmount(String(amt))}
+                    className={`py-2.5 text-center font-bold text-xs rounded-xl active:scale-95 transition-all flex items-center justify-center gap-0.5 ${
+                      isSelected
+                        ? 'bg-orange-500 text-white border-orange-600 shadow-sm'
+                        : 'bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100'
+                    }`}
+                    style={{ minHeight: '38px' }}
                   >
-                    🔄 {isHindi ? 'नया QR कोड जेनरेट करें' : 'Regenerate QR Code'}
+                    ₹{amt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom Amount Form */}
+          <form onSubmit={handleFormSubmit} className="space-y-2 pt-2 border-t border-slate-100">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              {isHindi ? 'या अन्य राशि और संदेश लिखें (Or enter other amount & note)' : 'Or custom amount & message'}
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                value={customAmount}
+                disabled={loadingPayment}
+                onChange={e => setCustomAmount(e.target.value)}
+                placeholder={isHindi ? 'राशि ₹ (Amount)' : 'Amount ₹'}
+                className="w-1/3 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400 font-bold text-slate-800"
+                min="1"
+                required
+              />
+              <input
+                type="text"
+                value={customNote}
+                disabled={loadingPayment}
+                onChange={e => setCustomNote(e.target.value)}
+                placeholder={isHindi ? 'अपना नाम / संदेश (Your Name/Msg)' : 'Your Name / Message'}
+                className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400 text-slate-800"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loadingPayment}
+              className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+              style={{ minHeight: '44px' }}
+            >
+              {loadingPayment ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>🚀 {isHindi ? 'सुरक्षित भुगतान करें (Pay Securely)' : 'Pay Securely via Cashfree'}</>
+              )}
+            </button>
+          </form>
+
+          {/* Backup Manual Payment Methods (inside form scroll area) */}
+          <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-left">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
+              {isHindi ? '⚠️ ऑनलाइन भुगतान विफल होने पर बैकअप विकल्प' : '⚠️ Manual Pay Option (If Gateway Fails)'}
+            </p>
+            <div className="flex flex-col gap-1.5 text-xs font-mono">
+              <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-400">UPI ID</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-700 font-bold select-all text-[11px]">8318810984-1@nyes</span>
+                  <button
+                    type="button"
+                    disabled={loadingPayment}
+                    onClick={() => handleCopy('8318810984-1@nyes', 'upi')}
+                    className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    {copiedText === 'upi' ? 'Copied!' : 'Copy'}
                   </button>
                 </div>
-              )}
-
-              {/* Backup Manual Payment Methods (inside generatedPayment scroll area) */}
-              <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3 space-y-2 text-left">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
-                  {isHindi ? '⚠️ QR काम न करने पर बैकअप भुगतान विकल्प' : '⚠️ Manual Pay Option (If QR Fails)'}
-                </p>
-                <div className="flex flex-col gap-1.5 text-xs font-mono">
-                  <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100">
-                    <span className="text-[10px] font-bold text-slate-400">UPI ID</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-700 font-bold select-all text-[11px]">8318810984-1@nyes</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy('8318810984-1@nyes', 'upi')}
-                        className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
-                      >
-                        {copiedText === 'upi' ? 'Copied!' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100">
-                    <span className="text-[10px] font-bold text-slate-400">PHONE</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-700 font-bold select-all text-[11px]">8318810984</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy('8318810984', 'phone')}
-                        className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
-                      >
-                        {copiedText === 'phone' ? 'Copied!' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
+              </div>
+              <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
+                <span className="text-[10px] font-bold text-slate-400">PHONE</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-700 font-bold select-all text-[11px]">8318810984</span>
+                  <button
+                    type="button"
+                    disabled={loadingPayment}
+                    onClick={() => handleCopy('8318810984', 'phone')}
+                    className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    {copiedText === 'phone' ? 'Copied!' : 'Copy'}
+                  </button>
                 </div>
               </div>
-
-              <button
-                onClick={() => setGeneratedPayment(null)}
-                className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors animate-pulse"
-              >
-                ← {isHindi ? 'दूसरी राशि चुनें' : 'Choose different amount'}
-              </button>
             </div>
-          ) : (
-            <>
-              {/* Static Quick Scan Option */}
-              <div className="flex flex-col items-center justify-center p-3.5 bg-slate-50 rounded-2xl border border-slate-100/80">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                  {isHindi ? 'त्वरित स्कैन (Scan for Quick Pay)' : 'Scan for Quick Pay'}
-                </p>
-                <img 
-                  src="/images/donation_qr.jpg" 
-                  alt="UPI QR Code" 
-                  className="w-44 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
-                />
-              </div>
-
-              {/* Fixed Amount Selection */}
-              <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  {isHindi ? 'मदद के लिए राशि चुनें (Select Support Amount)' : 'Choose support amount'}
-                </p>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {fixedAmounts.map(amt => {
-                    const isSelected = customAmount === String(amt);
-                    return (
-                      <button
-                        type="button"
-                        key={amt}
-                        onClick={() => setCustomAmount(String(amt))}
-                        className={`py-2.5 text-center font-bold text-xs rounded-xl active:scale-95 transition-all flex items-center justify-center gap-0.5 ${
-                          isSelected
-                            ? 'bg-orange-500 text-white border-orange-600 shadow-sm'
-                            : 'bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100'
-                        }`}
-                        style={{ minHeight: '38px' }}
-                      >
-                        ₹{amt}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Custom Amount Form */}
-              <form onSubmit={handleFormSubmit} className="space-y-2 pt-2 border-t border-slate-100">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  {isHindi ? 'या अन्य राशि और संदेश लिखें (Or enter other amount & note)' : 'Or custom amount & message'}
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={customAmount}
-                    onChange={e => setCustomAmount(e.target.value)}
-                    placeholder={isHindi ? 'राशि ₹ (Amount)' : 'Amount ₹'}
-                    className="w-1/3 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400 font-bold text-slate-800"
-                    min="1"
-                    required
-                  />
-                  <input
-                    type="text"
-                    value={customNote}
-                    onChange={e => setCustomNote(e.target.value)}
-                    placeholder={isHindi ? 'अपना नाम / संदेश (Your Name/Msg)' : 'Your Name / Message'}
-                    className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400 text-slate-800"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
-                  style={{ minHeight: '44px' }}
-                >
-                  🚀 {isHindi ? 'UPI QR कोड जेनरेट करें' : 'Generate UPI QR Code'}
-                </button>
-              </form>
-
-              {/* Backup Manual Payment Methods (inside form scroll area) */}
-              <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-left">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
-                  {isHindi ? '⚠️ QR काम न करने पर बैकअप भुगतान विकल्प' : '⚠️ Manual Pay Option (If QR Fails)'}
-                </p>
-                <div className="flex flex-col gap-1.5 text-xs font-mono">
-                  <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
-                    <span className="text-[10px] font-bold text-slate-400">UPI ID</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-700 font-bold select-all text-[11px]">8318810984-1@nyes</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy('8318810984-1@nyes', 'upi')}
-                        className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
-                      >
-                        {copiedText === 'upi' ? 'Copied!' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
-                    <span className="text-[10px] font-bold text-slate-400">PHONE</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-700 font-bold select-all text-[11px]">8318810984</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy('8318810984', 'phone')}
-                        className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
-                      >
-                        {copiedText === 'phone' ? 'Copied!' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
+          </div>
         </div>
 
         {/* Footer actions */}
@@ -394,16 +295,20 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
           <p className="text-center text-[10px] text-slate-400 font-medium font-mono">UPI: 8318810984-1@nyes</p>
           {isPrintArea ? (
             <button 
+              type="button"
               onClick={onClose}
-              className="w-full py-2 text-slate-500 text-xs font-semibold rounded-xl hover:bg-slate-100 transition-colors"
+              disabled={loadingPayment}
+              className="w-full py-2 text-slate-500 text-xs font-semibold rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-50"
               style={{ minHeight: '36px' }}
             >
               {isHindi ? 'बाद में' : 'Maybe later'}
             </button>
           ) : (
             <button 
+              type="button"
               onClick={onMute24h}
-              className="w-full py-2 text-slate-500 text-xs font-semibold rounded-xl hover:bg-slate-100 transition-colors"
+              disabled={loadingPayment}
+              className="w-full py-2 text-slate-500 text-xs font-semibold rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-50"
               style={{ minHeight: '36px' }}
             >
               {isHindi ? '24 घंटे के लिए बंद करें (Mute)' : 'Mute for 24 hours'}

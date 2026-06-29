@@ -142,6 +142,11 @@ serve(async (req) => {
     const orderPrefix = targetKind === 'live' ? 'live' : targetKind === 'regen' ? 'reg' : targetKind === 'live_regen' ? 'lrg' : targetKind === 'donation' ? 'don' : 'ord'
     const orderId = `${orderPrefix}_${targetId.replace(/-/g, '')}_${Date.now().toString(36)}`.slice(0, 45)
  
+    // Use SITE_URL env var for production (must be HTTPS for Cashfree).
+    // Fallback: read the request Origin header (works fine on localhost with sandbox mode).
+    const rawOrigin = req.headers.get('origin') || ''
+    const siteUrl = (Deno.env.get('SITE_URL') || rawOrigin).replace(/\/$/, '')
+
     const orderPayload = {
       order_amount: targetKind === 'donation' ? donationAmount : MAP_PRICE,
       order_currency: 'INR',
@@ -155,10 +160,10 @@ serve(async (req) => {
       order_meta: {
         // Return URL with the correct kind so we know how to handle it
         return_url: targetKind === 'donation'
-          ? `${req.headers.get('origin')}/app?payment=success&donation_id=${targetId}&kind=donation`
+          ? `${siteUrl}/app?payment=success&donation_id=${targetId}&kind=donation`
           : (targetKind === 'live' || targetKind === 'live_regen')
-          ? `${req.headers.get('origin')}/live-session/${targetId}?payment=success&kind=${targetKind}`
-          : `${req.headers.get('origin')}/app?payment=success&project_id=${targetId}&kind=${targetKind}`,
+          ? `${siteUrl}/live-session/${targetId}?payment=success&kind=${targetKind}`
+          : `${siteUrl}/app?payment=success&project_id=${targetId}&kind=${targetKind}`,
       },
     }
  

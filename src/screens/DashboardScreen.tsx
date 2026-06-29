@@ -74,6 +74,19 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
   const [showDonate, setShowDonate] = useState(false);
   const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<any | null>(null);
+
+  const checkLimitAndStart = (action: () => void) => {
+    if (projects.length >= 7) {
+      alert(
+        "⚠️ सीमा समाप्त / Limit Reached:\n" +
+        "आप अधिकतम 7 प्रोजेक्ट ही बना सकते हैं। नया प्रोजेक्ट बनाने के लिए कृपया पुराना प्रोजेक्ट हटाएं।\n\n" +
+        "You can create a maximum of 7 projects. Please delete an existing project before creating a new one."
+      );
+      return;
+    }
+    action();
+  };
 
   useEffect(() => {
     supabase
@@ -261,7 +274,9 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             {announcements.map(ann => (
               <div 
                 key={ann.id} 
-                className="bg-white border border-orange-100 rounded-2xl shadow-[var(--shadow-warm-1)] overflow-hidden flex flex-col md:flex-row hover:border-orange-200 transition-all group"
+                onClick={() => setSelectedAnnouncement(ann)}
+                className="bg-white border border-orange-100 rounded-2xl shadow-[var(--shadow-warm-1)] overflow-hidden flex flex-col md:flex-row hover:border-orange-200 hover:shadow-[var(--shadow-warm-2)] hover:scale-[0.995] active:scale-[0.99] cursor-pointer transition-all group"
+                title="Click to view details / विवरण देखने के लिए क्लिक करें"
               >
                 {ann.image_url && (
                   <div className="md:w-1/3 h-32 md:h-auto relative overflow-hidden shrink-0 bg-gray-50 flex items-center justify-center">
@@ -285,9 +300,10 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                   <h3 className="font-bold text-slate-800 text-base sm:text-lg mb-1.5 leading-tight font-public-sans">
                     {ann.title}
                   </h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-sans whitespace-pre-line">
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-sans line-clamp-2">
                     {ann.content}
                   </p>
+                  <span className="text-[10px] text-orange-500 font-bold mt-2 hover:underline">Read details →</span>
                 </div>
               </div>
             ))}
@@ -301,7 +317,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
         {/* ── Primary action cards ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <button
-            onClick={() => onNewProject(undefined)}
+            onClick={() => checkLimitAndStart(() => onNewProject(undefined))}
             className="group text-left p-4 rounded-2xl bg-[var(--color-saffron-container)] text-white shadow-[var(--shadow-warm-2)] hover:brightness-105 active:scale-[0.99] transition-all"
           >
             <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl mb-2.5">🗺️</div>
@@ -310,7 +326,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <p className="text-[10px] text-white/60 mt-1 leading-snug hidden sm:block">सैटेलाइट से HLB नक्शा बनाएं</p>
           </button>
           <button
-            onClick={handleStartCanvasMap}
+            onClick={() => checkLimitAndStart(handleStartCanvasMap)}
             className="group text-left p-4 rounded-2xl bg-white border border-emerald-100 shadow-[var(--shadow-warm-1)] hover:shadow-[var(--shadow-warm-2)] active:scale-[0.99] transition-all"
           >
             <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-xl mb-2.5">🧩</div>
@@ -517,7 +533,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                     <p className="text-sm text-gray-600 max-w-sm mx-auto mb-5">पहले tour लें — 2 मिनट में पूरा तरीका समझें। फिर अपना नक्शा बनाएं।</p>
                     <div className="flex flex-wrap gap-3 justify-center">
                       <button onClick={onDemoMap} className="px-5 py-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]">🎓 Tour देखें / Take Tour</button>
-                      <button onClick={() => onNewProject(undefined)} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold text-sm shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">नक्शा बनाएं →</button>
+                      <button onClick={() => checkLimitAndStart(() => onNewProject(undefined))} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold text-sm shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">नक्शा बनाएं →</button>
                     </div>
                   </div>
                 ) : (
@@ -532,7 +548,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-base font-bold font-public-sans text-[var(--color-charcoal)]">🧩 ब्लॉक नक्शे <span className="text-gray-400 font-normal text-sm">/ Block Maps</span></h2>
-                  <button onClick={handleStartCanvasMap} className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl font-bold text-xs shadow active:scale-95 transition-all">+ नया</button>
+                  <button onClick={() => checkLimitAndStart(handleStartCanvasMap)} className="px-3 py-1.5 bg-emerald-500 text-white rounded-xl font-bold text-xs shadow active:scale-95 transition-all">+ नया</button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{canvasProjects.map(p => renderCard(p, true))}</div>
               </div>
@@ -823,6 +839,53 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
                   Proceed to Create Map →
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Announcement Detail Modal */}
+      {selectedAnnouncement && (
+        <div className="fixed inset-0 z-[3000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden relative max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-200">
+            <button 
+              onClick={() => setSelectedAnnouncement(null)} 
+              className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center font-bold text-lg transition-colors"
+              aria-label="Close"
+            >
+              ×
+            </button>
+            {selectedAnnouncement.image_url && (
+              <div className="w-full h-48 sm:h-56 relative overflow-hidden shrink-0 bg-gray-100">
+                <img 
+                  src={selectedAnnouncement.image_url} 
+                  alt={selectedAnnouncement.title} 
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[9px] font-black uppercase tracking-wider bg-orange-100 text-orange-700 px-2 py-0.5 rounded-md">
+                  📢 Update / सूचना
+                </span>
+                <span className="text-[10px] text-gray-400 font-mono">
+                  {new Date(selectedAnnouncement.created_at).toLocaleDateString()}
+                </span>
+              </div>
+              <h3 className="font-bold text-slate-800 text-lg sm:text-xl mb-3 leading-tight font-public-sans">
+                {selectedAnnouncement.title}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-sans whitespace-pre-line">
+                {selectedAnnouncement.content}
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button 
+                onClick={() => setSelectedAnnouncement(null)}
+                className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl shadow transition-colors"
+              >
+                Close / बंद करें
+              </button>
             </div>
           </div>
         </div>

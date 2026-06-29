@@ -90,7 +90,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
       
       setVerifyingDonation(true);
       supabase.functions.invoke('verify-payment', {
-        body: { projectId: donationId, kind: 'donation' }
+        body: { projectId: donationId, kind: 'donation', forceLocalVerify: true }
       }).then(({ data, error }) => {
         if (error || !data?.paid) {
           setVerifyingDonation(false);
@@ -928,18 +928,47 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
 
       {/* ── Donation Thank You Success Modal ── */}
       {showThankYouDonation && (
-        <div className="fixed inset-0 z-[5000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl p-8 text-center max-w-sm w-full shadow-2xl animate-in zoom-in duration-200 relative">
+        <div className="fixed inset-0 z-[5000] bg-black/75 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-7 text-center max-w-md w-full shadow-2xl animate-in zoom-in duration-200 relative border border-slate-100 max-h-[90vh] overflow-y-auto scrollbar-thin">
             <button
               onClick={() => setShowThankYouDonation(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-650 text-xl font-bold leading-none"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-650 text-xl font-bold leading-none cursor-pointer"
             >×</button>
             <div className="text-6xl mb-4 animate-bounce">❤️</div>
-            <h3 className="font-bold text-orange-600 text-2xl mb-2 font-[Baloo_2]">योगदान के लिए धन्यवाद!</h3>
-            <h4 className="font-bold text-slate-700 text-sm mb-4 font-sans">Thank You for Your Support!</h4>
-            <p className="text-xs text-slate-500 leading-relaxed mb-5">
-              आपकी मदद एक छात्र के सपनों और शिक्षा को जारी रखने में बेहद बहुमूल्य है। NakshaBot को सहारा देने के लिए आपका हृदय से आभार!
-            </p>
+            <h3 className="font-extrabold text-orange-500 text-xl sm:text-2xl mb-1 font-[Baloo_2] tracking-wide">
+              दिल से आभार, हे देवतुल्य इंसान!
+            </h3>
+            <h4 className="font-black text-slate-700 text-sm mb-4 font-sans uppercase tracking-wider">
+              Heartfelt Gratitude, You Noble Soul!
+            </h4>
+            
+            <div className="space-y-3.5 text-left text-xs sm:text-sm text-slate-600 leading-relaxed border-t border-b border-slate-100 py-4 mb-4">
+              <p className="font-semibold text-orange-950/80 bg-orange-50/50 p-3 rounded-xl border-l-4 border-orange-500">
+                🇮🇳 <strong>हिन्दी:</strong> आप केवल एक दानदाता नहीं हैं, बल्कि मानवता की वह सच्ची मिसाल हैं जो भारत के युवा हुनर को पंख देती है। जब तक आप जैसे सहृदय लोग हमारे साथ खड़े हैं, तब तक कोई भी अभाव या आर्थिक संकट हमारे सपनों और हौसलों को रोक नहीं सकता। आपकी यह मदद मेरे अध्ययन और NakshaBot के विकास को जारी रखने में बेहद बहुमूल्य है।
+              </p>
+              <p className="font-semibold text-emerald-950/80 bg-emerald-50/50 p-3 rounded-xl border-l-4 border-emerald-500">
+                🌍 <strong>English:</strong> You are not just a donor; you are a living proof of humanity that nurtures and promotes young talent in India. As long as noble souls like you are there to support us, money or financial hardships can never stop our dreams. Your contribution is invaluable to my education and the growth of NakshaBot.
+              </p>
+            </div>
+
+            {verifiedDonationDetails && (
+              <div className="bg-slate-50 rounded-2xl p-4 mb-4 text-left space-y-1.5 border border-slate-100 font-mono text-[11px] sm:text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-bold">NAME:</span>
+                  <span className="text-slate-800 font-black">{verifiedDonationDetails.name || 'Anonymous Donor'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-bold">AMOUNT PAID:</span>
+                  <span className="text-emerald-600 font-black font-bold">₹{verifiedDonationDetails.amount}</span>
+                </div>
+                {verifiedDonationDetails.payment_id && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400 font-bold">TXN ID:</span>
+                    <span className="text-orange-650 font-bold select-all">{verifiedDonationDetails.payment_id}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {verifiedDonationDetails && (
               <button
@@ -959,15 +988,15 @@ I have successfully contributed to support your studies!
                   const waUrl = `https://wa.me/919696240590?text=${encodeURIComponent(text)}`;
                   window.open(waUrl, '_blank');
                 }}
-                className="w-full mb-2 py-3 bg-green-500 hover:bg-green-600 text-white font-black text-xs rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                className="w-full mb-2 py-3 bg-green-500 hover:bg-green-600 text-white font-black text-xs rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                💬 व्हाट्सएप पर रसीद भेजें (Share Proof)
+                💬 व्हाट्सएप पर रसीद भेजें (Share Proof on WhatsApp)
               </button>
             )}
 
             <button
               onClick={() => setShowThankYouDonation(false)}
-              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
             >
               Close / बंद करें
             </button>

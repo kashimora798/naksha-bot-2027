@@ -82,6 +82,7 @@ export interface AdminStats {
   total_sessions: number;
   paid_sessions: number;
   total_feedback: number;
+  returning_users: number;
 }
 
 // ─── Guard: confirm current user is admin ─────────────────────────────────────
@@ -101,22 +102,76 @@ export async function checkIsAdmin(): Promise<boolean> {
 
 export async function fetchAdminStats(): Promise<AdminStats> {
   const [users, projects, sessions, feedbacks] = await Promise.all([
-    supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-    supabase.from('projects').select('payment_status', { count: 'exact' }),
+    supabase.from('user_profiles').select('id, created_at, updated_at'),
+    supabase.from('projects').select('user_id, created_at, updated_at, payment_status'),
     supabase.from('live_exports').select('payment_status', { count: 'exact' }),
     supabase.from('feedbacks').select('id', { count: 'exact', head: true }),
   ]);
 
-  const paidProjects = (projects.data || []).filter(p => p.payment_status === 'paid').length;
+  if (users.error) throw users.error;
+  if (projects.error) throw projects.error;
+  if (sessions.error) throw sessions.error;
+  if (feedbacks.error) throw feedbacks.error;
+
+  const usersList = users.data || [];
+  const projectsList = projects.data || [];
+
+  const paidProjects = projectsList.filter(p => p.payment_status === 'paid').length;
   const paidSessions = (sessions.data || []).filter(s => s.payment_status === 'paid').length;
 
+  // A returning user is one who has updated their profile or has a project created/updated on a different calendar day than signup.
+  const returningUsersSet = new Set<string>();
+
+  const toLocalDateStr = (dStr: string) => {
+    const d = new Date(dStr);
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  };
+
+  const signupDates: Record<string, string> = {};
+  usersList.forEach(u => {
+    if (u.id && u.created_at) {
+      signupDates[u.id] = toLocalDateStr(u.created_at);
+    }
+  });
+
+  // Check project dates
+  projectsList.forEach(p => {
+    if (!p.user_id) return;
+    const signupDate = signupDates[p.user_id];
+    if (!signupDate) return;
+
+    if (p.created_at) {
+      const pCreated = toLocalDateStr(p.created_at);
+      if (pCreated !== signupDate) {
+        returningUsersSet.add(p.user_id);
+      }
+    }
+    if (p.updated_at) {
+      const pUpdated = toLocalDateStr(p.updated_at);
+      if (pUpdated !== signupDate) {
+        returningUsersSet.add(p.user_id);
+      }
+    }
+  });
+
+  // Also check user profile updates
+  usersList.forEach(u => {
+    if (!u.id || !u.created_at || !u.updated_at) return;
+    const signupDate = toLocalDateStr(u.created_at);
+    const lastUpdate = toLocalDateStr(u.updated_at);
+    if (signupDate !== lastUpdate) {
+      returningUsersSet.add(u.id);
+    }
+  });
+
   return {
-    total_users: users.count ?? 0,
-    total_projects: projects.count ?? 0,
+    total_users: usersList.length,
+    total_projects: projectsList.length,
     paid_projects: paidProjects,
     total_sessions: sessions.count ?? 0,
     paid_sessions: paidSessions,
     total_feedback: feedbacks.count ?? 0,
+    returning_users: returningUsersSet.size,
   };
 }
 

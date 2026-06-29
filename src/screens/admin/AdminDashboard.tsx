@@ -68,11 +68,25 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* Revenue Snapshot Card */}
+        {/* Retention & Revenue Snapshots Column */}
         <div className="flex flex-col gap-6">
           {stats && (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex-1 flex flex-col justify-center">
-              <p className="text-gray-550 text-xs font-bold uppercase tracking-wider mb-2">Estimated Revenue</p>
+              <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-2">Retention Snapshot</p>
+              <p className="text-3xl font-black text-pink-400 font-mono">
+                {stats.returning_users} <span className="text-xs font-normal text-gray-500 font-sans">users</span>
+              </p>
+              <p className="text-gray-500 text-xs mt-2 leading-relaxed">
+                <span className="text-pink-300 font-bold">
+                  {stats.total_users > 0 ? ((stats.returning_users / stats.total_users) * 100).toFixed(1) : 0}%
+                </span> of registered surveyors returned to update profiles or edit maps on a different day.
+              </p>
+            </div>
+          )}
+
+          {stats && (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex-1 flex flex-col justify-center">
+              <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-2">Estimated Revenue</p>
               <p className="text-4xl font-black text-emerald-400 font-mono">
                 ₹{((stats.paid_projects + stats.paid_sessions) * 25).toLocaleString('en-IN')}
               </p>

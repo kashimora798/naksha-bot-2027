@@ -102,8 +102,8 @@ export async function checkIsAdmin(): Promise<boolean> {
 
 export async function fetchAdminStats(): Promise<AdminStats> {
   const [users, projects, sessions, feedbacks] = await Promise.all([
-    supabase.from('user_profiles').select('id, created_at, updated_at'),
-    supabase.from('projects').select('user_id, created_at, updated_at, payment_status'),
+    supabase.from('user_profiles').select('id, created_at, updated_at', { count: 'exact' }).range(0, 9999),
+    supabase.from('projects').select('user_id, created_at, updated_at, payment_status', { count: 'exact' }).range(0, 9999),
     supabase.from('live_exports').select('payment_status', { count: 'exact' }),
     supabase.from('feedbacks').select('id', { count: 'exact', head: true }),
   ]);
@@ -165,8 +165,8 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   });
 
   return {
-    total_users: usersList.length,
-    total_projects: projectsList.length,
+    total_users: users.count ?? 0,
+    total_projects: projects.count ?? 0,
     paid_projects: paidProjects,
     total_sessions: sessions.count ?? 0,
     paid_sessions: paidSessions,

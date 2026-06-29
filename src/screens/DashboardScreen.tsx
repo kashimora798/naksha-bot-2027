@@ -92,22 +92,14 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
       supabase.functions.invoke('verify-payment', {
         body: { projectId: donationId, kind: 'donation', forceLocalVerify: true }
       }).then(({ data, error }) => {
+        setVerifyingDonation(false);
         if (error || !data?.paid) {
-          setVerifyingDonation(false);
           alert("Donation verification pending. If money was debited, it will reflect in the admin panel shortly.");
         } else {
-          // Fetch the donation details to show and share
-          supabase.from('donations')
-            .select('*')
-            .eq('id', donationId)
-            .maybeSingle()
-            .then(({ data: donRecord }) => {
-              setVerifyingDonation(false);
-              if (donRecord) {
-                setVerifiedDonationDetails(donRecord);
-              }
-              setShowThankYouDonation(true);
-            });
+          if (data?.donation) {
+            setVerifiedDonationDetails(data.donation);
+          }
+          setShowThankYouDonation(true);
         }
       }).catch(err => {
         console.error('Error verifying donation:', err);

@@ -46,11 +46,11 @@ serve(async (req) => {
     if (isDonation) {
       const { data: don } = await admin
         .from('donations')
-        .select('id, payment_status, payment_id, is_paid')
+        .select('*')
         .eq('id', projectId).maybeSingle()
       if (!don) return json({ error: 'Donation not found' }, 404)
  
-      if (don.payment_status === 'paid' || don.is_paid) return json({ paid: true })
+      if (don.payment_status === 'paid' || don.is_paid) return json({ paid: true, donation: don })
 
       let verifySuccess = false
       if (forceLocalVerify) {
@@ -78,8 +78,13 @@ serve(async (req) => {
       }
 
       if (verifySuccess) {
-        await admin.from('donations').update({ is_paid: true, payment_status: 'paid' }).eq('id', projectId)
-        return json({ paid: true })
+        const { data: updatedDon } = await admin
+          .from('donations')
+          .update({ is_paid: true, payment_status: 'paid' })
+          .eq('id', projectId)
+          .select()
+          .single()
+        return json({ paid: true, donation: updatedDon })
       }
       return json({ paid: false, reason: 'unconfirmed' })
     } else if (isLive || isLiveRegen) {

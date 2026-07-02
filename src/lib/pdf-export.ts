@@ -1044,9 +1044,9 @@ export async function exportBlockPDF(
 
   const blocks = data.blocks && data.blocks.length > 0 ? data.blocks : [];
   const includeBlockSheets = (data as any).includeBlockSheets !== false;
-  const selectedAiImages: string[] = (data as any).selectedAiImages || [];
-  const aiImagesToPrint = selectedAiImages.length > 0 
-    ? selectedAiImages 
+  const selectedAiImages: string[] | undefined = (data as any).selectedAiImages;
+  const aiImagesToPrint = selectedAiImages !== undefined
+    ? selectedAiImages
     : (data.surveyMapBase64 ? [data.surveyMapBase64] : []);
 
   // Overview has 1 layout page, plus 1 block index page if blocks exist

@@ -275,7 +275,6 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <LanguageSelector />
             {announcements.length > 0 && (
               <button
                 onClick={() => setShowAnnouncementsModal(true)}

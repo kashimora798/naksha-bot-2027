@@ -62,7 +62,6 @@ export default function AppHeader({ currentStep, maxStep, setStep, saveStatus, o
         </div>
 
         <div className="flex items-center gap-3">
-          <LanguageSelector />
           {inMap && (
             <span className={`text-[10px] sm:text-xs px-2 py-1 rounded-full border ${saveStatus === 'error' ? 'text-red-500 bg-red-50 border-red-100' : 'text-gray-500 bg-gray-50 border-gray-100'}`}>
               {saveStatus === 'saving' ? '⏳ Saving...' : saveStatus === 'saved' ? '✓ Saved' : '⚠️ Save Failed'}

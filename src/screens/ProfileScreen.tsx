@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { LanguageSelector } from '../lib/i18n';
 
 interface Props {
   user: any;
@@ -91,6 +92,14 @@ export default function ProfileScreen({ user, userProfile, onClose, onSaved }: P
                 <input value={user?.email || ''} disabled
                   className="w-full bg-slate-100 border border-slate-200 p-3 rounded-xl text-sm text-slate-500" />
               </div>
+            </div>
+          </div>
+          
+          <div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Language (भाषा)</p>
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-700">App Language</span>
+              <LanguageSelector />
             </div>
           </div>
 

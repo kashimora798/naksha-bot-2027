@@ -118,7 +118,6 @@ export default function LandingScreen() {
             <a href="#features" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">Features</a>
           </div>
           <div className="flex items-center gap-4">
-            <LanguageSelector />
             <Link to="/sign-in" className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</Link>
             <Link to="/sign-up" className="text-sm font-bold bg-slate-900 text-white px-6 py-2.5 rounded-full hover:bg-slate-800 transition-all transform hover:scale-105 active:scale-95 shadow-md inline-block">
               Get Started

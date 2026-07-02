@@ -292,15 +292,38 @@ export function renderMapToCanvas(
 
   // ─── WATER BODIES ───────────────────────────────────────
   for (const wb of (data.waterBodies || [])) {
+    let cx = 0, cy = 0;
     if (wb.type === 'pond' && wb.coords.length >= 3) {
       const pts = wb.coords.map(c => proj(c));
-      ctx.fillStyle = 'rgba(66,165,245,0.25)';
+      ctx.fillStyle = colorMap('rgba(66,165,245,0.25)');
       ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = '#1565C0'; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = colorMap('#1565C0'); ctx.lineWidth = 1.5;
       ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.stroke();
+      
+      cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+      cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
     } else if (wb.coords.length >= 2) {
-      ctx.strokeStyle = '#1565C0'; ctx.lineWidth = wb.type === 'river' ? 3 : 1.5;
+      ctx.strokeStyle = colorMap('#1565C0'); ctx.lineWidth = wb.type === 'river' ? 3 : 1.5;
       ctx.beginPath(); wb.coords.forEach((c, i) => { const [x, y] = proj(c); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.stroke();
+      
+      const midIdx = Math.floor(wb.coords.length / 2);
+      if (wb.coords[midIdx]) {
+        const [mx, my] = proj(wb.coords[midIdx]);
+        cx = mx; cy = my;
+      }
+    }
+
+    if (wb.name && cx > 0 && cy > 0) {
+      ctx.save();
+      ctx.fillStyle = colorMap('#1565C0');
+      ctx.font = `bold ${Math.max(8, symSz * 0.45)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 3;
+      ctx.strokeText(`💧 ${wb.name}`, cx, cy);
+      ctx.fillText(`💧 ${wb.name}`, cx, cy);
+      ctx.restore();
     }
   }
 
@@ -308,11 +331,26 @@ export function renderMapToCanvas(
   for (const fa of (data.forests || [])) {
     if (fa.points.length < 3) continue;
     const pts = fa.points.map(c => proj(c));
-    ctx.fillStyle = 'rgba(76,175,80,0.18)';
+    ctx.fillStyle = colorMap('rgba(76,175,80,0.18)');
     ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+    ctx.strokeStyle = colorMap('#2E7D32'); ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
     ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.stroke();
     ctx.setLineDash([]);
+
+    if (fa.name) {
+      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+      const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+      ctx.save();
+      ctx.fillStyle = colorMap('#2E7D32');
+      ctx.font = `bold ${Math.max(8, symSz * 0.45)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 3;
+      ctx.strokeText(`🌲 ${fa.name}`, cx, cy);
+      ctx.fillText(`🌲 ${fa.name}`, cx, cy);
+      ctx.restore();
+    }
   }
 
   // ─── BLOCKS ─────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 
-export type Language = 'en' | 'hi' | 'mr' | 'gu' | 'kn' | 'ta' | 'te' | 'ml';
+export type Language = 'en' | 'hi' | 'mr' | 'gu' | 'kn' | 'ta' | 'te' | 'ml' | 'ml_kkd';
 
 export interface TranslationDict {
   // Navigation & General
@@ -581,6 +581,69 @@ const translations: Record<Language, TranslationDict> = {
     hideHouseNumbers: "വീട്ടു നമ്പറുകൾ മറയ്ക്കുക",
     watermark: "വാട്ടർമാർക്ക്",
     downloading: "ഡൗൺലോഡ് തയ്യാറാകുന്നു..."
+  },
+  ml_kkd: {
+    brand: "നക്ഷാബോട്ട്",
+    subBrand: "സെൻസസ് 2027 മാപ്പിംഗ്",
+    myMaps: "എന്റെ മാപ്പുകൾ",
+    sharedMaps: "പങ്കിട്ട മാപ്പുകൾ",
+    liveDrafts: "ലൈവ് സർവേ ഡ്രാഫ്റ്റുകൾ",
+    newMap: "+ പുതിയ മാപ്പ്",
+    searchPlaceholder: "മാപ്പുകൾ തിരയുക...",
+    helpGroup: "സഹായ ഗ്രൂപ്പ്",
+    support: "പിന്തുണ",
+    profile: "പ്രൊഫൈൽ",
+    signOut: "സൈൻ ഔട്ട്",
+    back: "പിന്നിലേക്ക്",
+    next: "മുന്നോട്ട്",
+    cancel: "വേണ്ടെന്ന് വെക്കുക",
+    saveExit: "സേവ് ചെയ്ത് ഇറങ്ങുക",
+    loading: "ലോഡാവുന്നുണ്ട്...",
+    error: "എന്തോ തകരാറുണ്ട്",
+    submit: "സമർപ്പിക്കുക",
+    landingTitle: "സെൻസസ് 2027 HLB മാപ്പ് മേക്കർ ഓൺലൈൻ",
+    landingSubtitle: "AI സഹായത്തോടെ നിങ്ങളുടെ ഔദ്യോഗിക നസ്രി നക്ഷ ലേഔട്ട് മാപ്പുകൾ ഉടൻ നിർമ്മിക്കുക.",
+    startCreating: "മാപ്പ് നിർമ്മിക്കാൻ ആരംഭിക്കുക",
+    welcome: "സ്വാഗതം",
+    projectLimitWarning: "പരമാവധി പ്രോജക്റ്റ് പരിധി കഴിഞ്ഞു",
+    paymentStatus: "പേയ്‌മെന്റ്",
+    paid: "പണമടച്ചു",
+    unpaid: "പണമടയ്ക്കാത്തത് / സൗജന്യമായി",
+    noProjects: "മാപ്പുകളൊന്നും നിർമ്മിച്ചിട്ടില്ല. ആരംഭിക്കാൻ '+ പുതിയ മാപ്പ്' ക്ലിക്ക് ചെയ്യുക!",
+    createNewMapTitle: "പുതിയ മാപ്പ് നിർമ്മിക്കുക",
+    enterHlbNumber: "HLB നമ്പർ നൽകുക",
+    hlbPlaceholder: "ഉദാ., HLB 123",
+    step1Title: "അതിർത്തി",
+    step2Title: "റോഡുകൾ",
+    step3Title: "വീടുകൾ",
+    step4Title: "ബ്ലോക്കുകൾ",
+    step5Title: "നമ്പറിംഗ്",
+    step1Desc: "നിങ്ങളുടെ അതിർത്തി അടയാളപ്പെടുത്തുക.",
+    step2Desc: "പ്രധാന റോഡുകളും ഇടവഴികളും വരയ്ക്കുക.",
+    step3Desc: "താമസസ്ഥലങ്ങളും വ്യാപാര കെട്ടിടങ്ങളും സ്ഥാപിക്കുക.",
+    step4Desc: "ലേഔട്ട് ബ്ലോക്കുകളും കൃഷിയിടങ്ങളും അടയാളപ്പെടുത്തുക.",
+    step5Desc: "ക്രമമായി വീട്ടു നമ്പറുകൾ നൽകി പരിശോധിക്കുക.",
+    addLandmark: "അടയാളം ചേർക്കുക",
+    selectLandmarkType: "അടയാളത്തിന്റെ തരം തിരഞ്ഞെടുക്കുക",
+    deleteSelected: "തിരഞ്ഞെടുത്തവ ഇല്ലാതാക്കുക",
+    drawFarmland: "കൃഷിയിടം/വയൽ വരയ്ക്കുക",
+    drawWater: "ജലാശയം വരയ്ക്കുക",
+    drawForest: "കാട്/മരങ്ങൾ വരയ്ക്കുക",
+    drawBlock: "ബ്ലോക്ക് പ്രദേശം വരയ്ക്കുക",
+    drawRoad: "റോഡ് വരയ്ക്കുക",
+    drawBoundary: "അതിർത്തി വരയ്ക്കുക",
+    generateRoute: "വളഞ്ഞ പാത നിർമ്മിക്കുക",
+    clearAll: "എല്ലാം മായ്ക്കുക",
+    previewTitle: "പ്രിന്റ് പ്രിവ്യൂ & ലേഔട്ട്",
+    exportPdf: "PDF കയറ്റുമതി ചെയ്യുക",
+    sheetSize: "ഷീറ്റ് സൈസ്",
+    orientation: "അഭിമുഖീകരണം",
+    rotation: "മാപ്പ് തിരിക്കൽ",
+    inkMode: "കളർ മോഡ്",
+    hideRoadNames: "റോഡ് പേരുകൾ മറയ്ക്കുക",
+    hideHouseNumbers: "വീട്ടു നമ്പറുകൾ മറയ്ക്കുക",
+    watermark: "വാട്ടർമാർക്ക്",
+    downloading: "ഡൗൺലോഡ് തയ്യാറാകുന്നു..."
   }
 };
 
@@ -595,7 +658,7 @@ const LanguageContext = createContext<LanguageContextProps | undefined>(undefine
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
     const saved = localStorage.getItem('nakshabot_language');
-    if (saved === 'en' || saved === 'hi' || saved === 'mr' || saved === 'gu' || saved === 'kn' || saved === 'ta' || saved === 'te' || saved === 'ml') {
+    if (saved === 'en' || saved === 'hi' || saved === 'mr' || saved === 'gu' || saved === 'kn' || saved === 'ta' || saved === 'te' || saved === 'ml' || saved === 'ml_kkd') {
       return saved as Language;
     }
     const browserLang = navigator.language.slice(0, 2);
@@ -651,6 +714,7 @@ export const LanguageSelector: React.FC = () => {
         <option value="ta">தமிழ் (TA)</option>
         <option value="te">తెలుగు (TE)</option>
         <option value="ml">മലയാളം (ML)</option>
+        <option value="ml_kkd">മലയാളം - കോഴിക്കോട് (KKD)</option>
       </select>
     </div>
   );

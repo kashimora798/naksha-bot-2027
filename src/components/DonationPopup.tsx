@@ -101,6 +101,8 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
     handleGeneratePayment(customAmount, customNote);
   };
 
+  const upiLink = `upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&am=${customAmount || '50'}&cu=INR&tn=${encodeURIComponent(customNote || 'Donation')}`;
+
   return (
     <div className="fixed inset-0 z-[4000] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden my-8 transition-all animate-in fade-in zoom-in duration-200">
@@ -238,18 +240,25 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
                 className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:border-orange-400 text-slate-800"
               />
             </div>
-            <button
-              type="submit"
-              disabled={loadingPayment}
-              className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-              style={{ minHeight: '44px' }}
-            >
-              {loadingPayment ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>🚀 {isHindi ? 'सुरक्षित भुगतान करें (Pay Securely)' : 'Pay Securely via Cashfree'}</>
-              )}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <a
+                href={upiLink}
+                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-center font-black text-xs rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 min-h-[44px]"
+              >
+                📱 {isHindi ? 'UPI ऐप से भुगतान' : 'Pay via UPI App'}
+              </a>
+              <button
+                type="submit"
+                disabled={loadingPayment}
+                className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-xs rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 min-h-[44px]"
+              >
+                {loadingPayment ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>💳 {isHindi ? 'कैशफ्री गेटवे' : 'Pay via Cashfree'}</>
+                )}
+              </button>
+            </div>
           </form>
 
           {/* Backup Manual Payment Methods (inside form scroll area) */}

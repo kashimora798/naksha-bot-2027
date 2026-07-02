@@ -10,6 +10,7 @@ import GuidedTour from '../components/GuidedTour';
 import { DEMO_BOUNDARY, DEMO_CENTER } from '../data/demo';
 import { supabase } from '../lib/supabase';
 import { findNearestRoadBearing, getBlockOrientation } from '../lib/pdf-export';
+import { useTranslation } from '../lib/i18n';
 
 interface Props {
   step: number; center: Coordinate; boundaryPins: Coordinate[]; boundaryClosed: boolean;
@@ -89,14 +90,27 @@ function BataPanel({ symbols, onUpdateSymbols }: { symbols: PlacedSymbol[]; onUp
   );
 }
 
-export default function MapWorkspace({
-  step, center, boundaryPins, boundaryClosed, roads, symbols, hlbNumber, blocks, farmlandBlocks,
-  waterBodies, forests, landuseAreas, landmarks, areaStats,
-  onUpdateBoundary, onUpdateRoads, onUpdateSymbols, onUpdateBlocks, onUpdateFarmland,
-  onUpdateWater, onUpdateForests, onUpdateLandmarks, onUpdateStats, onUpdateOrientation,
-  onStepComplete, onJumpToPreview, onUpdateMapData, isDemoMode, onDemoComplete,
-  numberingSystem
-}: Props) {
+export default function MapWorkspace(props: Props) {
+  const {
+    step, center, boundaryClosed, hlbNumber, areaStats,
+    onUpdateBoundary, onUpdateRoads, onUpdateSymbols, onUpdateBlocks, onUpdateFarmland,
+    onUpdateWater, onUpdateForests, onUpdateLandmarks, onUpdateStats, onUpdateOrientation,
+    onStepComplete, onJumpToPreview, onUpdateMapData, isDemoMode, onDemoComplete,
+    numberingSystem
+  } = props;
+
+  const { t } = useTranslation();
+
+  const boundaryPins = props.boundaryPins || [];
+  const roads = props.roads || [];
+  const symbols = props.symbols || [];
+  const blocks = props.blocks || [];
+  const farmlandBlocks = props.farmlandBlocks || [];
+  const waterBodies = props.waterBodies || [];
+  const forests = props.forests || [];
+  const landuseAreas = props.landuseAreas || [];
+  const landmarks = props.landmarks || [];
+
   const existingMax = symbols.reduce((m, s) => Math.max(m, s.number ?? 0), 0);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);

@@ -5,6 +5,7 @@ import { idbStore, SurveySession } from '../lib/idb';
 import type { MapData } from '../types';
 import ProfileScreen from './ProfileScreen';
 import DonationPopup from '../components/DonationPopup';
+import { useTranslation, LanguageSelector } from '../lib/i18n';
 
 export interface Project {
   id: string;
@@ -31,6 +32,7 @@ interface Props {
 }
 
 export default function DashboardScreen({ user, userProfile, onLoadProject, onNewProject, onLiveSurvey, onResumeLiveSurvey, onDemoMap, onCanvasBlockMap, onProfileUpdated }: Props) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [assignedProjects, setAssignedProjects] = useState<Project[]>([]);
@@ -123,7 +125,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   }, []);
 
   const checkLimitAndStart = (action: () => void) => {
-    if (projects.length >= 7) {
+    if (projects.length >= 7 && userProfile?.is_admin !== true) {
       alert(
         "⚠️ सीमा समाप्त / Limit Reached:\n" +
         "आप अधिकतम 7 प्रोजेक्ट ही बना सकते हैं। नया प्रोजेक्ट बनाने के लिए कृपया पुराना प्रोजेक्ट हटाएं।\n\n" +
@@ -268,11 +270,12 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
           <div className="flex items-center gap-3 min-w-0">
             <img src="/logo.png" alt="NakshaBot Logo" className="w-9 h-9 sm:w-10 sm:h-10 object-contain flex-shrink-0" />
             <div className="min-w-0">
-              <h1 className="text-lg sm:text-xl font-bold font-public-sans text-[var(--color-charcoal)] truncate leading-tight">NakshaBot</h1>
-              <p className="text-[11px] sm:text-xs text-gray-500 truncate">Census 2027 Mapping</p>
+              <h1 className="text-lg sm:text-xl font-bold font-public-sans text-[var(--color-charcoal)] truncate leading-tight">{t('brand')}</h1>
+              <p className="text-[11px] sm:text-xs text-gray-500 truncate">{t('subBrand')}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            <LanguageSelector />
             {announcements.length > 0 && (
               <button
                 onClick={() => setShowAnnouncementsModal(true)}
@@ -293,25 +296,25 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 flex-shrink-0" viewBox="0 0 32 32" fill="currentColor">
                 <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.61 1.832 6.5L4 29l7.697-1.807A12.93 12.93 0 0016 28c6.627 0 12-5.373 12-12S22.627 3 16 3zm0 2c5.523 0 10 4.477 10 10s-4.477 10-10 10a10.93 10.93 0 01-5.25-1.336l-.37-.213-4.572 1.074 1.117-4.46-.234-.385A9.955 9.955 0 016 15C6 9.477 10.477 5 16 5zm-3.47 5.5c-.2 0-.52.075-.795.375C11.46 11.175 10.5 12.1 10.5 13.97c0 1.875 1.375 3.688 1.563 3.938.187.25 2.687 4.25 6.593 5.813 3.25 1.281 3.907 1.031 4.625.969.719-.063 2.313-.938 2.641-1.844.328-.906.328-1.688.226-1.844-.094-.156-.344-.25-.719-.437-.375-.188-2.219-1.094-2.563-1.219-.344-.125-.594-.188-.843.188-.25.375-.969 1.219-1.188 1.469-.218.25-.437.281-.812.094-.375-.188-1.582-.582-3.013-1.852-1.113-.992-1.863-2.215-2.082-2.59-.218-.375-.023-.578.164-.766.168-.168.375-.438.563-.656.187-.219.25-.375.375-.625.125-.25.063-.47-.031-.657-.094-.187-.844-2.031-1.157-2.78-.312-.75-.625-.65-.843-.663-.219-.012-.469-.012-.719-.012z"/>
               </svg>
-              <span className="hidden sm:inline">Help Group</span>
+              <span className="hidden sm:inline">{t('helpGroup')}</span>
             </button>
             <button
               onClick={() => setShowDonate(true)}
               className="px-3 sm:px-4 py-2 bg-orange-50 border border-orange-200 rounded-xl text-sm font-semibold text-orange-600 hover:bg-orange-100 transition-colors flex items-center gap-1.5"
             >
-              <span>🙏</span><span className="hidden sm:inline">Support</span>
+              <span>🙏</span><span className="hidden sm:inline">{t('support')}</span>
             </button>
             <button
               onClick={() => setShowProfile(true)}
               className="px-3 sm:px-4 py-2 bg-[var(--color-warm-paper)] border border-[var(--color-saffron)]/15 rounded-xl text-sm font-semibold text-gray-700 hover:bg-[var(--color-saffron)]/5 transition-colors flex items-center gap-1.5"
             >
-              <span>👤</span><span className="hidden sm:inline">Profile</span>
+              <span>👤</span><span className="hidden sm:inline">{t('profile')}</span>
             </button>
             <button
               onClick={() => supabase.auth.signOut()}
               className="px-3 sm:px-4 py-2 border border-gray-200 rounded-xl text-sm font-semibold text-gray-500 hover:bg-gray-100 transition-colors"
             >
-              Sign Out
+              {t('signOut')}
             </button>
           </div>
         </div>
@@ -538,18 +541,18 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               {/* ── Regular Desk Maps ── */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-base font-bold font-public-sans text-[var(--color-charcoal)]">🗺️ आपके नक्शे <span className="text-gray-400 font-normal text-sm">/ Your Maps</span></h2>
+                  <h2 className="text-base font-bold font-public-sans text-[var(--color-charcoal)]">🗺️ {t('myMaps')}</h2>
                   {deskProjects.length > 0 && <span className="text-xs text-gray-400 font-semibold">{deskProjects.length}</span>}
                 </div>
                 {deskProjects.length === 0 ? (
                   <div className="bg-white rounded-[24px] p-8 text-center shadow-[var(--shadow-warm-1)] border border-[var(--color-saffron)]/10">
                     <div className="w-14 h-14 rounded-2xl bg-[var(--color-saffron)]/10 flex items-center justify-center text-3xl mx-auto mb-3">🗺️</div>
-                    <h3 className="text-base font-bold font-public-sans text-[var(--color-charcoal)] mb-1">अभी तक कोई नक्शा नहीं</h3>
+                    <h3 className="text-base font-bold font-public-sans text-[var(--color-charcoal)] mb-1">{t('noProjects')}</h3>
                     <p className="text-xs text-gray-500 mb-1">No maps yet</p>
                     <p className="text-sm text-gray-600 max-w-sm mx-auto mb-5">पहले tour लें — 2 मिनट में पूरा तरीका समझें। फिर अपना नक्शा बनाएं।</p>
                     <div className="flex flex-wrap gap-3 justify-center">
                       <button onClick={onDemoMap} className="px-5 py-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl font-bold text-sm shadow-[var(--shadow-warm-1)] hover:bg-blue-100 transition-colors min-h-[52px]">🎓 Tour देखें / Take Tour</button>
-                      <button onClick={() => checkLimitAndStart(() => onNewProject(undefined))} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold text-sm shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">नक्शा बनाएं →</button>
+                      <button onClick={() => checkLimitAndStart(() => onNewProject(undefined))} className="px-5 py-3 bg-[var(--color-saffron-container)] text-white rounded-xl font-bold text-sm shadow-[var(--shadow-warm-2)] hover:bg-[var(--color-saffron)] transition-colors min-h-[52px]">{t('newMap')}</button>
                     </div>
                   </div>
                 ) : (

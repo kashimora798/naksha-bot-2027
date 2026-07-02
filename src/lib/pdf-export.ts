@@ -105,6 +105,7 @@ export function renderMapToCanvas(
     inkMode?: 'color' | 'black' | 'blue';
     hideSerpentineArrows?: boolean;
     hideHouseNumbers?: boolean;
+    rotation?: number;
   }
 ): void {
   const orient = data.orientation || 'portrait';
@@ -161,6 +162,14 @@ export function renderMapToCanvas(
     ctx.clearRect(0, 0, w, h);
   }
   if (data.boundaryPins.length < 3) return;
+
+  ctx.save();
+  const rotation = options?.rotation ?? (data as any).renderOptions?.rotation ?? 0;
+  if (rotation) {
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.translate(-w / 2, -h / 2);
+  }
 
   let pW: number, pE: number, pS: number, pN: number;
   if (options?.focusBounds) {
@@ -266,21 +275,19 @@ export function renderMapToCanvas(
     }
   }
 
-  // ─── LEGACY FARMLAND (for backward compatibility if missing in landuseAreas) ───
-  if (!data.landuseAreas || data.landuseAreas.length === 0) {
-    for (const fb of (data.farmlandBlocks || [])) {
-      if (fb.points.length < 3) continue;
-      const pts = fb.points.map(p => proj(p));
-      ctx.fillStyle = 'rgba(102,187,106,0.18)';
-      ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2; ctx.setLineDash([8, 4]);
-      ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.stroke();
-      ctx.setLineDash([]);
-      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-      ctx.fillStyle = '#2E7D32'; ctx.font = `bold ${Math.max(10, symSz * 0.5)}px sans-serif`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(cleanLabel(`🌾 ${fb.label}`), cx, cy);
-    }
+  // ─── FARMLAND BLOCKS ───────────────────────────────────────────
+  for (const fb of (data.farmlandBlocks || [])) {
+    if (fb.points.length < 3) continue;
+    const pts = fb.points.map(p => proj(p));
+    ctx.fillStyle = 'rgba(102,187,106,0.18)';
+    ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2; ctx.setLineDash([8, 4]);
+    ctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)); ctx.closePath(); ctx.stroke();
+    ctx.setLineDash([]);
+    const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+    ctx.fillStyle = '#2E7D32'; ctx.font = `bold ${Math.max(10, symSz * 0.5)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(cleanLabel(`🌾 ${fb.label}`), cx, cy);
   }
 
   // ─── WATER BODIES ───────────────────────────────────────
@@ -762,6 +769,7 @@ export function renderMapToCanvas(
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('SAMPLE', 0, 0); ctx.restore();
   }
+  ctx.restore();
   ctx.textAlign = 'left'; ctx.setLineDash([]);
 }
 

@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useTranslation, LanguageSelector } from '../lib/i18n';
 
 const STEP_NAMES = [
   'Login',
@@ -23,10 +24,22 @@ interface Props {
 
 export default function AppHeader({ currentStep, maxStep, setStep, saveStatus, onSaveAndExit, inMap }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { t } = useTranslation();
+  
   // A step is reachable once the user has been there at least once. Use the
   // furthest step reached (falls back to currentStep) so going back doesn't
   // re-lock steps the user already completed.
   const reachable = Math.max(maxStep ?? 0, currentStep);
+
+  const getStepName = (index: number) => {
+    const name = STEP_NAMES[index];
+    if (name === 'Boundary') return t('step1Title');
+    if (name === 'Roads') return t('step2Title');
+    if (name === 'Symbols') return t('step3Title');
+    if (name === 'Numbering') return t('step5Title');
+    if (name === 'Preview') return t('previewTitle');
+    return name;
+  };
 
   return (
     <>
@@ -44,11 +57,12 @@ export default function AppHeader({ currentStep, maxStep, setStep, saveStatus, o
             </svg>
           </button>
           <span className="font-semibold text-gray-800 text-sm">
-            {STEP_NAMES[currentStep - 1]}
+            {getStepName(currentStep - 1)}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
+          <LanguageSelector />
           {inMap && (
             <span className={`text-[10px] sm:text-xs px-2 py-1 rounded-full border ${saveStatus === 'error' ? 'text-red-500 bg-red-50 border-red-100' : 'text-gray-500 bg-gray-50 border-gray-100'}`}>
               {saveStatus === 'saving' ? '⏳ Saving...' : saveStatus === 'saved' ? '✓ Saved' : '⚠️ Save Failed'}
@@ -65,7 +79,7 @@ export default function AppHeader({ currentStep, maxStep, setStep, saveStatus, o
                   <polyline points="17 21 17 13 7 13 7 21"></polyline>
                   <polyline points="7 3 7 8 15 8"></polyline>
                 </svg>
-                <span className="hidden sm:inline">Save & Exit</span>
+                <span className="hidden sm:inline">{t('saveExit')}</span>
                 <span className="sm:hidden">Exit</span>
               </>
             ) : (
@@ -128,7 +142,7 @@ export default function AppHeader({ currentStep, maxStep, setStep, saveStatus, o
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${currentStep === stepNum ? 'bg-orange-500 text-white' : isClickable ? 'bg-gray-200 text-gray-600' : 'bg-gray-100 text-gray-400'}`}>
                         {stepNum}
                       </div>
-                      {name}
+                      {getStepName(i)}
                     </div>
                     {isClickable && currentStep > stepNum && <span className="text-green-500 text-sm">✓</span>}
                   </button>

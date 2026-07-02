@@ -7,6 +7,8 @@ import {
   createAdminProject,
   assignProjectToUser,
   revokeProjectAssignment,
+  transferProjectOwner,
+  searchAdminUsers,
   type AdminProject,
   type AdminUser,
   type AdminAssignment,
@@ -32,28 +34,78 @@ export default function AdminProjectsScreen() {
   // Assign modal state
   const [assignProject, setAssignProject] = useState<AdminProject | null>(null);
   const [assignments, setAssignments] = useState<AdminAssignment[]>([]);
-  const [allUsers, setAllUsers] = useState<AdminUser[]>([]);
+  const [assignUsers, setAssignUsers] = useState<AdminUser[]>([]);
   const [assignLoading, setAssignLoading] = useState(false);
   const [userSearch, setUserSearch] = useState('');
   const [assignError, setAssignError] = useState<string | null>(null);
 
+  // Transfer modal state
+  const [transferProject, setTransferProject] = useState<AdminProject | null>(null);
+  const [transferUsers, setTransferUsers] = useState<AdminUser[]>([]);
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferSearch, setTransferSearch] = useState('');
+  const [transferError, setTransferError] = useState<string | null>(null);
+
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Debounce search input to limit API calls
   useEffect(() => {
-    fetchAdminProjects()
-      .then(setProjects)
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1); // Reset page to 1 on search change
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset page to 1 when filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
+  // Fetch paginated, filtered, and searched projects
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchAdminProjects(page, 20, debouncedSearch, filter)
+      .then(res => {
+        setProjects(res.projects);
+        setTotal(res.total);
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [page, filter, debouncedSearch]);
 
-  const filtered = projects.filter(p => {
-    if (filter !== 'all' && p.payment_status !== filter) return false;
-    const q = search.toLowerCase();
-    return (
-      (p.name || '').toLowerCase().includes(q) ||
-      (p.owner_name || '').toLowerCase().includes(q) ||
-      (p.owner_mobile || '').includes(q) ||
-      (p.data?.district || '').toLowerCase().includes(q)
-    );
-  });
+  // Search users for assign modal (debounced database query)
+  useEffect(() => {
+    if (!assignProject) return;
+    setAssignLoading(true);
+    setAssignError(null);
+    const t = setTimeout(() => {
+      searchAdminUsers(userSearch)
+        .then(setAssignUsers)
+        .catch(e => setAssignError(e.message))
+        .finally(() => setAssignLoading(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [userSearch, assignProject]);
+
+  // Search users for transfer modal (debounced database query)
+  useEffect(() => {
+    if (!transferProject) return;
+    setTransferLoading(true);
+    setTransferError(null);
+    const t = setTimeout(() => {
+      searchAdminUsers(transferSearch)
+        .then(setTransferUsers)
+        .catch(e => setTransferError(e.message))
+        .finally(() => setTransferLoading(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [transferSearch, transferProject]);
+
+  const filtered = projects;
 
   const openProject = (id: string) => {
     window.open(`/app?admin_view=${id}`, '_blank');
@@ -84,12 +136,8 @@ export default function AdminProjectsScreen() {
     setUserSearch('');
     setAssignLoading(true);
     try {
-      const [asgns, users] = await Promise.all([
-        fetchProjectAssignments(project.id),
-        allUsers.length ? Promise.resolve(allUsers) : fetchAdminUsers(),
-      ]);
+      const asgns = await fetchProjectAssignments(project.id);
       setAssignments(asgns);
-      setAllUsers(users);
     } catch (e: any) {
       setAssignError(e.message);
     } finally {
@@ -127,17 +175,41 @@ export default function AdminProjectsScreen() {
     }
   };
 
-  const assignedUserIds = new Set(assignments.map(a => a.user_id));
+  const openTransferModal = async (project: AdminProject) => {
+    setTransferProject(project);
+    setTransferError(null);
+    setTransferSearch('');
+  };
 
-  const filteredUsers = allUsers.filter(u => {
-    if (!userSearch.trim()) return true;
-    const q = userSearch.toLowerCase();
-    return (
-      (u.full_name || '').toLowerCase().includes(q) ||
-      (u.mobile || '').includes(q) ||
-      (u.tehsil || '').toLowerCase().includes(q)
-    );
-  });
+  const handleTransfer = async (user: AdminUser) => {
+    if (!transferProject) return;
+    if (!confirm(`Confirm project ownership transfer:\n\nProject: "${transferProject.name || 'Untitled'}"\nTo user: ${user.full_name || 'Unknown'} (${user.mobile || 'no mobile'})?`)) return;
+    setTransferLoading(true);
+    setTransferError(null);
+    try {
+      await transferProjectOwner(transferProject.id, user.id);
+      
+      setProjects(prev => prev.map(p => {
+        if (p.id === transferProject.id) {
+          return {
+            ...p,
+            user_id: user.id,
+            owner_name: user.full_name,
+            owner_mobile: user.mobile
+          };
+        }
+        return p;
+      }));
+      
+      setTransferProject(null);
+    } catch (e: any) {
+      setTransferError(e.message || 'Failed to transfer ownership');
+    } finally {
+      setTransferLoading(false);
+    }
+  };
+
+  const assignedUserIds = new Set(assignments.map(a => a.user_id));
 
   return (
     <div className="p-8">
@@ -150,7 +222,7 @@ export default function AdminProjectsScreen() {
           + Create Project
         </button>
       </div>
-      <p className="text-gray-500 text-sm mb-6">{projects.length} total projects</p>
+      <p className="text-gray-500 text-sm mb-6">{total} total projects</p>
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <input
@@ -241,6 +313,12 @@ export default function AdminProjectsScreen() {
                       >
                         Assign
                       </button>
+                      <button
+                        onClick={() => openTransferModal(p)}
+                        className="text-emerald-400 hover:text-emerald-300 text-xs"
+                      >
+                        Transfer
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -252,6 +330,77 @@ export default function AdminProjectsScreen() {
               )}
             </tbody>
           </table>
+
+          {/* Pagination Controls */}
+          {total > 20 && (
+            <div className="flex items-center justify-between border-t border-gray-800 px-4 py-4 sm:px-6 mt-4">
+              <div className="flex flex-1 justify-between sm:hidden">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className="relative inline-flex items-center rounded-md border border-gray-700 bg-gray-900 px-4 py-2 text-xs font-medium text-gray-400 hover:bg-gray-800 disabled:opacity-30"
+                >
+                  Previous
+                </button>
+                <button
+                  disabled={page * 20 >= total}
+                  onClick={() => setPage(p => p + 1)}
+                  className="relative ml-3 inline-flex items-center rounded-md border border-gray-700 bg-gray-900 px-4 py-2 text-xs font-medium text-gray-400 hover:bg-gray-800 disabled:opacity-30"
+                >
+                  Next
+                </button>
+              </div>
+              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">
+                    Showing <span className="font-semibold text-gray-300">{(page - 1) * 20 + 1}</span> to{' '}
+                    <span className="font-semibold text-gray-300">{Math.min(page * 20, total)}</span> of{' '}
+                    <span className="font-semibold text-gray-300">{total}</span> results
+                  </p>
+                </div>
+                <div>
+                  <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <button
+                      disabled={page <= 1}
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      className="relative inline-flex items-center rounded-l-md border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-400 hover:bg-gray-800 disabled:opacity-30 transition-colors"
+                    >
+                      Prev
+                    </button>
+                    {Array.from({ length: Math.ceil(total / 20) }).map((_, idx) => {
+                      const pNum = idx + 1;
+                      if (pNum === 1 || pNum === Math.ceil(total / 20) || Math.abs(pNum - page) <= 2) {
+                        return (
+                          <button
+                            key={pNum}
+                            onClick={() => setPage(pNum)}
+                            className={`relative inline-flex items-center border border-gray-700 px-3 py-2 text-xs font-medium transition-colors ${
+                              page === pNum
+                                ? 'bg-orange-500 text-white font-bold border-orange-500 z-10'
+                                : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
+                            }`}
+                          >
+                            {pNum}
+                          </button>
+                        );
+                      }
+                      if (pNum === 2 || pNum === Math.ceil(total / 20) - 1) {
+                        return <span key={pNum} className="relative inline-flex items-center border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-600">...</span>;
+                      }
+                      return null;
+                    })}
+                    <button
+                      disabled={page * 20 >= total}
+                      onClick={() => setPage(p => p + 1)}
+                      className="relative inline-flex items-center rounded-r-md border border-gray-700 bg-gray-900 px-3 py-2 text-xs font-medium text-gray-400 hover:bg-gray-800 disabled:opacity-30 transition-colors"
+                    >
+                      Next
+                    </button>
+                  </nav>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -352,10 +501,10 @@ export default function AdminProjectsScreen() {
                   <div className="w-4 h-4 border border-gray-600 border-t-orange-500 rounded-full animate-spin" />
                   Loading…
                 </div>
-              ) : filteredUsers.length === 0 ? (
+              ) : assignUsers.length === 0 ? (
                 <p className="text-gray-600 text-sm text-center py-6">No users found</p>
               ) : (
-                filteredUsers.map(u => {
+                assignUsers.map(u => {
                   const alreadyAssigned = assignedUserIds.has(u.id);
                   return (
                     <div
@@ -379,6 +528,73 @@ export default function AdminProjectsScreen() {
                     </div>
                   );
                 })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Transfer Modal ────────────────────────────────────────────────────── */}
+      {transferProject && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="px-6 pt-5 pb-4 border-b border-gray-800 flex-shrink-0">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-100">Transfer Project Ownership</h2>
+                  <p className="text-gray-500 text-xs mt-0.5 truncate max-w-xs">
+                    Current Owner: <span className="text-orange-400 font-semibold">{transferProject.owner_name || 'Unknown'}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setTransferProject(null)}
+                  className="text-gray-600 hover:text-gray-300 text-xl leading-none mt-0.5"
+                >×</button>
+              </div>
+            </div>
+
+            {/* User search */}
+            <div className="px-6 pt-4 pb-2 flex-shrink-0">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Search New Owner</p>
+              <input
+                type="text"
+                value={transferSearch}
+                onChange={e => setTransferSearch(e.target.value)}
+                placeholder="Search by name or mobile…"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            {transferError && (
+              <p className="px-6 text-red-400 text-xs">{transferError}</p>
+            )}
+
+            <div className="flex-1 overflow-y-auto px-6 pb-5 space-y-1.5 mt-2">
+              {transferLoading ? (
+                <div className="flex items-center gap-2 text-gray-500 text-sm py-4 justify-center">
+                  <div className="w-4 h-4 border border-gray-600 border-t-orange-500 rounded-full animate-spin" />
+                  Loading…
+                </div>
+              ) : transferUsers.filter(u => u.id !== transferProject.user_id).length === 0 ? (
+                <p className="text-gray-600 text-sm text-center py-6">No other users found</p>
+              ) : (
+                transferUsers.filter(u => u.id !== transferProject.user_id).map(u => (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-gray-800 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-gray-200 text-sm font-medium truncate">{u.full_name || 'Unknown'}</p>
+                      <p className="text-gray-500 text-xs">{u.mobile || '—'} · {u.tehsil || '—'}</p>
+                    </div>
+                    <button
+                      onClick={() => handleTransfer(u)}
+                      className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded-lg transition-colors flex-shrink-0 ml-2"
+                    >
+                      Transfer
+                    </button>
+                  </div>
+                ))
               )}
             </div>
           </div>

@@ -6,6 +6,7 @@ import { HelmetProvider } from "react-helmet-async";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./index.css";
+import { LanguageProvider } from "./lib/i18n";
 
 // Polyfill for crypto.randomUUID (fixes crashes on mobile/HTTP local networks)
 if (!window.crypto) {
@@ -57,8 +58,9 @@ import AdminAnnouncementsScreen from "./screens/admin/AdminAnnouncementsScreen";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <HelmetProvider>
-      <BrowserRouter>
+    <LanguageProvider>
+      <HelmetProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingScreen />} />
           <Route path="/app" element={<App />} />
@@ -133,5 +135,6 @@ createRoot(document.getElementById("root")!).render(
         </Routes>
       </BrowserRouter>
     </HelmetProvider>
+    </LanguageProvider>
   </StrictMode>
 );

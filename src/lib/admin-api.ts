@@ -228,15 +228,47 @@ export async function fetchAdminUserDetail(userId: string): Promise<{
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
-export async function fetchAdminProjects(): Promise<AdminProject[]> {
-  const { data, error } = await supabase
+export async function fetchAdminProjects(
+  page: number,
+  limit: number = 20,
+  search?: string,
+  paymentStatus?: 'all' | 'paid' | 'unpaid'
+): Promise<{ projects: AdminProject[]; total: number }> {
+  const start = (page - 1) * limit;
+  const end = start + limit - 1;
+
+  let query = supabase
     .from('projects')
-    .select('*')
-    .order('updated_at', { ascending: false });
+    .select('*', { count: 'exact' });
+
+  if (paymentStatus && paymentStatus !== 'all') {
+    query = query.eq('payment_status', paymentStatus);
+  }
+
+  if (search && search.trim()) {
+    const q = `%${search.trim()}%`;
+    const { data: matchingUsers } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .or(`full_name.ilike.${q},mobile.ilike.${q}`);
+
+    const matchingUserIds = (matchingUsers || []).map(u => u.id);
+
+    if (matchingUserIds.length > 0) {
+      query = query.or(`name.ilike.${q},user_id.in.(${matchingUserIds.join(',')})`);
+    } else {
+      query = query.ilike('name', q);
+    }
+  }
+
+  const { data, error, count } = await query
+    .order('updated_at', { ascending: false })
+    .range(start, end);
+
   if (error) throw error;
 
   const userIds = [...new Set((data || []).map(p => p.user_id))];
-  if (!userIds.length) return data || [];
+  if (!userIds.length) return { projects: [], total: count || 0 };
 
   const { data: profiles } = await supabase
     .from('user_profiles')
@@ -246,11 +278,13 @@ export async function fetchAdminProjects(): Promise<AdminProject[]> {
   const profileMap: Record<string, any> = {};
   (profiles || []).forEach(p => { profileMap[p.id] = p; });
 
-  return (data || []).map(p => ({
+  const projects = (data || []).map(p => ({
     ...p,
     owner_name: profileMap[p.user_id]?.full_name ?? null,
     owner_mobile: profileMap[p.user_id]?.mobile ?? null,
   }));
+
+  return { projects, total: count || 0 };
 }
 
 // ─── Live Sessions ────────────────────────────────────────────────────────────
@@ -332,6 +366,14 @@ export async function revokeProjectAssignment(projectId: string, userId: string)
     .delete()
     .eq('project_id', projectId)
     .eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function transferProjectOwner(projectId: string, newUserId: string): Promise<void> {
+  const { error } = await supabase
+    .from('projects')
+    .update({ user_id: newUserId })
+    .eq('id', projectId);
   if (error) throw error;
 }
 
@@ -485,4 +527,22 @@ export async function fetchAdminTimelineStats(days: number = 14): Promise<DailyS
     newUsers: statsMap[date].newUsers,
     newProjects: statsMap[date].newProjects
   }));
+}
+
+export async function searchAdminUsers(queryText: string): Promise<AdminUser[]> {
+  let query = supabase
+    .from('user_profiles')
+    .select('*');
+
+  if (queryText.trim()) {
+    const q = `%${queryText.trim()}%`;
+    query = query.or(`full_name.ilike.${q},mobile.ilike.${q},tehsil.ilike.${q}`);
+  }
+
+  const { data, error } = await query
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  if (error) throw error;
+  return data || [];
 }

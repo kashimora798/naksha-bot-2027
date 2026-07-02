@@ -3,8 +3,10 @@ import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import AiComparison from '../components/AiComparison/AiComparison';
+import { useTranslation, LanguageSelector } from '../lib/i18n';
 
 export default function LandingScreen() {
+  const { t } = useTranslation();
   const [selectedSample, setSelectedSample] = useState<'sample1' | 'sample2'>('sample1');
   const [sample1View, setSample1View] = useState<'sat' | 'map'>('map');
   const [sample2View, setSample2View] = useState<'sat' | 'map'>('map');
@@ -116,6 +118,7 @@ export default function LandingScreen() {
             <a href="#features" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">Features</a>
           </div>
           <div className="flex items-center gap-4">
+            <LanguageSelector />
             <Link to="/sign-in" className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</Link>
             <Link to="/sign-up" className="text-sm font-bold bg-slate-900 text-white px-6 py-2.5 rounded-full hover:bg-slate-800 transition-all transform hover:scale-105 active:scale-95 shadow-md inline-block">
               Get Started

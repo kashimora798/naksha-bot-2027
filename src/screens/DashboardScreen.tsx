@@ -67,41 +67,51 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
       return;
     }
     setExtractError(null);
-    setExtractStatus('Reading PDF file...');
+    setExtractStatus('Sending PDF to Python microservice...');
     try {
-      const fileBytes = await new Promise<ArrayBuffer>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as ArrayBuffer);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsArrayBuffer(pdfFile);
+      const formData = new FormData();
+      formData.append('file', pdfFile);
+      formData.append('hlb', hlbCode.trim());
+
+      const apiUrl = import.meta.env.VITE_EXTRACTOR_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiUrl}/api/extract`, {
+        method: 'POST',
+        body: formData
       });
-      
-      const result = await extractHLBBoundaryFromPDF(
-        fileBytes,
-        hlbCode.trim(),
-        (status) => setExtractStatus(status)
-      );
-      
-      if (result.success) {
-        setShowAdvancedMapModal(false);
-        setPdfFile(null);
-        setHlbCode('');
-        setExtractStatus('');
-        
-        onNewProject({
-          hlbNumber: hlbCode.trim(),
-          boundaryPins: result.boundaryPins,
-          boundaryClosed: true,
-          center: result.center,
-          isAutoFetched: true
-        });
-      } else {
-        setOcrFailedData(result);
-        setExtractStatus('');
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Server returned error status ${res.status}`);
       }
+
+      const geojson = await res.json();
+      const coords = geojson.geometry?.coordinates?.[0];
+      if (!coords || coords.length < 3) {
+        throw new Error('Server returned an invalid boundary polygon structure.');
+      }
+      
+      const boundaryPins = coords.map(([lng, lat]: any) => ({ lat, lng }));
+
+      // Calculate center
+      const sumLat = boundaryPins.reduce((acc: number, curr: any) => acc + curr.lat, 0);
+      const sumLng = boundaryPins.reduce((acc: number, curr: any) => acc + curr.lng, 0);
+      const center = { lat: sumLat / boundaryPins.length, lng: sumLng / boundaryPins.length };
+
+      setShowAdvancedMapModal(false);
+      setPdfFile(null);
+      setHlbCode('');
+      setExtractStatus('');
+
+      onNewProject({
+        hlbNumber: hlbCode.trim(),
+        boundaryPins,
+        boundaryClosed: true,
+        center,
+        isAutoFetched: true
+      });
     } catch (err: any) {
       console.error(err);
-      setExtractError(err.message || 'An error occurred during extraction. Make sure the PDF is an official georeferenced GeoPDF.');
+      setExtractError(err.message || 'Connection failed. Make sure the Python microservice is running.');
       setExtractStatus('');
     }
   };
@@ -1217,7 +1227,6 @@ I have successfully contributed to support your studies!
             <button 
               onClick={() => {
                 setShowAdvancedMapModal(false);
-                setOcrFailedData(null);
                 setPdfFile(null);
                 setHlbCode('');
                 setExtractError(null);
@@ -1228,117 +1237,65 @@ I have successfully contributed to support your studies!
               ×
             </button>
 
-            {!ocrFailedData ? (
-              <div className="space-y-5">
-                <div className="text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-3xl mx-auto mb-3 shadow-inner">⚡</div>
-                  <h3 className="text-lg font-extrabold text-slate-800 font-public-sans">Advanced Auto-Map Extractor</h3>
-                  <p className="text-xs text-slate-500 mt-1">Upload georeferenced GeoPDF to automatically trace boundary and fetch roads.</p>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">1. HLB Number (4-Digits)</label>
-                    <input 
-                      type="text" 
-                      maxLength={4}
-                      value={hlbCode}
-                      onChange={e => setHlbCode(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold font-mono"
-                      placeholder="e.g. 0542"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">2. Upload GeoPDF File</label>
-                    <div className="border-2 border-dashed border-slate-200 hover:border-indigo-500 rounded-2xl p-6 transition-all bg-slate-50/50 flex flex-col items-center justify-center cursor-pointer relative group">
-                      <input 
-                        type="file" 
-                        accept=".pdf"
-                        onChange={e => setPdfFile(e.target.files?.[0] || null)}
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                      />
-                      <span className="text-2xl mb-2 text-slate-400 group-hover:scale-110 transition-transform">📂</span>
-                      <span className="text-xs font-bold text-slate-700">{pdfFile ? pdfFile.name : 'Select official Layout PDF'}</span>
-                      <span className="text-[10px] text-slate-400 mt-1">Only Census georeferenced maps (.pdf)</span>
-                    </div>
-                  </div>
-                </div>
-
-                {extractError && (
-                  <div className="bg-red-50 border-l-4 border-red-500 p-3.5 rounded-xl text-xs text-red-700 font-semibold leading-relaxed">
-                    ⚠️ {extractError}
-                  </div>
-                )}
-
-                {extractStatus && (
-                  <div className="bg-indigo-50/70 border-l-4 border-indigo-500 p-3.5 rounded-xl text-xs text-indigo-900 font-semibold animate-pulse flex items-center gap-2">
-                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-600 animate-ping" />
-                    {extractStatus}
-                  </div>
-                )}
-
-                <div className="pt-2">
-                  <button
-                    onClick={handleExtract}
-                    disabled={!pdfFile || hlbCode.length !== 4 || extractStatus !== ''}
-                    className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-extrabold text-xs rounded-xl shadow-lg hover:shadow-indigo-100 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer tracking-wider uppercase"
-                  >
-                    Start Extraction ⚡
-                  </button>
-                </div>
+            <div className="space-y-5">
+              <div className="text-center">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-3xl mx-auto mb-3 shadow-inner">⚡</div>
+                <h3 className="text-lg font-extrabold text-slate-800 font-public-sans">Advanced Auto-Map Extractor</h3>
+                <p className="text-xs text-slate-500 mt-1">Upload georeferenced GeoPDF to automatically trace boundary and fetch roads via Python microservice.</p>
               </div>
-            ) : (
-              <div className="space-y-4 flex-1 flex flex-col">
-                <div className="text-center">
-                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl mx-auto mb-2">📍</div>
-                  <h3 className="text-base font-extrabold text-slate-800">Tap to Identify Seed Point</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">We could not auto-locate the label text <strong>"{hlbCode}"</strong>. Tap directly inside the <strong>HLB {hlbCode} block</strong> on the map image below to start automatic tracing.</p>
-                </div>
 
-                <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-100/50 flex-1 flex items-center justify-center p-2 min-h-[300px]">
-                  <img 
-                    src={ocrFailedData.cropCanvasDataUrl} 
-                    className="max-w-full max-h-[45vh] object-contain cursor-crosshair shadow rounded-xl select-none"
-                    onClick={handleMapImageClick}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">1. HLB Number (4-Digits)</label>
+                  <input 
+                    type="text" 
+                    maxLength={4}
+                    value={hlbCode}
+                    onChange={e => setHlbCode(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold font-mono"
+                    placeholder="e.g. 0542"
                   />
                 </div>
 
-                {extractError && (
-                  <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded-xl text-xs text-red-700 font-semibold leading-relaxed">
-                    ⚠️ {extractError}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">2. Upload GeoPDF File</label>
+                  <div className="border-2 border-dashed border-slate-200 hover:border-indigo-500 rounded-2xl p-6 transition-all bg-slate-50/50 flex flex-col items-center justify-center cursor-pointer relative group">
+                    <input 
+                      type="file" 
+                      accept=".pdf"
+                      onChange={e => setPdfFile(e.target.files?.[0] || null)}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                    />
+                    <span className="text-2xl mb-2 text-slate-400 group-hover:scale-110 transition-transform">📂</span>
+                    <span className="text-xs font-bold text-slate-700">{pdfFile ? pdfFile.name : 'Select official Layout PDF'}</span>
+                    <span className="text-[10px] text-slate-400 mt-1">Only Census georeferenced maps (.pdf)</span>
                   </div>
-                )}
-
-                {extractStatus && (
-                  <div className="bg-indigo-50/70 border-l-4 border-indigo-500 p-3 rounded-xl text-xs text-indigo-900 font-semibold animate-pulse">
-                    {extractStatus}
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setOcrFailedData(null); setExtractError(null); }}
-                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer text-center"
-                  >
-                    Back / वापस
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowAdvancedMapModal(false);
-                      setOcrFailedData(null);
-                      setPdfFile(null);
-                      setHlbCode('');
-                      setExtractError(null);
-                      setExtractStatus('');
-                    }}
-                    className="flex-1 py-3 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs rounded-xl transition-all cursor-pointer text-center"
-                  >
-                    Cancel / निरस्त करें
-                  </button>
                 </div>
               </div>
-            )}
+
+              {extractError && (
+                <div className="bg-red-50 border-l-4 border-red-500 p-3.5 rounded-xl text-xs text-red-700 font-semibold leading-relaxed">
+                  ⚠️ {extractError}
+                </div>
+              )}
+
+              {extractStatus && (
+                <div className="bg-indigo-50/70 border-l-4 border-indigo-500 p-3.5 rounded-xl text-xs text-indigo-900 font-semibold animate-pulse flex items-center gap-2">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-600 animate-ping" />
+                  {extractStatus}
+                </div>
+              )}
+
+              <div className="pt-2">
+                <button
+                  onClick={handleExtract}
+                  disabled={!pdfFile || hlbCode.length !== 4 || extractStatus !== ''}
+                  className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-extrabold text-xs rounded-xl shadow-lg hover:shadow-indigo-100 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer tracking-wider uppercase"
+                >
+                  Start Extraction ⚡
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

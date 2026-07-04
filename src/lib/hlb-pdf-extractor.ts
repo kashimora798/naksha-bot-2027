@@ -93,7 +93,8 @@ export async function extractHLBBoundaryFromPDF(
   const pdfjsLib = await loadPDFJS();
   
   progressCallback?.('Parsing PDF page data...');
-  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) });
+  const pdfBytesCopy = pdfBytes.slice(0);
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(pdfBytesCopy) });
   const pdf = await loadingTask.promise;
   const page = await pdf.getPage(1);
   
@@ -107,7 +108,7 @@ export async function extractHLBBoundaryFromPDF(
   }
   
   progressCallback?.('Rendering satellite basemap...');
-  const scale = 2.0; // Render at 2x scale for high resolution morphology & OCR
+  const scale = 1.2; // Render at 1.2x scale (perfect balance of speed, memory, and OCR readability)
   const viewport = page.getViewport({ scale });
   
   const pageCanvas = document.createElement('canvas');
@@ -291,22 +292,22 @@ export function thresholdBrightPixels(pixels: Uint8ClampedArray, w: number, h: n
 export function dilate(src: Uint8Array, w: number, h: number, k = 2): Uint8Array {
   const dst = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
+    const rowOffset = y * w;
     for (let x = 0; x < w; x++) {
-      let hit = false;
-      for (let ky = -k; ky <= k; ky++) {
-        for (let kx = -k; kx <= k; kx++) {
+      if (src[rowOffset + x] === 255) {
+        for (let ky = -k; ky <= k; ky++) {
           const ny = y + ky;
-          const nx = x + kx;
-          if (ny >= 0 && ny < h && nx >= 0 && nx < w) {
-            if (src[ny * w + nx] === 255) {
-              hit = true;
-              break;
+          if (ny >= 0 && ny < h) {
+            const nRowOffset = ny * w;
+            for (let kx = -k; kx <= k; kx++) {
+              const nx = x + kx;
+              if (nx >= 0 && nx < w) {
+                dst[nRowOffset + nx] = 255;
+              }
             }
           }
         }
-        if (hit) break;
       }
-      dst[y * w + x] = hit ? 255 : 0;
     }
   }
   return dst;
@@ -317,26 +318,30 @@ export function dilate(src: Uint8Array, w: number, h: number, k = 2): Uint8Array
  */
 export function erode(src: Uint8Array, w: number, h: number, k = 2): Uint8Array {
   const dst = new Uint8Array(w * h);
+  dst.fill(255); // Initialize all as active walls
   for (let y = 0; y < h; y++) {
+    const rowOffset = y * w;
     for (let x = 0; x < w; x++) {
-      let all = true;
-      for (let ky = -k; ky <= k; ky++) {
-        for (let kx = -k; kx <= k; kx++) {
+      // Out-of-bounds padding is treated as 0, so any pixel within distance k of the border becomes 0
+      if (x < k || x >= w - k || y < k || y >= h - k) {
+        dst[rowOffset + x] = 0;
+        continue;
+      }
+
+      if (src[rowOffset + x] === 0) {
+        for (let ky = -k; ky <= k; ky++) {
           const ny = y + ky;
-          const nx = x + kx;
-          if (ny >= 0 && ny < h && nx >= 0 && nx < w) {
-            if (src[ny * w + nx] !== 255) {
-              all = false;
-              break;
+          if (ny >= 0 && ny < h) {
+            const nRowOffset = ny * w;
+            for (let kx = -k; kx <= k; kx++) {
+              const nx = x + kx;
+              if (nx >= 0 && nx < w) {
+                dst[nRowOffset + nx] = 0;
+              }
             }
-          } else {
-            all = false;
-            break;
           }
         }
-        if (!all) break;
       }
-      dst[y * w + x] = all ? 255 : 0;
     }
   }
   return dst;
@@ -351,20 +356,14 @@ export async function locateHLBSeedPixel(
 ): Promise<{ x: number; y: number } | null> {
   try {
     const Tesseract = await loadTesseract();
-    const worker = await Tesseract.createWorker();
-    await worker.setParameters({
-      tessedit_char_whitelist: '0123456789'
-    });
-
-    const result = await worker.recognize(cropCanvas);
+    const result = await Tesseract.recognize(cropCanvas, 'eng');
     const words = result.data.words || [];
-    await worker.terminate();
 
     // Look for target HLB digits block
     const cleanHlb = hlbNumber.trim().replace(/^0+/, ''); // strip leading zeros for flexible matching
     for (const w of words) {
       const cleanWord = w.text.trim().replace(/^0+/, '');
-      if (cleanWord === cleanHlb) {
+      if (cleanWord.includes(cleanHlb)) {
         const { x0, y0, x1, y1 } = w.bbox;
         return {
           x: Math.round((x0 + x1) / 2),

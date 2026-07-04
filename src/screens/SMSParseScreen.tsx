@@ -3,7 +3,7 @@ import type { Coordinate } from '../types';
 import { DEMO_CENTER, DEMO_HLB_NUMBER, DEMO_DISTRICT, DEMO_STATE } from '../data/demo';
 
 interface Props {
-  onComplete: (hlb: string, center: Coordinate, district: string, state: string) => void;
+  onComplete: (hlb: string, center: Coordinate, district: string, state: string, boundaryPins?: Coordinate[]) => void;
   onBack: () => void;
   isDemoMode?: boolean;
 }
@@ -57,6 +57,16 @@ type LocationMode = 'sms' | 'search' | 'manual';
 
 export default function SMSParseScreen({ onComplete, onBack, isDemoMode }: Props) {
   const [locationMode, setLocationMode] = useState<LocationMode>('sms');
+  const [recentList, setRecentList] = useState<any[]>([]);
+
+  useEffect(() => {
+    try {
+      const list = JSON.parse(localStorage.getItem('recent_boundaries') || '[]');
+      if (Array.isArray(list)) setRecentList(list);
+    } catch (e) {
+      console.error("Failed to load recent boundaries:", e);
+    }
+  }, []);
 
   // SMS tab state
   const [smsText, setSmsText] = useState('');
@@ -241,6 +251,37 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode }: Props
                   />
                   <p className="text-xs text-gray-500 mt-1 font-noto-sans">Census 2027 का assignment SMS यहाँ paste करें</p>
                 </div>
+
+                {recentList.length > 0 && !smsText.trim() && (
+                  <div className="pt-1.5 space-y-2.5">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider font-public-sans">
+                      ⚡ Recently Extracted PDF Boundaries / निकाले गए सीमाएं
+                    </label>
+                    <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1">
+                      {recentList.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 border border-slate-200/70 hover:bg-slate-100/50 transition-colors">
+                          <div>
+                            <p className="text-sm font-extrabold text-slate-800 font-mono">HLB {item.hlbNumber}</p>
+                            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                              {item.boundaryPins?.length || 0} vertices • {new Date(item.timestamp).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setLoading(true);
+                              setTimeout(() => {
+                                onComplete(item.hlbNumber, item.center, 'Kanpur Nagar', 'Uttar Pradesh', item.boundaryPins);
+                              }, 400);
+                            }}
+                            className="py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-black text-[10px] rounded-lg transition-all cursor-pointer shadow-sm tracking-wider uppercase"
+                          >
+                            Use directly ⚡
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {detected && (
                   <div className="bg-[var(--color-india-green)]/10 border border-[var(--color-india-green)]/30 rounded-[12px] px-4 py-3 flex items-center gap-3">

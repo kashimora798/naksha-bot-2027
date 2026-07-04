@@ -287,10 +287,14 @@ export default function MapWorkspace(props: Props) {
     if (showSnakeView) return;
     roads.forEach((r,i) => { if (r.coords.length < 2) return; const ll = r.coords.map(c => L.latLng(c.lat, c.lng)); const cf=r.confirmed, pk=isPakkaRoad(r.highway), rs=['residential','unclassified','tertiary','service','living_street'].includes(r.highway), kt=['footway','path','track','pedestrian','steps'].includes(r.highway); const lc=cf?'#000':'#FFB830', gc=cf?'#FFF':'#FFF8E8';
       if (revMode&&i===revIdx) { g.addLayer(L.polyline(ll,{color:'#0066FF',weight:7,opacity:0.9})); g.addLayer(L.polyline(ll,{color:'#FFF',weight:3})); return; }
-      if (pk) { g.addLayer(L.polyline(ll,{color:lc,weight:8})); g.addLayer(L.polyline(ll,{color:gc,weight:4})); }
-      else if (rs) { g.addLayer(L.polyline(ll,{color:lc,weight:6})); g.addLayer(L.polyline(ll,{color:gc,weight:2.5})); }
-      else if (kt) { g.addLayer(L.polyline(ll,{color:lc,weight:5,dashArray:'10,6'})); g.addLayer(L.polyline(ll,{color:gc,weight:2,dashArray:'10,6'})); }
-      else { g.addLayer(L.polyline(ll,{color:lc,weight:5})); g.addLayer(L.polyline(ll,{color:gc,weight:2})); }
+      let poly;
+      if (pk) { poly = L.polyline(ll,{color:lc,weight:8}); g.addLayer(poly); g.addLayer(L.polyline(ll,{color:gc,weight:4})); }
+      else if (rs) { poly = L.polyline(ll,{color:lc,weight:6}); g.addLayer(poly); g.addLayer(L.polyline(ll,{color:gc,weight:2.5})); }
+      else if (kt) { poly = L.polyline(ll,{color:lc,weight:5,dashArray:'10,6'}); g.addLayer(poly); g.addLayer(L.polyline(ll,{color:gc,weight:2,dashArray:'10,6'})); }
+      else { poly = L.polyline(ll,{color:lc,weight:5}); g.addLayer(poly); g.addLayer(L.polyline(ll,{color:gc,weight:2})); }
+      if (r.name && poly) {
+        poly.bindTooltip(r.name, { sticky: true, className: 'bg-white text-slate-800 text-[10px] font-bold px-1.5 py-0.5 rounded shadow border border-slate-200' });
+      }
     });
   }, [roads, revMode, revIdx, showSnakeView]);
 
@@ -869,6 +873,9 @@ export default function MapWorkspace(props: Props) {
     const m=L.marker([lat,lng],{icon:mkIcon(sym),interactive:true}).addTo(map);
     m.on('dblclick',()=>mkClickRef.current(sym.id, 'dblclick'));
     m.on('click',()=>mkClickRef.current(sym.id, 'click'));
+    if (sym.label) {
+      m.bindTooltip(sym.label, { direction: 'top', className: 'bg-white text-slate-800 text-[9px] font-semibold px-1 py-0.5 rounded shadow border border-slate-200' });
+    }
     mks.current.set(sym.id,m);
   }
   function getAdaptiveSymbolSize(sym: PlacedSymbol, map: L.Map, allSymbols: PlacedSymbol[]): number {

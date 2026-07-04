@@ -97,6 +97,18 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
       const sumLng = boundaryPins.reduce((acc: number, curr: any) => acc + curr.lng, 0);
       const center = { lat: sumLat / boundaryPins.length, lng: sumLng / boundaryPins.length };
 
+      // Save to recent list in localStorage
+      try {
+        const saved = JSON.parse(localStorage.getItem('recent_boundaries') || '[]');
+        const updatedList = [
+          { hlbNumber: hlbCode.trim(), center, boundaryPins, timestamp: new Date().toISOString() },
+          ...saved.filter((x: any) => x.hlbNumber !== hlbCode.trim())
+        ];
+        localStorage.setItem('recent_boundaries', JSON.stringify(updatedList.slice(0, 10)));
+      } catch (e) {
+        console.warn('Failed to save to localStorage recent_boundaries:', e);
+      }
+
       setShowAdvancedMapModal(false);
       setPdfFile(null);
       setHlbCode('');

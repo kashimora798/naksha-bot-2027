@@ -124,13 +124,25 @@ export function distanceBetween(a: Coordinate, b: Coordinate): number {
   return 2 * R * Math.asin(Math.sqrt(Math.min(1, h)));
 }
 
+export function getOSMName(tags: any): string | undefined {
+  if (!tags) return undefined;
+  if (tags.name) return tags.name;
+  const fallbacks = ['name:en', 'name:hi', 'name:ml', 'name:ta', 'name:te', 'name:kn', 'name:mr', 'name:gu', 'name:pa', 'name:bn', 'name:or', 'name:ur'];
+  for (const k of fallbacks) {
+    if (tags[k]) return tags[k];
+  }
+  const matchKey = Object.keys(tags).find(k => k.startsWith('name:'));
+  if (matchKey) return tags[matchKey];
+  return undefined;
+}
+
 export function clipRoadsToPolygon(elements: any[], boundary: Coordinate[]): any[] {
   const results: any[] = [];
   for (const el of elements) {
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
     const coords: Coordinate[] = el.geometry.map((n: any) => ({ lat: n.lat, lng: n.lon }));
     const highway = el.tags?.highway || 'unclassified';
-    const name = el.tags?.name;
+    const name = getOSMName(el.tags);
     if (lineIntersectsPolygon(coords, boundary)) {
       results.push({ coords: coords, highway, name, osm_id: el.id });
     }
@@ -556,6 +568,8 @@ export function processOverpassData(
     const tags = el.tags || {};
     const center = coords.length >= 3 ? getPolygonCentroid(el.geometry) : coords[0];
 
+    const elName = getOSMName(tags);
+
     // Skip if outside boundary (for nodes) or not intersecting (for ways)
     if (el.type === 'node') {
       if (boundary.length >= 3 && !pointInPolygon(center, boundary)) continue;
@@ -574,24 +588,24 @@ export function processOverpassData(
         id: crypto.randomUUID(), symbol_type: st, lat: center.lat, lng: center.lng,
         number: null, placed_at: new Date().toISOString(), auto_detected: true,
         unit_count: st === 'apartment' ? Math.max(2, Math.min(lvls, 20)) : undefined,
-        label: tags.name,
+        label: elName,
       });
-      if (tags.name) landmarks.push({ id: crypto.randomUUID(), name: tags.name, type: st, lat: center.lat, lng: center.lng });
+      if (elName) landmarks.push({ id: crypto.randomUUID(), name: elName, type: st, lat: center.lat, lng: center.lng });
       continue;
     }
 
     // ─── ANY OTHER NAMED PLACE / POI ──────────────────
-    if (tags.name && !tags.building && !tags.waterway && !tags.highway && tags.natural !== 'water') {
+    if (elName && !tags.building && !tags.waterway && !tags.highway && tags.natural !== 'water') {
       if (tags.amenity) {
         const st = classifyBuilding(tags);
         symbols.push({
           id: crypto.randomUUID(), symbol_type: st, lat: center.lat, lng: center.lng,
-          number: null, placed_at: new Date().toISOString(), auto_detected: true, label: tags.name,
+          number: null, placed_at: new Date().toISOString(), auto_detected: true, label: elName,
         });
       }
       landmarks.push({ 
         id: crypto.randomUUID(), 
-        name: tags.name, 
+        name: elName, 
         type: tags.amenity || tags.shop || tags.tourism || tags.office || tags.leisure || tags.place || tags.historic || 'point_of_interest', 
         lat: center.lat, 
         lng: center.lng 
@@ -617,7 +631,7 @@ export function processOverpassData(
     if (tags.landuse === 'forest' || tags.natural === 'wood') {
       if (coords.length >= 3) {
         const pts = coords.filter((_, i) => i === 0 || i === coords.length - 1 || i % Math.max(1, Math.floor(coords.length / 20)) === 0);
-        forests.push({ id: crypto.randomUUID(), name: tags.name || 'Forest', points: pts });
+        forests.push({ id: crypto.randomUUID(), name: elName || 'Forest', points: pts });
       }
       continue;
     }
@@ -625,7 +639,7 @@ export function processOverpassData(
     // ─── WATER BODIES ──────────────────────────────
     if (tags.natural === 'water' || tags.natural === 'wetland' || tags.natural === 'bay') {
       if (coords.length >= 3) {
-        const name = tags.name || 'Water Body';
+        const name = elName || 'Water Body';
         waterBodies.push({
           id: crypto.randomUUID(), name, type: 'pond', coords,
           center: getPolygonCentroid(el.geometry),
@@ -643,7 +657,7 @@ export function processOverpassData(
     if (tags.waterway) {
       const wType = ['river', 'canal'].includes(tags.waterway) ? 'river' : 'stream';
       waterBodies.push({
-        id: crypto.randomUUID(), name: tags.name || wType, type: wType,
+        id: crypto.randomUUID(), name: elName || wType, type: wType,
         coords, center: coords[Math.floor(coords.length / 2)],
       });
       continue;
@@ -653,7 +667,7 @@ export function processOverpassData(
     if (tags.amenity === 'water_well' || tags.man_made === 'water_well' || tags.natural === 'spring') {
       symbols.push({
         id: crypto.randomUUID(), symbol_type: 'well', lat: center.lat, lng: center.lng,
-        number: null, placed_at: new Date().toISOString(), auto_detected: true, label: tags.name,
+        number: null, placed_at: new Date().toISOString(), auto_detected: true, label: elName,
       });
       continue;
     }
@@ -680,7 +694,7 @@ export function processOverpassData(
     }
 
     // ─── REMAINING LANDMARKS (if any without name) ──────────────────────────
-    if (!tags.name && (tags.tourism || tags.historic || tags.shop === 'supermarket' || tags.office === 'government')) {
+    if (!elName && (tags.tourism || tags.historic || tags.shop === 'supermarket' || tags.office === 'government')) {
       landmarks.push({ id: crypto.randomUUID(), name: tags.tourism || tags.historic || 'Landmark', type: tags.tourism || tags.historic || tags.shop || tags.office, lat: center.lat, lng: center.lng });
     }
   }

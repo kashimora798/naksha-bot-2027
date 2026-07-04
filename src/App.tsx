@@ -23,6 +23,7 @@ const DEFAULT_MAP_DATA: MapData = {
   boundaryPins: [], boundaryClosed: false, roads: [], roadsConfirmed: false,
   symbols: [], numberingComplete: false, blocks: [], orientation: 'portrait',
   farmlandBlocks: [], waterBodies: [], forests: [], landmarks: [], areaStats: null,
+  isAutoFetched: false,
 };
 
 export default function App() {
@@ -563,6 +564,7 @@ export default function App() {
             isDemoMode={isDemoMode}
             onDemoComplete={() => setIsDemoMode(false)}
             numberingSystem={mapData.numberingSystem}
+            isAutoFetched={(mapData as any).isAutoFetched}
           />}
         </div>
         {(step === 7) && (

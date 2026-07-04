@@ -1,0 +1,354 @@
+"""
+NakshaBot HLB Boundary Extractor
+==================================
+Extracts a Houselisting Block (HLB) boundary polygon from a Census-style
+Esri ArcGIS "Layout Map" PDF and converts it into real WGS84 GeoJSON —
+using the PDF's own embedded GeoPDF georeferencing instead of an AI/vision
+API call. Only OCR (free, local, via Tesseract) is used, and only to find
+*where on the page* the target HLB label sits — not to read coordinates.
+
+Pipeline
+--------
+1. read_geo_metadata()   -> parse /VP /Measure /GEO from the PDF page.
+                             This is an Esri GeoPDF extension: it embeds the
+                             *exact* lat/lon of the map's corners. No AI
+                             needed here at all — it's just data sitting in
+                             the file, if the exporting tool included it.
+2. extract_map_raster()  -> pull the embedded satellite image and crop it
+                             to exactly the georeferenced viewport (this
+                             excludes the legend / title panel).
+3. detect_boundary_lines() -> threshold for bright pixels, then keep only
+                             long/thin connected components (real boundary
+                             lines) and discard compact blobs (text labels,
+                             icons). Classical CV, not ML.
+4. locate_label()        -> OCR the cropped map to find the pixel position
+                             of the target HLB number (e.g. "0542"). This
+                             becomes the flood-fill seed.
+5. isolate_polygon()     -> flood-fill the "free space" from the seed point,
+                             using the boundary-line mask as walls, then
+                             trace + simplify the resulting blob's contour.
+6. GeoTransform.to_lonlat() -> map every contour vertex from pixel space to
+                             real WGS84 lon/lat using the metadata from step 1.
+7. to_geojson()           -> package the result as a GeoJSON Feature.
+
+Dependencies
+------------
+    pip install pymupdf opencv-python-headless numpy pillow pytesseract shapely --break-system-packages
+    # Tesseract binary must also be installed (apt install tesseract-ocr on most systems)
+
+Usage
+-----
+    python hlb_extractor.py input.pdf --hlb 0542 --out result.geojson
+
+Or as a library:
+    from hlb_extractor import extract_hlb_boundary
+    geojson = extract_hlb_boundary("input.pdf", hlb_number="0542")
+
+Known limitations (read before wiring into production)
+--------------------------------------------------------
+* Assumes the PDF is a GeoPDF (has /Measure /GEO metadata). If an
+  enumerator's file lacks this — e.g. it was rescanned or exported by a
+  different tool — read_geo_metadata() returns None and you'll need a
+  fallback (landmark-name geocoding, or asking for two known reference
+  points).
+* Does not yet distinguish solid boundary lines (the actual HLB edge) from
+  dashed lines (other administrative boundaries, per the map legend). Both
+  currently get treated as "wall" pixels during flood-fill, which is fine
+  when the target block's own outline is solid throughout, but will need
+  line-style classification for full robustness across arbitrary maps.
+* Assumes the georeferenced viewport is an axis-aligned rectangle in
+  Web Mercator (true for all ArcGIS layout exports at this map scale —
+  no rotation to account for). Do not reuse the transform math as-is for
+  rotated or non-rectangular viewports.
+* Always keep a human-in-the-loop review/edit step downstream (e.g. in your
+  MapLibre canvas) before treating extracted vertices as final — this is a
+  census document, extraction errors have real consequences.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from dataclasses import dataclass
+
+import cv2
+import fitz  # PyMuPDF
+import numpy as np
+import pytesseract
+from PIL import Image
+
+
+# ---------------------------------------------------------------------------
+# Step 1 — GeoPDF metadata parsing
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GeoTransform:
+    """
+    Exact pixel(col, row) -> (lon, lat) mapping for a cropped, axis-aligned
+    georeferenced raster. `crop_w`/`crop_h` are the pixel dimensions of the
+    image the (col, row) values are measured against.
+    """
+    crop_w: int
+    crop_h: int
+    lat_at_y0: float   # latitude at normalized y=0 (bottom of viewport)
+    lat_at_y1: float   # latitude at normalized y=1 (top of viewport)
+    lon_at_x0: float   # longitude at normalized x=0 (left of viewport)
+    lon_at_x1: float   # longitude at normalized x=1 (right of viewport)
+
+    def to_lonlat(self, col: float, row: float) -> tuple[float, float]:
+        Lx = col / self.crop_w
+        Ly = 1 - row / self.crop_h  # row grows downward, latitude grows upward
+        lat = self.lat_at_y0 + Ly * (self.lat_at_y1 - self.lat_at_y0)
+        lon = self.lon_at_x0 + Lx * (self.lon_at_x1 - self.lon_at_x0)
+        return round(lon, 7), round(lat, 7)
+
+
+def read_geo_metadata(pdf_path: str) -> dict | None:
+    """
+    Parses the page's /VP -> /Measure -> /GEO dictionary that Esri ArcGIS
+    embeds in GeoPDF exports (ISO 32000 geospatial extension). Returns None
+    if the PDF isn't georeferenced this way.
+    """
+    doc = fitz.open(pdf_path)
+    page = doc[0]
+    raw = doc.xref_object(page.xref)
+    page_w, page_h = page.rect.width, page.rect.height
+    doc.close()
+
+    if "/Measure" not in raw or "/GEO" not in raw:
+        return None
+
+    def extract_array(name: str) -> list[float] | None:
+        m = re.search(rf"/{name}\s*\[([^\]]+)\]", raw)
+        return [float(x) for x in m.group(1).split()] if m else None
+
+    vp_bbox = extract_array("BBox")  # [x0 y0 x1 y1] in PDF page-point space
+    gpts = extract_array("GPTS")     # flat list of (lat, lon) corner pairs
+    lpts = extract_array("LPTS")     # matching flat list of (x, y) normalized corners
+
+    if not (vp_bbox and gpts and lpts):
+        return None
+
+    # Pair them up: LPTS[2i:2i+2] <-> GPTS[2i:2i+2]
+    corners = []
+    for i in range(0, len(lpts), 2):
+        lx, ly = lpts[i], lpts[i + 1]
+        lat, lon = gpts[i], gpts[i + 1]
+        corners.append((lx, ly, lat, lon))
+
+    # Derive the axis-aligned mapping without assuming corner order:
+    # average the lon of all corners where LPTS x ~ 0 vs x ~ 1, and
+    # the lat of all corners where LPTS y ~ 0 vs y ~ 1.
+    lon_at_x0 = np.mean([lon for lx, ly, lat, lon in corners if lx < 0.5])
+    lon_at_x1 = np.mean([lon for lx, ly, lat, lon in corners if lx >= 0.5])
+    lat_at_y0 = np.mean([lat for lx, ly, lat, lon in corners if ly < 0.5])
+    lat_at_y1 = np.mean([lat for lx, ly, lat, lon in corners if ly >= 0.5])
+
+    return {
+        "page_w": page_w,
+        "page_h": page_h,
+        "vp_bbox": vp_bbox,  # [x0, y0, x1, y1] in PDF page-point space
+        "lon_at_x0": float(lon_at_x0),
+        "lon_at_x1": float(lon_at_x1),
+        "lat_at_y0": float(lat_at_y0),
+        "lat_at_y1": float(lat_at_y1),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Step 2 — Raster extraction, cropped to the georeferenced viewport
+# ---------------------------------------------------------------------------
+
+def extract_map_raster(pdf_path: str, geo_meta: dict) -> np.ndarray:
+    """
+    Pulls the embedded satellite raster and crops it to exactly the
+    /VP /BBox region (i.e. just the map, excluding legend/title panel).
+    Returns an RGB numpy array.
+    """
+    doc = fitz.open(pdf_path)
+    page = doc[0]
+
+    # Find the largest embedded image on the page (the basemap raster).
+    images = page.get_images(full=True)
+    if not images:
+        doc.close()
+        raise ValueError("No embedded raster image found on this page.")
+    xref = max(images, key=lambda im: im[2] * im[3])[0]  # widest*tallest
+
+    pix = fitz.Pixmap(doc, xref)
+    if pix.n - pix.alpha >= 4:  # CMYK etc -> normalize to RGB
+        pix = fitz.Pixmap(fitz.csRGB, pix)
+    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    img = img[:, :, :3]  # drop alpha if present
+
+    img_h, img_w = pix.height, pix.width
+    page_w, page_h = geo_meta["page_w"], geo_meta["page_h"]
+    x0, y0, x1, y1 = geo_meta["vp_bbox"]
+
+    col0 = int(x0 / page_w * img_w)
+    col1 = int(x1 / page_w * img_w)
+    row0 = int((page_h - y1) / page_h * img_h)  # PDF y is bottom-up; image row is top-down
+    row1 = int((page_h - y0) / page_h * img_h)
+
+    doc.close()
+    return img[row0:row1, col0:col1].copy()
+
+
+# ---------------------------------------------------------------------------
+# Step 3 — Boundary line detection
+# ---------------------------------------------------------------------------
+
+def detect_boundary_lines(map_img: np.ndarray, brightness_thresh: int = 205,
+                           min_long_side: int = 25, max_fill_ratio: float = 0.55) -> np.ndarray:
+    """
+    Returns a binary mask (255 = boundary line pixel) isolating thin white
+    line structures from the map, discarding compact blobs like text labels
+    and POI icons based on connected-component shape.
+    """
+    bright = np.all(map_img > brightness_thresh, axis=2).astype(np.uint8) * 255
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(bright, connectivity=8)
+
+    line_mask = np.zeros_like(bright)
+    for i in range(1, n):
+        x, y, w, h, area = stats[i]
+        fill_ratio = area / (w * h + 1e-6)
+        if max(w, h) > min_long_side and fill_ratio < max_fill_ratio:
+            line_mask[labels == i] = 255
+
+    # Seal small dashed/anti-aliasing gaps so flood-fill can't leak through.
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    return cv2.morphologyEx(line_mask, cv2.MORPH_CLOSE, kernel, iterations=3)
+
+
+# ---------------------------------------------------------------------------
+# Step 4 — Locate the target HLB label (flood-fill seed point)
+# ---------------------------------------------------------------------------
+
+def locate_label(map_img: np.ndarray, target_text: str,
+                  brightness_thresh: int = 225) -> tuple[int, int]:
+    """
+    OCRs the bold white HLB-number labels on the map and returns the pixel
+    (col, row) center of the one matching `target_text`. Raises if not found.
+    """
+    bright = np.all(map_img > brightness_thresh, axis=2).astype(np.uint8) * 255
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(bright, connectivity=8)
+
+    text_mask = np.zeros_like(bright)
+    for i in range(1, n):
+        x, y, w, h, area = stats[i]
+        fill_ratio = area / (w * h + 1e-6)
+        if 8 < w < 60 and 8 < h < 40 and fill_ratio > 0.25:
+            text_mask[labels == i] = 255
+
+    data = pytesseract.image_to_data(
+        Image.fromarray(text_mask),
+        output_type=pytesseract.Output.DICT,
+        config="--psm 11 -c tessedit_char_whitelist=0123456789",
+    )
+
+    for i, text in enumerate(data["text"]):
+        if text.strip() == target_text:
+            x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
+            return int(x + w / 2), int(y + h / 2)
+
+    raise ValueError(f"Could not locate label '{target_text}' on the map via OCR.")
+
+
+# ---------------------------------------------------------------------------
+# Step 5 — Isolate the enclosed polygon and simplify its contour
+# ---------------------------------------------------------------------------
+
+def isolate_polygon(sealed_line_mask: np.ndarray, seed: tuple[int, int],
+                     simplify_tolerance_frac: float = 0.002) -> np.ndarray:
+    """
+    Flood-fills the free space from `seed`, bounded by the sealed line mask,
+    then returns a simplified contour as an (N, 2) array of (col, row) points.
+    """
+    free = cv2.bitwise_not(sealed_line_mask)
+    n, labels = cv2.connectedComponents(free, connectivity=4)
+
+    seed_x, seed_y = seed
+    seed_label = labels[seed_y, seed_x]
+    if seed_label == 0:
+        raise ValueError("Seed point landed on a boundary line pixel, not free space.")
+
+    blob = np.uint8(labels == seed_label) * 255
+    contours, _ = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        raise ValueError("No contour found for the flood-filled region.")
+
+    c = max(contours, key=cv2.contourArea)
+    peri = cv2.arcLength(c, True)
+    simplified = cv2.approxPolyDP(c, simplify_tolerance_frac * peri, True)
+    return simplified.reshape(-1, 2)
+
+
+# ---------------------------------------------------------------------------
+# Step 6/7 — Convert to GeoJSON
+# ---------------------------------------------------------------------------
+
+def to_geojson(pixel_pts: np.ndarray, transform: GeoTransform, properties: dict) -> dict:
+    coords = [list(transform.to_lonlat(col, row)) for col, row in pixel_pts]
+    coords.append(coords[0])  # close the ring
+    return {
+        "type": "Feature",
+        "properties": properties,
+        "geometry": {"type": "Polygon", "coordinates": [coords]},
+    }
+
+
+# ---------------------------------------------------------------------------
+# End-to-end orchestration
+# ---------------------------------------------------------------------------
+
+def extract_hlb_boundary(pdf_path: str, hlb_number: str, properties: dict | None = None) -> dict:
+    """
+    Runs the full pipeline on a single PDF and returns a GeoJSON Feature for
+    the requested HLB number. Raises ValueError at whichever step fails, so
+    callers can fall back to manual tracing for that file.
+    """
+    geo_meta = read_geo_metadata(pdf_path)
+    if geo_meta is None:
+        raise ValueError(
+            "PDF has no embedded /Measure /GEO metadata — not a GeoPDF. "
+            "Fall back to manual boundary tracing or landmark-based georeferencing."
+        )
+
+    map_img = extract_map_raster(pdf_path, geo_meta)
+    sealed_lines = detect_boundary_lines(map_img)
+    seed = locate_label(map_img, hlb_number)
+    pixel_pts = isolate_polygon(sealed_lines, seed)
+
+    h, w = map_img.shape[:2]
+    transform = GeoTransform(
+        crop_w=w, crop_h=h,
+        lat_at_y0=geo_meta["lat_at_y0"], lat_at_y1=geo_meta["lat_at_y1"],
+        lon_at_x0=geo_meta["lon_at_x0"], lon_at_x1=geo_meta["lon_at_x1"],
+    )
+
+    props = {"hlb_no": hlb_number}
+    if properties:
+        props.update(properties)
+
+    return to_geojson(pixel_pts, transform, props)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Extract an HLB boundary polygon from a Census layout-map GeoPDF.")
+    parser.add_argument("pdf_path", help="Path to the layout map PDF")
+    parser.add_argument("--hlb", required=True, help="HLB number to extract, e.g. 0542")
+    parser.add_argument("--out", default="hlb_boundary.geojson", help="Output GeoJSON path")
+    args = parser.parse_args()
+
+    feature = extract_hlb_boundary(args.pdf_path, args.hlb)
+    with open(args.out, "w") as f:
+        json.dump(feature, f, indent=2)
+
+    n_verts = len(feature["geometry"]["coordinates"][0]) - 1
+    print(f"Extracted HLB {args.hlb}: {n_verts} vertices -> {args.out}")

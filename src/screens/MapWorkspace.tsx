@@ -31,6 +31,7 @@ interface Props {
   isDemoMode?: boolean;
   onDemoComplete?: () => void;
   numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine';
+  isAutoFetched?: boolean;
 }
 
 const BC = ['#E74C3C','#3498DB','#27AE60','#F39C12','#9B59B6','#1ABC9C','#E67E22','#2980B9','#C0392B','#16A085','#D35400','#8E44AD'];
@@ -96,7 +97,7 @@ export default function MapWorkspace(props: Props) {
     onUpdateBoundary, onUpdateRoads, onUpdateSymbols, onUpdateBlocks, onUpdateFarmland,
     onUpdateWater, onUpdateForests, onUpdateLandmarks, onUpdateStats, onUpdateOrientation,
     onStepComplete, onJumpToPreview, onUpdateMapData, isDemoMode, onDemoComplete,
-    numberingSystem
+    numberingSystem, isAutoFetched
   } = props;
 
   const { t } = useTranslation();
@@ -505,6 +506,166 @@ export default function MapWorkspace(props: Props) {
   }, [step]);
   useEffect(() => { if(boundaryClosed&&boundaryPins.length>=4) onUpdateOrientation(getBestOrientation(boundaryPins)); }, [boundaryClosed]);
   useEffect(() => { if(step===6&&symbols.length>0){const bp=boundaryPins.length>=3?boundaryPins:undefined;const blksArg=numberingSystem==='boundary_serpentine'?undefined:(blocks.length>0?blocks:undefined);const p=generateSerpentinePath(symbols,blksArg,numberingSystem,bp);const o=getSerpentineOrder(symbols,blksArg,numberingSystem,bp);setSerpPath(p);setSerpOrd(o);if(step===6)setShowGuide(true);const f=o.find(id=>{const s=symbols.find(x=>x.id===id);return s&&isHouseType(s.symbol_type)&&s.number===null;});if(f)setSugId(f);}else if(step===6&&symbols.length===0){setSerpPath([]);} }, [step, numberingSystem, blocks, boundaryPins, symbols]);
+
+  const autoFetchTriggered = useRef(false);
+  useEffect(() => {
+    if (boundaryClosed && boundaryPins.length >= 3 && isAutoFetched && !autoFetchTriggered.current) {
+      autoFetchTriggered.current = true;
+      if (onUpdateMapData) {
+        onUpdateMapData({ isAutoFetched: false });
+      }
+      runAutoEnrichment();
+    }
+  }, [boundaryClosed, boundaryPins, isAutoFetched]);
+
+  async function runAutoEnrichment() {
+    if (boundaryPins.length < 3) return;
+    setRdLoad(true);
+    setBldgMsg('⏳ Satellite & OpenStreetMap data fetching...');
+    try {
+      const bb = getBbox(boundaryPins);
+      const area = polygonArea(boundaryPins);
+      const pad = 0.003;
+
+      // Promise 1: Fetch Roads
+      const roadsPromise = (async () => {
+        try {
+          const q = `[out:json][timeout:30][bbox:${bb.south - pad},${bb.west - pad},${bb.north + pad},${bb.east + pad}];
+            (
+              way["highway"];
+              way["highway"~"footway|path|track|steps|cycleway|pedestrian|living_street"];
+              way["footway"="crossing"];
+              way["path"];
+              way["track"];
+            );
+            out geom;`;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const r = await fetchOverpass(q, controller.signal);
+          clearTimeout(timeoutId);
+          if (!r.ok) return [];
+          const d = await r.json();
+          const cl = clipRoadsToPolygon(d.elements || [], boundaryPins);
+          return cl.map(c => ({
+            id: crypto.randomUUID(),
+            coords: c.coords,
+            highway: c.highway,
+            name: c.name,
+            confirmed: false,
+            source: 'osm' as const,
+            osm_id: c.osm_id
+          }));
+        } catch (e) {
+          console.warn("Auto roads fetch failed:", e);
+          return [];
+        }
+      })();
+
+      // Promise 2: Fetch Buildings
+      const buildingsPromise = (async () => {
+        try {
+          const res = await supabase.functions.invoke('fetch-open-buildings', {
+            body: {
+              north: bb.north,
+              south: bb.south,
+              east: bb.east,
+              west: bb.west,
+              boundary: boundaryPins.map(p => ({ lat: p.lat, lng: p.lng })),
+              useGoogle: true,
+            }
+          });
+          if (res.error) return [];
+          const all = res.data?.buildings || [];
+          const valid = all.filter((b: any) => b.area_sqm == null || b.area_sqm > 5);
+          return valid.map((b: any) => ({
+            id: `building-${crypto.randomUUID()}`,
+            symbol_type: (b.buildingType || 'pucca_house') as SymbolType,
+            lat: b.lat, lng: b.lng,
+            number: null,
+            placed_at: new Date().toISOString(),
+            auto_detected: true,
+          }));
+        } catch (e) {
+          console.warn("Auto buildings fetch failed:", e);
+          return [];
+        }
+      })();
+
+      // Promise 3: Fetch Landcover & POIs
+      const landcoverPromise = (async () => {
+        const q = buildComprehensiveQuery(bb, 0.002);
+        let res = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } };
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const r = await fetchOverpass(q, controller.signal);
+          clearTimeout(timeoutId);
+          if (r.ok) {
+            const d = await r.json();
+            res = processOverpassData(d.elements || [], boundaryPins, area);
+          }
+        } catch (e) {
+          console.warn("Auto landcover OSM fetch failed:", e);
+        }
+
+        let finalLanduseAreas = res.landuseAreas;
+        if (res.stats.farmlandArea < area * 0.4) {
+          try {
+            const resLandcover = await supabase.functions.invoke('fetch-landcover', {
+              body: { north: bb.north, south: bb.south, east: bb.east, west: bb.west }
+            });
+            const lc = resLandcover.data;
+            const rawAreas: any[] = lc?.landuseAreas
+              ? lc.landuseAreas.map((l: any) => ({ type: l.type, points: l.points }))
+              : (lc?.features || []).map((f: any) => ({
+                  type: f.properties?.label || f.properties?.type || 'farmland',
+                  points: (f.geometry?.coordinates?.[0] || []),
+                }));
+            const newAreas = rawAreas.filter((l) =>
+              Array.isArray(l.points) && l.points.length >= 3 &&
+              pointInPolygon({ lat: l.points[0][1], lng: l.points[0][0] }, boundaryPins)
+            );
+            if (newAreas.length) {
+              finalLanduseAreas = [...finalLanduseAreas, ...newAreas.map((l) => ({
+                type: l.type,
+                points: l.points.map((p: any) => ({ lat: p[1], lng: p[0] }))
+              }))];
+            }
+          } catch (e) {
+            console.warn("Auto landcover Dynamic World fetch failed:", e);
+          }
+        }
+        return { ...res, landuseAreas: finalLanduseAreas };
+      })();
+
+      const [fetchedRoads, fetchedBuildings, lcResult] = await Promise.all([
+        roadsPromise,
+        buildingsPromise,
+        landcoverPromise
+      ]);
+
+      const combinedSymbols = [...fetchedBuildings, ...lcResult.symbols];
+
+      if (onUpdateMapData) {
+        onUpdateMapData({
+          roads: fetchedRoads,
+          symbols: combinedSymbols,
+          farmlandBlocks: lcResult.farmlands,
+          waterBodies: lcResult.waterBodies,
+          forests: lcResult.forests,
+          landuseAreas: lcResult.landuseAreas,
+          landmarks: lcResult.landmarks
+        });
+      }
+
+      setRdLoad(false);
+      setBldgMsg(`✅ Auto-populated: ${fetchedRoads.length} roads, ${fetchedBuildings.length} buildings, ${lcResult.waterBodies.length} water bodies, ${lcResult.forests.length} forests, and ${lcResult.landmarks.length} landmarks.`);
+    } catch (err) {
+      setRdLoad(false);
+      setBldgMsg('⚠️ Automatic population encountered some issues.');
+      console.error("Auto enrichment pipeline error:", err);
+    }
+  }
 
 
 

@@ -181,6 +181,7 @@ export interface MapData {
   /** Project creation mode: 'canvas' = Canvas Block screen, 'desk' (default) = Desk flow */
   mode?: 'canvas' | 'desk';
   numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine';
+  isAutoFetched?: boolean;
 }
 
 export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; isHouse: boolean }[] = [

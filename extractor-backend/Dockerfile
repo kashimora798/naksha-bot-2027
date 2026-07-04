@@ -1,4 +1,4 @@
-FROM python:3.10-slim-buster
+FROM python:3.10-slim
 
 # Install Tesseract OCR engine, OpenCV dependencies, and cleaning files
 RUN apt-get update && apt-get install -y --no-install-recommends \

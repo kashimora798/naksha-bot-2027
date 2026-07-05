@@ -432,7 +432,7 @@ export default function App() {
 
     if (step === 1) {
       return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
-        <SMSParseScreen onComplete={(h, c, d, s, bp) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown', boundaryPins: bp || [], boundaryClosed: !!bp, isAutoFetched: !!bp }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} />
+        <SMSParseScreen onComplete={(h, c, d, s, bp) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown', boundaryPins: bp || [], boundaryClosed: !!bp, isAutoFetched: !!bp }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} userId={user?.id} />
       </div>;
     }
 
@@ -524,7 +524,7 @@ export default function App() {
       )}
       <div className="flex-1 relative overflow-hidden min-h-0">
         <ErrorBoundary>
-        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s, bp) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown', boundaryPins: bp || [], boundaryClosed: !!bp, isAutoFetched: !!bp }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} /></div>}
+        {step === 2 && <div className="h-full overflow-auto"><SMSParseScreen onComplete={(h, c, d, s, bp) => { update({ hlbNumber: h, center: c, district: d || 'Unknown', state: s || 'Unknown', boundaryPins: bp || [], boundaryClosed: !!bp, isAutoFetched: !!bp }); if (mapData.mode === 'canvas') { setStep(11); } else { setStep(3); } }} onBack={() => setStep(0)} isDemoMode={isDemoMode} userId={user?.id} /></div>}
         {/* MapWorkspace is kept permanently mounted (never conditionally removed)
             once the user enters the map flow. We toggle visibility with display:none
             so the Leaflet map instance stays alive across tab switches, preventing

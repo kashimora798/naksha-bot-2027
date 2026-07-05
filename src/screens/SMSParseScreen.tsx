@@ -1,11 +1,13 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { Coordinate } from '../types';
 import { DEMO_CENTER, DEMO_HLB_NUMBER, DEMO_DISTRICT, DEMO_STATE } from '../data/demo';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   onComplete: (hlb: string, center: Coordinate, district: string, state: string, boundaryPins?: Coordinate[]) => void;
   onBack: () => void;
   isDemoMode?: boolean;
+  userId?: string;
 }
 
 function parseCoordinatesFromURL(text: string): { lat: number; lng: number } | null {
@@ -55,18 +57,35 @@ const DEMO_LOCATIONS = [
 
 type LocationMode = 'sms' | 'search' | 'manual';
 
-export default function SMSParseScreen({ onComplete, onBack, isDemoMode }: Props) {
+export default function SMSParseScreen({ onComplete, onBack, isDemoMode, userId }: Props) {
   const [locationMode, setLocationMode] = useState<LocationMode>('sms');
   const [recentList, setRecentList] = useState<any[]>([]);
 
   useEffect(() => {
-    try {
-      const list = JSON.parse(localStorage.getItem('recent_boundaries') || '[]');
-      if (Array.isArray(list)) setRecentList(list);
-    } catch (e) {
-      console.error("Failed to load recent boundaries:", e);
-    }
-  }, []);
+    if (!userId || isDemoMode) return;
+    supabase
+      .from('projects')
+      .select('id, name, data, updated_at')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Failed to load projects from Supabase:", error);
+          return;
+        }
+        if (data) {
+          const list = data
+            .filter((p: any) => p.data && Array.isArray(p.data.boundaryPins) && p.data.boundaryPins.length >= 3)
+            .map((p: any) => ({
+              hlbNumber: p.data.hlbNumber || p.name?.replace('HLB ', '') || 'Draft',
+              center: p.data.center,
+              boundaryPins: p.data.boundaryPins,
+              timestamp: p.updated_at
+            }));
+          setRecentList(list);
+        }
+      });
+  }, [userId, isDemoMode]);
 
   // SMS tab state
   const [smsText, setSmsText] = useState('');

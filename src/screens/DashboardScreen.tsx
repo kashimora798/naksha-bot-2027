@@ -120,7 +120,8 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
         boundaryPins,
         boundaryClosed: true,
         center,
-        isAutoFetched: true
+        isAutoFetched: true,
+        mode: 'sat-extractor' as any
       });
     } catch (err: any) {
       console.error(err);
@@ -452,7 +453,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
         )}
 
         {/* ── Primary action cards ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
           <button
             onClick={() => checkLimitAndStart(() => setShowAdvancedMapModal(true))}
             className="group text-left p-4 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-700 text-white shadow-[var(--shadow-warm-2)] hover:brightness-105 active:scale-[0.99] transition-all"
@@ -461,15 +462,6 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
             <p className="font-bold text-sm font-public-sans leading-tight">Advanced Auto-Map</p>
             <p className="text-[11px] text-white/75 mt-0.5">GeoPDF Extract</p>
             <p className="text-[10px] text-white/60 mt-1 leading-snug hidden sm:block">सीमा और सड़कें तुरंत लाएं</p>
-          </button>
-          <button
-            onClick={() => checkLimitAndStart(() => onSatExtractorMap?.())}
-            className="group text-left p-4 rounded-2xl bg-gradient-to-br from-violet-600 to-violet-700 text-white shadow-[var(--shadow-warm-2)] hover:brightness-105 active:scale-[0.99] transition-all"
-          >
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl mb-2.5">🛰️</div>
-            <p className="font-bold text-sm font-public-sans leading-tight">Advanced Sat-Extractor</p>
-            <p className="text-[11px] text-white/75 mt-0.5">Satellite Extraction</p>
-            <p className="text-[10px] text-white/60 mt-1 leading-snug hidden sm:block">Google Open Footprints</p>
           </button>
           <button
             onClick={() => checkLimitAndStart(() => onNewProject(undefined))}

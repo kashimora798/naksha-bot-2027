@@ -416,8 +416,8 @@ export default function App() {
         <DashboardScreen
           user={session?.user}
           userProfile={userProfile}
-          onLoadProject={(id, d) => { setProjectId(id); setMapData(prev => ({...prev, ...d, projectId: id, paymentStatus: (d as any).payment_status})); setStep(3); }}
-          onNewProject={(initialData) => { setMapData({ ...DEFAULT_MAP_DATA, ...initialData }); setProjectId(null); setStep(initialData?.hlbNumber ? 3 : 1); }}
+          onLoadProject={(id, d) => { setProjectId(id); setMapData(prev => ({...prev, ...d, projectId: id, paymentStatus: (d as any).payment_status})); setStep((d as any).mode === 'sat-extractor' ? 15 : 3); }}
+          onNewProject={(initialData) => { setMapData({ ...DEFAULT_MAP_DATA, ...initialData }); setProjectId(null); setStep(initialData?.mode === 'sat-extractor' ? 15 : (initialData?.hlbNumber ? 3 : 1)); }}
           onLiveSurvey={(initialData) => {
             if (initialData) {
               update({ ...initialData });
@@ -447,9 +447,15 @@ export default function App() {
     }
 
     if (step === 15) {
-      return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
+      return <div className="absolute inset-0 z-[50]">
         <ErrorBoundary>
-          <SatExtractorWorkspace user={user} onBack={() => setStep(0)} />
+          <SatExtractorWorkspace
+            user={user}
+            mapData={mapData}
+            projectId={projectId}
+            update={update}
+            onSaveAndExit={() => { forceSave(); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
+          />
         </ErrorBoundary>
       </div>;
     }
@@ -477,6 +483,8 @@ export default function App() {
           if ((data as any).mode === 'canvas') {
             setPreviewSource(11);
             setStep(11);
+          } else if ((data as any).mode === 'sat-extractor') {
+            setStep(15);
           } else {
             // Determine where to resume based on data
             if (data.blocks && data.blocks.length > 0) setStep(8);
@@ -491,7 +499,7 @@ export default function App() {
           setProjectId(null);
           setIsDemoMode(false);
           isInitialLoad.current = true;
-          setStep(initialData?.hlbNumber ? 3 : 2); // Step 2 = SMS screen in the map shell
+          setStep(initialData?.mode === 'sat-extractor' ? 15 : (initialData?.hlbNumber ? 3 : 2));
         }}
         onLiveSurvey={(initialData) => {
           if (initialData) {

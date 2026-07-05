@@ -2,13 +2,16 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from '../lib/supabase';
-import { saveBoundaryToDb, fetchSavedBoundariesFromDb } from '../lib/survey-api';
-import type { Coordinate } from '../types';
+import { saveBoundaryToDb } from '../lib/survey-api';
+import type { Coordinate, MapData, SymbolType } from '../types';
 import { getBbox, getOSMName } from '../lib/geo';
 
 interface Props {
   user: any;
-  onBack: () => void;
+  mapData: MapData;
+  projectId: string | null;
+  update: (data: Partial<MapData>) => void;
+  onSaveAndExit: () => void;
 }
 
 // Calculate bearing between two points to align text labels
@@ -29,30 +32,17 @@ function calculateBearing(p1: Coordinate, p2: Coordinate): number {
   return brng;
 }
 
-export default function SatExtractorWorkspace({ user, onBack }: Props) {
-  const [hlbCode, setHlbCode] = useState('');
+export default function SatExtractorWorkspace({ user, mapData, projectId, update, onSaveAndExit }: Props) {
+  const [hlbCode, setHlbCode] = useState(mapData.hlbNumber || '');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   
   // Extraction states
   const [extractStatus, setExtractStatus] = useState('');
   const [extractError, setExtractError] = useState<string | null>(null);
   
-  // Boundary & geometry states
-  const [boundaryPins, setBoundaryPins] = useState<Coordinate[]>([]);
-  const [center, setCenter] = useState<Coordinate | null>(null);
-  const [boundaryGeojson, setBoundaryGeojson] = useState<any>(null);
-  
-  // Feature states
-  const [roads, setRoads] = useState<any[]>([]);
-  const [waterBodies, setWaterBodies] = useState<any[]>([]);
-  const [pois, setPois] = useState<any[]>([]);
-  const [buildings, setBuildings] = useState<any[]>([]);
-  
   // Settings & Toggles
   const [accuracy, setAccuracy] = useState(0.70);
   const [fetchingBuildings, setFetchingBuildings] = useState(false);
-  const [savedBoundaries, setSavedBoundaries] = useState<any[]>([]);
-  const [loadingSaved, setLoadingSaved] = useState(false);
   
   // Layer visibility toggles
   const [showSatellite, setShowSatellite] = useState(true);
@@ -64,7 +54,7 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
   const [showRoadNames, setShowRoadNames] = useState(true);
 
   // Print layout settings
-  const [printTitle, setPrintTitle] = useState('');
+  const [printTitle, setPrintTitle] = useState(mapData.hlbNumber ? `Nazari Naksha - HLB ${mapData.hlbNumber}` : 'Nazari Naksha');
   const [showPrintLegend, setShowPrintLegend] = useState(true);
   
   // Leaflet refs
@@ -80,36 +70,22 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
     buildingsGroup?: L.FeatureGroup;
   }>({});
 
-  // 1. Fetch saved boundaries from Supabase
-  const loadSavedBoundaries = useCallback(async () => {
-    if (!user?.id) return;
-    setLoadingSaved(true);
-    try {
-      const list = await fetchSavedBoundariesFromDb(user.id);
-      setSavedBoundaries(list);
-    } catch (e) {
-      console.warn("Failed to load saved boundaries:", e);
-    } finally {
-      setLoadingSaved(false);
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    loadSavedBoundaries();
-  }, [loadSavedBoundaries]);
-
-  // 2. Initialize Leaflet Map
+  // Initialize Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // Default center Kanpur
+    // Set initial view Kanpur or boundary center
+    const centerLatLng: [number, number] = mapData.center 
+      ? [mapData.center.lat, mapData.center.lng] 
+      : [26.4499, 80.3319];
+
     const map = L.map(mapContainerRef.current, {
       zoomControl: false,
       attributionControl: false
-    }).setView([26.4499, 80.3319], 13);
+    }).setView(centerLatLng, mapData.center ? 16 : 13);
     mapRef.current = map;
 
-    // Custom attribution & controls
+    // Custom zoom control position
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     // Google Satellite Hybrid layer
@@ -130,6 +106,11 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
     layersRef.current.poiGroup = L.featureGroup().addTo(map);
     layersRef.current.buildingsGroup = L.featureGroup().addTo(map);
 
+    // Force Leaflet size recalculation to prevent blank gray screen layout bug
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
+
     return () => {
       map.remove();
       mapRef.current = null;
@@ -148,7 +129,7 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
     }
   }, [showSatellite]);
 
-  // 3. Clear Map layers
+  // Clear Map layers
   const clearMap = () => {
     const lg = layersRef.current;
     if (lg.boundary) { lg.boundary.remove(); lg.boundary = undefined; }
@@ -157,20 +138,16 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
     lg.waterGroup?.clearLayers();
     lg.poiGroup?.clearLayers();
     lg.buildingsGroup?.clearLayers();
-    setRoads([]);
-    setWaterBodies([]);
-    setPois([]);
-    setBuildings([]);
   };
 
-  // 4. Draw boundary on map
-  const drawBoundary = (pins: Coordinate[], centerPt: Coordinate) => {
+  // Draw boundary on map
+  const drawBoundary = useCallback((pins: Coordinate[]) => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || pins.length < 3) return;
 
-    clearMap();
-    setBoundaryPins(pins);
-    setCenter(centerPt);
+    if (layersRef.current.boundary) {
+      layersRef.current.boundary.remove();
+    }
 
     const latLngs = pins.map(p => [p.lat, p.lng] as [number, number]);
     const poly = L.polygon(latLngs, {
@@ -186,7 +163,24 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
     layersRef.current.boundary = poly;
 
     map.fitBounds(poly.getBounds(), { padding: [20, 20] });
-  };
+  }, [showBoundary]);
+
+  // Handle drawing & loading when boundary pins are loaded
+  useEffect(() => {
+    if (mapData.boundaryPins && mapData.boundaryPins.length >= 3) {
+      drawBoundary(mapData.boundaryPins);
+      
+      // Render existing features from project state
+      renderRoadsLayer(mapData.roads || []);
+      renderWaterLayer(mapData.waterBodies || []);
+      
+      // Separate POIs and Google buildings from symbols list
+      const poisList = (mapData.symbols || []).filter(s => s.symbol_type === 'temple'); // POIs
+      const bldList = (mapData.symbols || []).filter(s => s.polygon != null); // Google building footprints
+      renderPOIsLayer(poisList);
+      renderBuildingsLayer(bldList);
+    }
+  }, [mapData.boundaryPins, mapData.roads, mapData.waterBodies, mapData.symbols, drawBoundary]);
 
   // Toggle boundary layer
   useEffect(() => {
@@ -200,22 +194,7 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
     }
   }, [showBoundary]);
 
-  // 5. Select a saved boundary
-  const handleSelectSaved = (item: any) => {
-    const geo = item.boundary_geojson;
-    const coords = geo?.geometry?.coordinates?.[0] || geo?.coordinates?.[0];
-    if (!coords || coords.length < 3) return;
-
-    const pins = coords.map(([lng, lat]: any) => ({ lat, lng }));
-    setPrintTitle(`Nazari Naksha - HLB ${item.hlb_number}`);
-    setBoundaryGeojson(geo);
-    drawBoundary(pins, item.center);
-    
-    // Auto trigger OSM fetch
-    triggerOSMFetch(pins);
-  };
-
-  // 6. Handle GeoPDF Boundary Extraction
+  // Handle GeoPDF Boundary Extraction
   const handleExtract = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hlbCode.trim()) { setExtractError('Please enter a 4-digit HLB code.'); return; }
@@ -254,15 +233,21 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
       const centerPt = { lat: sumLat / pins.length, lng: sumLng / pins.length };
 
       setPrintTitle(`Nazari Naksha - HLB ${hlbCode.trim()}`);
-      setBoundaryGeojson(geojson);
-      drawBoundary(pins, centerPt);
 
       // Save boundary to Database
       if (user?.id) {
         setExtractStatus('Saving extracted boundary to Supabase database...');
         await saveBoundaryToDb(user.id, hlbCode.trim(), geojson, centerPt);
-        loadSavedBoundaries();
       }
+
+      // Update project state
+      update({
+        hlbNumber: hlbCode.trim(),
+        boundaryPins: pins,
+        boundaryClosed: true,
+        center: centerPt,
+        isAutoFetched: true
+      });
 
       setExtractStatus('');
       triggerOSMFetch(pins);
@@ -273,11 +258,8 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
     }
   };
 
-  // 7. Auto Fetch OSM roads, water, and POIs
+  // Auto Fetch OSM roads, water, and POIs
   const triggerOSMFetch = async (pins: Coordinate[]) => {
-    const map = mapRef.current;
-    if (!map) return;
-
     setExtractStatus('Fetching roads, water bodies, and local POIs...');
     const bb = getBbox(pins);
     
@@ -344,14 +326,24 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
         }
       }
 
-      setRoads(parsedRoads);
-      setWaterBodies(parsedWater);
-      setPois(parsedPOIs);
+      // Map POIs to Symbols
+      const landmarkSymbols = parsedPOIs.map(p => ({
+        id: crypto.randomUUID(),
+        symbol_type: 'temple' as SymbolType, // Default to temple / POI symbol type
+        lat: p.lat,
+        lng: p.lng,
+        number: null,
+        placed_at: new Date().toISOString(),
+        auto_detected: true,
+        label: p.name
+      }));
 
-      // Render features on map
-      renderRoadsLayer(parsedRoads);
-      renderWaterLayer(parsedWater);
-      renderPOIsLayer(parsedPOIs);
+      // Update project state, triggering auto-save to database
+      update({
+        roads: parsedRoads,
+        waterBodies: parsedWater,
+        symbols: [...(mapData.symbols || []).filter(s => s.polygon != null), ...landmarkSymbols] // preserve google buildings
+      });
 
     } catch (e: any) {
       console.warn("Failed to fetch features from OSM:", e);
@@ -388,7 +380,6 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
         const p2 = r.coords[midIdx];
         const bearing = calculateBearing(p1, p2);
 
-        // DivIcon for rotating text along the segment
         const customIcon = L.divIcon({
           className: 'custom-road-label-container',
           html: `<div style="transform: rotate(${bearing}deg); font-family: 'Public Sans', sans-serif; font-size: 8px; font-weight: 800; color: #1e293b; background: rgba(255,255,255,0.85); padding: 1px 4.5px; border-radius: 4px; border: 1px solid #94a3b8; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.05); pointer-events: none;">${r.name}</div>`,
@@ -464,7 +455,7 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
       });
 
       L.marker([p.lat, p.lng], { icon: customIcon })
-        .bindTooltip(p.name, { direction: 'top', className: 'bg-slate-800 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow' })
+        .bindTooltip(p.label || p.name, { direction: 'top', className: 'bg-slate-800 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow' })
         .addTo(pg);
     });
 
@@ -480,13 +471,13 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
     else pg.remove();
   }, [showPOIs]);
 
-  // 8. Fetch Google Open Buildings Footprints with Accuracy Filter
+  // Fetch Google Open Buildings Footprints with Accuracy Filter
   const fetchGoogleBuildings = async () => {
-    if (boundaryPins.length === 0) return;
+    if (!mapData.boundaryPins || mapData.boundaryPins.length === 0) return;
     setFetchingBuildings(true);
     setExtractStatus('Fetching Google Open Buildings footprints...');
 
-    const bb = getBbox(boundaryPins);
+    const bb = getBbox(mapData.boundaryPins);
     try {
       const res = await supabase.functions.invoke('fetch-open-buildings', {
         body: {
@@ -494,7 +485,7 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
           south: bb.south,
           east: bb.east,
           west: bb.west,
-          boundary: boundaryPins.map(p => ({ lat: p.lat, lng: p.lng })),
+          boundary: mapData.boundaryPins.map(p => ({ lat: p.lat, lng: p.lng })),
           useGoogle: true,
           minConfidence: accuracy
         }
@@ -503,15 +494,28 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
       if (res.error) throw res.error;
 
       const list = res.data?.buildings || [];
-      // Google polygon objects have coordinates structure
       const valid = list.filter((b: any) => b.polygon && Array.isArray(b.polygon.coordinates));
 
-      setBuildings(valid);
-      renderBuildingsLayer(valid);
+      // Map to PlacedSymbols
+      const newBuildingSymbols = valid.map((b: any) => ({
+        id: `building-${crypto.randomUUID()}`,
+        symbol_type: 'pucca_house' as SymbolType,
+        lat: b.lat,
+        lng: b.lng,
+        number: null,
+        placed_at: new Date().toISOString(),
+        auto_detected: true,
+        polygon: b.polygon
+      }));
+
+      // Update state, saving to database
+      update({
+        symbols: [...(mapData.symbols || []).filter(s => s.polygon == null), ...newBuildingSymbols] // preserve landmarks
+      });
 
     } catch (e: any) {
       console.warn("Failed to fetch Google footprints:", e);
-      alert("Failed to retrieve Google Open Buildings. Verify your Supabase Edge Function is deployed.");
+      alert("Failed to retrieve Google Open Buildings footprints.");
     } finally {
       setFetchingBuildings(false);
       setExtractStatus('');
@@ -525,7 +529,7 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
     bg.clearLayers();
 
     bldList.forEach(b => {
-      // coordinates format is [[[lng, lat], [lng, lat], ...]]
+      if (!b.polygon || !b.polygon.coordinates) return;
       const latlngs = b.polygon.coordinates[0].map(([lng, lat]: any) => [lat, lng]);
       
       L.polygon(latlngs, {
@@ -586,81 +590,60 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
             </div>
           </div>
           <button
-            onClick={onBack}
-            className="py-1 px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs font-bold text-slate-300 transition-colors"
+            onClick={onSaveAndExit}
+            className="py-1.5 px-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-bold text-slate-200 transition-colors shadow-sm cursor-pointer"
           >
-            ← Back
+            Exit Workspace
           </button>
         </div>
 
         {/* Scrollable Setup & Control Panel */}
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
 
-          {/* Form 1: Setup & Extract */}
-          <div className="bg-slate-800/40 border border-slate-700/80 rounded-xl p-4 space-y-4">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">📐 Extract Boundary Polygon</h3>
-            <form onSubmit={handleExtract} className="space-y-3.5">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">HLB Code (4 digits)</label>
-                <input
-                  type="text"
-                  maxLength={4}
-                  value={hlbCode}
-                  onChange={e => setHlbCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="e.g. 0455"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500 font-mono"
-                />
-              </div>
+          {/* Form 1: Setup & Extract (if no boundary is present) */}
+          {(!mapData.boundaryPins || mapData.boundaryPins.length === 0) && (
+            <div className="bg-slate-800/40 border border-slate-700/80 rounded-xl p-4 space-y-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">📐 Extract Boundary Polygon</h3>
+              <form onSubmit={handleExtract} className="space-y-3.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">HLB Code (4 digits)</label>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    value={hlbCode}
+                    onChange={e => setHlbCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="e.g. 0455"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-violet-500 font-mono"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Census GeoPDF File</label>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={e => setPdfFile(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-500 cursor-pointer"
-                />
-              </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Census GeoPDF File</label>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={e => setPdfFile(e.target.files?.[0] || null)}
+                    className="w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-500 cursor-pointer"
+                  />
+                </div>
 
-              <button
-                type="submit"
-                disabled={!!extractStatus}
-                className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg active:scale-95 transition-all disabled:opacity-50"
-              >
-                {extractStatus ? 'Processing Extraction...' : 'Extract & Sync Boundary ⚡'}
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={!!extractStatus}
+                  className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {extractStatus ? 'Processing Extraction...' : 'Extract & Sync Boundary ⚡'}
+                </button>
+              </form>
 
-            {extractError && (
-              <p className="text-xs text-red-400 bg-red-950/40 border border-red-900/60 p-2.5 rounded-lg font-medium leading-relaxed">{extractError}</p>
-            )}
-          </div>
-
-          {/* Form 2: Load Saved Boundaries */}
-          {savedBoundaries.length > 0 && (
-            <div className="bg-slate-800/40 border border-slate-700/80 rounded-xl p-4 space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">📂 Saved DB Boundaries ({savedBoundaries.length})</h3>
-              <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                {savedBoundaries.map((item, idx) => (
-                  <div key={item.id || idx} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-900/40 border border-slate-700/40 hover:bg-slate-900/80 transition-colors">
-                    <div>
-                      <p className="text-xs font-bold text-slate-200 font-mono">HLB {item.hlb_number}</p>
-                      <p className="text-[9px] text-slate-400">{new Date(item.created_at || item.timestamp).toLocaleDateString()}</p>
-                    </div>
-                    <button
-                      onClick={() => handleSelectSaved(item)}
-                      className="py-1 px-2.5 bg-violet-650/40 hover:bg-violet-650/80 text-violet-400 font-bold text-[10px] rounded border border-violet-500/25 transition-all"
-                    >
-                      Load
-                    </button>
-                  </div>
-                ))}
-              </div>
+              {extractError && (
+                <p className="text-xs text-red-400 bg-red-950/40 border border-red-900/60 p-2.5 rounded-lg font-medium leading-relaxed">{extractError}</p>
+              )}
             </div>
           )}
 
           {/* Google Open Buildings Action */}
-          {boundaryPins.length > 0 && (
+          {mapData.boundaryPins && mapData.boundaryPins.length > 0 && (
             <div className="bg-slate-800/40 border border-slate-700/80 rounded-xl p-4 space-y-4">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">🏠 Google Open Buildings</h3>
               
@@ -721,13 +704,13 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
               </label>
               <label className="flex items-center gap-2.5 cursor-pointer select-none">
                 <input type="checkbox" checked={showBuildings} onChange={e => setShowBuildings(e.target.checked)} className="rounded accent-violet-500 border-slate-700 bg-slate-900 w-3.5 h-3.5" />
-                <span>Building Footprints ({buildings.length})</span>
+                <span>Building Footprints ({(mapData.symbols || []).filter(s => s.polygon != null).length})</span>
               </label>
             </div>
           </div>
 
           {/* Print Layout Section */}
-          {boundaryPins.length > 0 && (
+          {mapData.boundaryPins && mapData.boundaryPins.length > 0 && (
             <div className="bg-slate-800/40 border border-slate-700/80 rounded-xl p-4 space-y-4">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">🖨️ Layout Customization</h3>
               
@@ -768,7 +751,7 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
       </div>
 
       {/* Main Map Workspace Canvas */}
-      <div className="flex-1 relative bg-slate-950 flex flex-col">
+      <div className="flex-1 relative bg-slate-950 flex flex-col h-full w-full">
         {/* Loading Overlay */}
         {extractStatus && (
           <div className="absolute inset-0 bg-slate-900/80 z-[1000] flex flex-col items-center justify-center space-y-4 print:hidden">
@@ -781,10 +764,10 @@ export default function SatExtractorWorkspace({ user, onBack }: Props) {
         )}
 
         {/* Leaflet container */}
-        <div ref={mapContainerRef} className="flex-1 w-full h-full z-10 print:h-screen print:w-screen" />
+        <div ref={mapContainerRef} className="absolute inset-0 z-10 print:h-screen print:w-screen" style={{ height: '100%', width: '100%', minHeight: '100%' }} />
 
         {/* Map Workspace Instructions Overlay */}
-        {boundaryPins.length === 0 && !extractStatus && (
+        {(!mapData.boundaryPins || mapData.boundaryPins.length === 0) && !extractStatus && (
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900/90 border border-slate-800 p-8 rounded-2xl max-w-sm text-center shadow-2xl z-20 print:hidden">
             <span className="text-5xl block mb-4">🗺️</span>
             <h3 className="font-extrabold text-lg text-slate-200 mb-2">Sat-Extractor Workspace</h3>

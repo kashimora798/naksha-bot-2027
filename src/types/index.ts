@@ -180,7 +180,7 @@ export interface MapData {
   /** Neighbouring HLB/village names by compass side, drawn outside the boundary. */
   neighbours?: { north?: string; south?: string; east?: string; west?: string };
   /** Project creation mode: 'canvas' = Canvas Block screen, 'desk' (default) = Desk flow */
-  mode?: 'canvas' | 'desk';
+  mode?: 'canvas' | 'desk' | 'sat-extractor';
   numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine';
   isAutoFetched?: boolean;
 }

@@ -14,6 +14,7 @@ import CanvasBlockScreen from './screens/CanvasBlockScreen';
 import SessionsDashboard from './screens/SessionsDashboard';
 import SessionDetailScreen from './screens/SessionDetailScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
+import SatExtractorWorkspace from './screens/SatExtractorWorkspace';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import DonationPopup from './components/DonationPopup';
 
@@ -426,6 +427,7 @@ export default function App() {
           onResumeLiveSurvey={(id) => { setResumeSessionId(id); setStep(10); }}
           onDemoMap={() => { setMapData(DEFAULT_MAP_DATA); setProjectId(null); setIsDemoMode(true); setStep(2); }}
           onCanvasBlockMap={() => { setMapData({ ...DEFAULT_MAP_DATA, mode: 'canvas' }); setProjectId(null); setIsDemoMode(false); isInitialLoad.current = true; setStep(1); }}
+          onSatExtractorMap={() => setStep(15)}
         />
       </div>;
     }
@@ -440,6 +442,14 @@ export default function App() {
       return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
         <ErrorBoundary>
           <LiveSurveyScreen onExit={() => { setStep(0); setResumeSessionId(null); }} resumeSessionId={resumeSessionId || undefined} />
+        </ErrorBoundary>
+      </div>;
+    }
+
+    if (step === 15) {
+      return <div className="min-h-screen bg-gray-50 flex flex-col font-noto-sans text-[var(--color-charcoal)]">
+        <ErrorBoundary>
+          <SatExtractorWorkspace user={user} onBack={() => setStep(0)} />
         </ErrorBoundary>
       </div>;
     }
@@ -506,6 +516,7 @@ export default function App() {
           setPreviewSource(11);
           setStep(2);
         }}
+        onSatExtractorMap={() => setStep(15)}
       />
     );
   }

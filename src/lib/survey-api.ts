@@ -466,3 +466,53 @@ export async function generateChunkedSurveyMaps(
 
   return { success: true, chunks: results };
 }
+
+export async function saveBoundaryToDb(userId: string, hlbNumber: string, boundaryGeojson: any, center: Coordinate): Promise<any> {
+  const { data, error } = await supabase
+    .from('saved_boundaries')
+    .insert({
+      user_id: userId,
+      hlb_number: hlbNumber,
+      boundary_geojson: boundaryGeojson,
+      center: center
+    })
+    .select()
+    .single();
+  if (error) {
+    console.warn("Supabase saveBoundaryToDb failed, falling back to local storage:", error);
+    const saved = JSON.parse(localStorage.getItem('recent_boundaries') || '[]');
+    const updated = [
+      { hlbNumber, center, boundaryPins: boundaryGeojson.geometry?.coordinates?.[0]?.map(([lng, lat]: any) => ({ lat, lng })) || [], timestamp: new Date().toISOString() },
+      ...saved.filter((x: any) => x.hlbNumber !== hlbNumber)
+    ];
+    localStorage.setItem('recent_boundaries', JSON.stringify(updated.slice(0, 10)));
+    return { hlb_number: hlbNumber, boundary_geojson: boundaryGeojson, center };
+  }
+  return data;
+}
+
+export async function fetchSavedBoundariesFromDb(userId: string): Promise<any[]> {
+  const { data, error } = await supabase
+    .from('saved_boundaries')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.warn("Supabase fetchSavedBoundariesFromDb failed, returning local storage fallback:", error);
+    const list = JSON.parse(localStorage.getItem('recent_boundaries') || '[]');
+    return list.map((item: any) => ({
+      id: `local-${item.hlbNumber}`,
+      hlb_number: item.hlbNumber,
+      center: item.center,
+      boundary_geojson: {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [item.boundaryPins.map((p: any) => [p.lng, p.lat])]
+        }
+      },
+      created_at: item.timestamp
+    }));
+  }
+  return data || [];
+}

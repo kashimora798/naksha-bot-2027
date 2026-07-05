@@ -352,7 +352,7 @@ async function getGeeToken(sa: any): Promise<string> {
   return j.access_token;
 }
 
-async function fetchGoogle(n: number, s: number, e: number, w: number, poly: any, timeoutMs = 20000) {
+async function fetchGoogle(n: number, s: number, e: number, w: number, poly: any, minConfidence = 0.70, timeoutMs = 20000) {
   const out: any[] = [];
   const raw = Deno.env.get('GEE_SERVICE_ACCOUNT');
   if (!raw) return { source: 'google', out, meta: { ok: true, reason: 'not_enabled' } };
@@ -368,9 +368,16 @@ async function fetchGoogle(n: number, s: number, e: number, w: number, poly: any
       collection: { functionInvocationValue: { functionName: 'Collection.loadTable', arguments: {
         tableId: { constantValue: 'GOOGLE/Research/open-buildings/v3/polygons' },
       }}},
-      filter: { functionInvocationValue: { functionName: 'Filter.intersects', arguments: {
-        leftField: { constantValue: '.geo' }, rightValue: bbox,
-      }}},
+      filter: { functionInvocationValue: { functionName: 'Filter.and', arguments: {
+        filters: { constantValue: [
+          { functionInvocationValue: { functionName: 'Filter.intersects', arguments: {
+            leftField: { constantValue: '.geo' }, rightValue: bbox,
+          }}},
+          { functionInvocationValue: { functionName: 'Filter.greaterThanOrEquals', arguments: {
+            leftField: { constantValue: 'confidence' }, rightValue: { constantValue: minConfidence }
+          }}}
+        ]}
+      }}}
     }}}}, result: '0' };
     const r = await fetch(`https://earthengine.googleapis.com/v1/projects/${sa.project_id}/value:compute`, {
       method: 'POST', signal: ctrl.signal,
@@ -388,12 +395,12 @@ async function fetchGoogle(n: number, s: number, e: number, w: number, poly: any
       const c = f.properties?.longitude_latitude?.coordinates;
       const lat = c ? c[1] : undefined, lng = c ? c[0] : undefined;
       if (lat == null || lng == null) continue;
-      // EE filters by bbox rectangle; clip to the actual boundary polygon to match MS/OSM
       try { if (!turf.booleanPointInPolygon(turf.point([lng, lat]), poly)) continue; } catch { /* keep on error */ }
       out.push({
         lat, lng,
         polygon: f.geometry.type === 'Polygon' ? f.geometry : undefined,
         area_sqm: f.properties?.area_in_meters ?? null,
+        confidence: f.properties?.confidence ?? null,
         source: 'google',
       });
     }
@@ -436,7 +443,7 @@ function mergeAcrossSources(groups: any[][]): any[] {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
-    const { north, south, east, west, boundary, useGoogle } = await req.json();
+    const { north, south, east, west, boundary, useGoogle, minConfidence } = await req.json();
     if ([north, south, east, west].some(v => typeof v !== 'number')) {
       return new Response(JSON.stringify({ error: 'Missing/invalid bounding box' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -462,7 +469,7 @@ serve(async (req) => {
     if (useGoogle) {
       // Google explicitly requested: try Google first, fall back to MS+OSM if empty
       console.log('Trying Google Earth Engine (explicit request)...');
-      const googleResult = await fetchGoogle(north, south, east, west, poly);
+      const googleResult = await fetchGoogle(north, south, east, west, poly, minConfidence ?? 0.70);
       sources.google = { count: googleResult.out.length, ...googleResult.meta };
 
       if (googleResult.out.length > 0) {

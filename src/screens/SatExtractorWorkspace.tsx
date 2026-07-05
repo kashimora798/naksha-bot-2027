@@ -83,6 +83,27 @@ function removeOverlappingGoogleBuildings(buildings: any[]): any[] {
   return result;
 }
 
+// Pairwise distance-based deduplication to filter out overlapping POIs/Landmarks
+function declutterPOIs(pois: Landmark[], minDistanceDeg = 0.00045): Landmark[] {
+  const result: Landmark[] = [];
+  for (const p of pois) {
+    let tooClose = false;
+    for (const kept of result) {
+      const dLat = p.lat - kept.lat;
+      const dLng = p.lng - kept.lng;
+      const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (dist < minDistanceDeg) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (!tooClose) {
+      result.push(p);
+    }
+  }
+  return result;
+}
+
 export default function SatExtractorWorkspace({ user, mapData, projectId, update, onSaveAndExit }: Props) {
   const [hlbCode, setHlbCode] = useState(mapData.hlbNumber || '');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -579,17 +600,24 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     if (!pg) return;
     pg.clearLayers();
 
-    poisList.forEach(p => {
+    // Declutter list to avoid overlapping text labels
+    const cleanPois = declutterPOIs(poisList);
+
+    cleanPois.forEach(p => {
       const customIcon = L.divIcon({
-        className: 'custom-poi-marker',
-        html: `<div style="display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #6366f1; border: 1.5px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.15); font-size: 9px; color: white;">📍</div>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9]
+        className: 'custom-poi-label-container',
+        html: `
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -10px); pointer-events: none;">
+            <div style="width: 7px; height: 7px; border-radius: 50%; background: #6366f1; border: 1.5px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.35);"></div>
+            <div style="margin-top: 2px; font-family: 'Public Sans', sans-serif; font-size: 8px; font-weight: 850; color: #0f172a; background: rgba(255,255,255,0.92); padding: 1px 4.5px; border-radius: 4px; border: 1px solid #cbd5e1; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; text-transform: uppercase; letter-spacing: 0.1px;">
+              ${p.name}
+            </div>
+          </div>
+        `,
+        iconSize: [0, 0]
       });
 
-      L.marker([p.lat, p.lng], { icon: customIcon })
-        .bindTooltip(p.name, { direction: 'top', className: 'bg-slate-800 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow' })
-        .addTo(pg);
+      L.marker([p.lat, p.lng], { icon: customIcon, interactive: false }).addTo(pg);
     });
 
     if (!showPOIs) pg.remove();

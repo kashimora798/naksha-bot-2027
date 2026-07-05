@@ -85,7 +85,7 @@ function removeOverlappingGoogleBuildings(buildings: any[]): any[] {
 
 // Pairwise distance-based deduplication to filter out overlapping POIs/Landmarks
 function declutterPOIs(pois: Landmark[], minDistanceDeg = 0.00045): Landmark[] {
-  const result: Landmark[] = [];
+  const result: any[] = [];
   for (const p of pois) {
     let tooClose = false;
     for (const kept of result) {
@@ -115,6 +115,11 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
   // Settings & Toggles
   const [accuracy, setAccuracy] = useState(0.70);
   const [fetchingBuildings, setFetchingBuildings] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
+
+  // Drawing States
+  const [drawingMode, setDrawingMode] = useState<'none' | 'road' | 'poi'>('none');
+  const [tempPoints, setTempPoints] = useState<Coordinate[]>([]);
   
   // Layer visibility toggles
   const [showSatellite, setShowSatellite] = useState(true);
@@ -132,6 +137,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
   // Leaflet refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const tempDrawGroup = useRef<L.FeatureGroup | null>(null);
   const layersRef = useRef<{
     satellite?: L.TileLayer;
     boundary?: L.Polygon;
@@ -142,6 +148,30 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     poiGroup?: L.FeatureGroup;
     buildingsGroup?: L.FeatureGroup;
   }>({});
+
+  // Sync refs to avoid Leaflet closure stale state bugs
+  const mapDataRef = useRef(mapData);
+  useEffect(() => { mapDataRef.current = mapData; }, [mapData]);
+
+  const updateRef = useRef(update);
+  useEffect(() => { updateRef.current = update; }, [update]);
+
+  const drawingModeRef = useRef(drawingMode);
+  useEffect(() => { drawingModeRef.current = drawingMode; }, [drawingMode]);
+
+  const tempPointsRef = useRef(tempPoints);
+  useEffect(() => { tempPointsRef.current = tempPoints; }, [tempPoints]);
+
+  // Monitor resize to toggle sidebar behavior
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setSidebarOpen(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -178,6 +208,48 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     layersRef.current.poiGroup = L.featureGroup().addTo(map);
     layersRef.current.buildingsGroup = L.featureGroup().addTo(map);
 
+    // Temporary Drawing Group
+    tempDrawGroup.current = L.featureGroup().addTo(map);
+
+    // Map Click Handler for Drawing Mode
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      const mode = drawingModeRef.current;
+      const latlng = e.latlng;
+
+      if (mode === 'poi') {
+        const name = prompt("Enter Landmark / POI Name:");
+        if (name && name.trim()) {
+          const newPoi: Landmark = {
+            id: `landmark-custom-${crypto.randomUUID()}`,
+            name: name.trim(),
+            type: 'POI',
+            lat: latlng.lat,
+            lng: latlng.lng,
+            selectedForPdf: true
+          };
+          const currentPOIs = mapDataRef.current.landmarks || [];
+          updateRef.current({ landmarks: [...currentPOIs, newPoi] });
+        }
+        setDrawingMode('none');
+      } else if (mode === 'road') {
+        const pt = { lat: latlng.lat, lng: latlng.lng };
+        const pts = [...tempPointsRef.current, pt];
+        setTempPoints(pts);
+        
+        // Redraw temporary path
+        const tg = tempDrawGroup.current;
+        if (tg) {
+          tg.clearLayers();
+          pts.forEach((p) => {
+            L.circleMarker([p.lat, p.lng], { radius: 5, color: '#8b5cf6', fillColor: '#8b5cf6', fillOpacity: 1 }).addTo(tg);
+          });
+          if (pts.length >= 2) {
+            L.polyline(pts.map(p => [p.lat, p.lng]), { color: '#8b5cf6', weight: 4, dashArray: '5,5' }).addTo(tg);
+          }
+        }
+      }
+    });
+
     setTimeout(() => {
       map.invalidateSize();
     }, 250);
@@ -199,6 +271,56 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       sat.remove();
     }
   }, [showSatellite]);
+
+  // Handle Save Drawing Road
+  const handleSaveDrawingRoad = () => {
+    if (tempPoints.length < 2) {
+      alert("Please click on the map to add at least 2 points for the road.");
+      return;
+    }
+    const name = prompt("Enter Road Name (Optional):");
+    if (name === null) return;
+
+    const newRoad: RoadFeature = {
+      id: `road-custom-${crypto.randomUUID()}`,
+      coords: tempPoints,
+      highway: 'residential',
+      name: name.trim() || undefined,
+      confirmed: true,
+      source: 'user'
+    };
+
+    update({ roads: [...(mapData.roads || []), newRoad] });
+
+    setTempPoints([]);
+    tempDrawGroup.current?.clearLayers();
+    setDrawingMode('none');
+  };
+
+  // Handle Cancel Drawing Road
+  const handleCancelDrawingRoad = () => {
+    setTempPoints([]);
+    tempDrawGroup.current?.clearLayers();
+    setDrawingMode('none');
+  };
+
+  // Handle Undo Last Point
+  const handleUndoPoint = () => {
+    if (tempPoints.length === 0) return;
+    const pts = tempPoints.slice(0, -1);
+    setTempPoints(pts);
+
+    const tg = tempDrawGroup.current;
+    if (tg) {
+      tg.clearLayers();
+      pts.forEach((p) => {
+        L.circleMarker([p.lat, p.lng], { radius: 5, color: '#8b5cf6', fillColor: '#8b5cf6', fillOpacity: 1 }).addTo(tg);
+      });
+      if (pts.length >= 2) {
+        L.polyline(pts.map(p => [p.lat, p.lng]), { color: '#8b5cf6', weight: 4, dashArray: '5,5' }).addTo(tg);
+      }
+    }
+  };
 
   // Clear Map layers
   const clearMap = () => {
@@ -479,21 +601,42 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
 
       let poly;
       if (pk) {
-        poly = L.polyline(latlngs, { color: lc, weight: 8, opacity: 0.95 });
+        poly = L.polyline(latlngs, { color: lc, weight: 8, opacity: 0.95, interactive: true });
         rg.addLayer(poly);
-        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 4, opacity: 0.95 }));
+        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 4, opacity: 0.95, interactive: false }));
       } else if (rs) {
-        poly = L.polyline(latlngs, { color: lc, weight: 6, opacity: 0.95 });
+        poly = L.polyline(latlngs, { color: lc, weight: 6, opacity: 0.95, interactive: true });
         rg.addLayer(poly);
-        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2.5, opacity: 0.95 }));
+        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2.5, opacity: 0.95, interactive: false }));
       } else if (kt) {
-        poly = L.polyline(latlngs, { color: lc, weight: 5, dashArray: '10,6', opacity: 0.95 });
+        poly = L.polyline(latlngs, { color: lc, weight: 5, dashArray: '10,6', opacity: 0.95, interactive: true });
         rg.addLayer(poly);
-        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2, dashArray: '10,6', opacity: 0.95 }));
+        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2, dashArray: '10,6', opacity: 0.95, interactive: false }));
       } else {
-        poly = L.polyline(latlngs, { color: lc, weight: 5, opacity: 0.95 });
+        poly = L.polyline(latlngs, { color: lc, weight: 5, opacity: 0.95, interactive: true });
         rg.addLayer(poly);
-        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2, opacity: 0.95 }));
+        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2, opacity: 0.95, interactive: false }));
+      }
+
+      // Add Click Listener to Rename/Delete Road
+      if (poly) {
+        poly.on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e);
+          const act = confirm(`Modify road "${r.name || 'Unnamed Road'}":\n\n- Click OK to Rename\n- Click Cancel to Delete`);
+          if (act) {
+            const newName = prompt(`Rename road "${r.name || 'Unnamed Road'}":`, r.name || '');
+            if (newName !== null) {
+              const updatedRoads = rdsList.map(rd => rd.id === r.id ? { ...rd, name: newName.trim() || undefined } : rd);
+              updateRef.current({ roads: updatedRoads });
+            }
+          } else {
+            const confirmDel = confirm(`Are you sure you want to delete this road?`);
+            if (confirmDel) {
+              const updatedRoads = rdsList.filter(rd => rd.id !== r.id);
+              updateRef.current({ roads: updatedRoads });
+            }
+          }
+        });
       }
 
       // Aligned Road Name Labels (Only rendered if road segment is near the boundary)
@@ -617,7 +760,28 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
         iconSize: [0, 0]
       });
 
-      L.marker([p.lat, p.lng], { icon: customIcon, interactive: false }).addTo(pg);
+      const marker = L.marker([p.lat, p.lng], { icon: customIcon, interactive: true });
+      
+      // Interactive POI renaming & deletion
+      marker.on('click', (e: L.LeafletMouseEvent) => {
+        L.DomEvent.stopPropagation(e);
+        const act = confirm(`Modify landmark "${p.name}":\n\n- Click OK to Rename\n- Click Cancel to Delete`);
+        if (act) {
+          const newName = prompt(`Rename landmark "${p.name}":`, p.name);
+          if (newName && newName.trim()) {
+            const updatedPOIs = poisList.map(item => item.id === p.id ? { ...item, name: newName.trim() } : item);
+            updateRef.current({ landmarks: updatedPOIs });
+          }
+        } else {
+          const confirmDel = confirm(`Are you sure you want to delete "${p.name}"?`);
+          if (confirmDel) {
+            const updatedPOIs = poisList.filter(item => item.id !== p.id);
+            updateRef.current({ landmarks: updatedPOIs });
+          }
+        }
+      });
+
+      marker.addTo(pg);
     });
 
     if (!showPOIs) pg.remove();
@@ -742,8 +906,29 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
         </div>
       )}
 
-      {/* Left Settings & Controls Sidebar (Hidden during browser printing) */}
-      <div className="w-[380px] bg-slate-800 border-r border-slate-700/60 flex flex-col print:hidden">
+      {/* Floating Controls Scrim Trigger (visible on mobile only) */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-[999] bg-slate-800/90 hover:bg-slate-800 border border-slate-700 text-slate-200 p-2.5 rounded-xl shadow-lg flex items-center justify-center font-bold text-xs gap-1.5 active:scale-95 transition-all print:hidden cursor-pointer"
+      >
+        ⚙️ Controls
+      </button>
+
+      {/* Mobile drawer background backdrop scrim */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="md:hidden fixed inset-0 z-[1999] bg-black/60 backdrop-blur-xs transition-opacity duration-200 print:hidden"
+        />
+      )}
+
+      {/* Left Settings & Controls Sidebar / Mobile Drawer (Hidden during browser printing) */}
+      <div className={`
+        fixed md:relative top-0 bottom-0 left-0 z-[2000] md:z-10
+        w-[310px] sm:w-[350px] md:w-[380px] bg-slate-800 border-r border-slate-700/60 
+        flex flex-col print:hidden transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
         
         {/* Header */}
         <div className="p-4 border-b border-slate-700/60 flex items-center justify-between">
@@ -754,12 +939,20 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
               <span className="text-[10px] text-violet-400 font-bold tracking-widest uppercase mt-1 block">Satellite Mode</span>
             </div>
           </div>
-          <button
-            onClick={onSaveAndExit}
-            className="py-1.5 px-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-bold text-slate-200 transition-colors shadow-sm cursor-pointer"
-          >
-            Exit Workspace
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={onSaveAndExit}
+              className="py-1.5 px-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-bold text-slate-200 transition-colors shadow-sm cursor-pointer"
+            >
+              Exit
+            </button>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden p-2 text-slate-400 hover:text-slate-200 text-lg font-bold leading-none cursor-pointer"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Setup & Control Panel */}
@@ -804,6 +997,76 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
               {extractError && (
                 <p className="text-xs text-red-400 bg-red-950/40 border border-red-900/60 p-2.5 rounded-lg font-medium leading-relaxed">{extractError}</p>
               )}
+            </div>
+          )}
+
+          {/* Interactive Custom Drawing Tools */}
+          {mapData.boundaryPins && mapData.boundaryPins.length > 0 && (
+            <div className="bg-slate-800/40 border border-slate-700/80 rounded-xl p-4 space-y-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">✏️ Custom Editor Tools</h3>
+              
+              {drawingMode === 'none' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => { setDrawingMode('road'); setTempPoints([]); }}
+                    className="py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-bold shadow transition-all cursor-pointer flex flex-col items-center justify-center gap-1"
+                  >
+                    <span>🛣️</span>
+                    <span>Draw Road</span>
+                  </button>
+                  <button
+                    onClick={() => setDrawingMode('poi')}
+                    className="py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-bold shadow transition-all cursor-pointer flex flex-col items-center justify-center gap-1"
+                  >
+                    <span>📍</span>
+                    <span>Place Landmark</span>
+                  </button>
+                </div>
+              ) : drawingMode === 'road' ? (
+                <div className="space-y-3 bg-violet-950/20 border border-violet-800/40 p-3 rounded-lg">
+                  <p className="text-xs font-bold text-violet-300">🛣️ DRAWING ROAD MODE</p>
+                  <p className="text-[10px] text-slate-400 leading-snug">Click on the map to add road nodes. Click at least 2 points.</p>
+                  <div className="text-[10px] font-mono text-slate-300 bg-slate-900 px-2 py-1 rounded">
+                    Nodes Added: {tempPoints.length}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveDrawingRoad}
+                      disabled={tempPoints.length < 2}
+                      className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded text-[11px] font-bold transition-all cursor-pointer"
+                    >
+                      Save Road
+                    </button>
+                    <button
+                      onClick={handleUndoPoint}
+                      disabled={tempPoints.length === 0}
+                      className="py-2 px-2.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded text-[11px] font-bold transition-all cursor-pointer"
+                    >
+                      Undo
+                    </button>
+                    <button
+                      onClick={handleCancelDrawingRoad}
+                      className="py-2 px-2.5 bg-red-600 hover:bg-red-500 text-white rounded text-[11px] font-bold transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 bg-violet-950/20 border border-violet-800/40 p-3 rounded-lg">
+                  <p className="text-xs font-bold text-violet-300">📍 PLACE LANDMARK MODE</p>
+                  <p className="text-[10px] text-slate-400 leading-snug">Click anywhere on the map to place a named landmark pin.</p>
+                  <button
+                    onClick={() => setDrawingMode('none')}
+                    className="w-full py-2 bg-red-600 hover:bg-red-500 text-white rounded text-[11px] font-bold transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              <p className="text-[9px] text-slate-400 leading-snug">
+                💡 Tip: Click on any existing road or landmark directly on the map to rename or delete it!
+              </p>
             </div>
           )}
 

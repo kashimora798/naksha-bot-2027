@@ -446,19 +446,6 @@ export default function App() {
       </div>;
     }
 
-    if (step === 15) {
-      return <div className="absolute inset-0 z-[50]">
-        <ErrorBoundary>
-          <SatExtractorWorkspace
-            user={user}
-            mapData={mapData}
-            projectId={projectId}
-            update={update}
-            onSaveAndExit={() => { forceSave(); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
-          />
-        </ErrorBoundary>
-      </div>;
-    }
     // steps 2-8 fall through to the shared map shell below
   }
 
@@ -624,6 +611,19 @@ export default function App() {
               isDemoMode={isDemoMode}
             />
           </ErrorBoundary>
+        )}
+        {step === 15 && (
+          <div className="absolute inset-0 z-[50]">
+            <ErrorBoundary>
+              <SatExtractorWorkspace
+                user={user}
+                mapData={mapData}
+                projectId={projectId}
+                update={update}
+                onSaveAndExit={() => { forceSave(); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
+              />
+            </ErrorBoundary>
+          </div>
         )}
       </div>
       <DonationPopup

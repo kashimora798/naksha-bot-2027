@@ -74,7 +74,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
       formData.append('file', pdfFile);
       formData.append('hlb', hlbCode.trim());
 
-      const apiUrl = import.meta.env.VITE_EXTRACTOR_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_EXTRACTOR_API_URL || 'https://naksha-bot-2027.onrender.com';
       const res = await fetch(`${apiUrl}/api/extract`, {
         method: 'POST',
         body: formData

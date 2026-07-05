@@ -183,6 +183,7 @@ export interface MapData {
   mode?: 'canvas' | 'desk' | 'sat-extractor';
   numberingSystem?: 'serpentine' | 'census_u_loop' | 'boundary_serpentine';
   isAutoFetched?: boolean;
+  poiNamingApproach?: 'label' | 'number';
 }
 
 export const SYMBOL_DEFS: { type: SymbolType; label: string; labelHi: string; isHouse: boolean }[] = [

@@ -313,7 +313,7 @@ export function placeGroupsInBlock(block: Block, groups: SymGroup[], opts: { lay
   const ring = blockPoints(block);
   if (ring.length < 3) return [];
   const bearing = longestEdgeBearing(ring);
-  const ROAD_BUFFER = 3; // metres from road centreline — symbols must stay this clear
+  const ROAD_BUFFER = 8; // metres from road centreline — keeps icons fully clear of road stroke
   const { points } = latticeInBlock(ring, total, bearing, opts.exclusions ?? [], opts.layout, opts.roads, ROAD_BUFFER);
   const seq: { type: SymbolType; unitCount?: number }[] = [];
   for (const g of groups) for (let i = 0; i < Math.max(0, g.count); i++) seq.push({ type: g.type, unitCount: g.unitCount });
@@ -341,7 +341,7 @@ export function placeHousesInBlock(block: Block, opts: PlaceOpts): PlacedSymbol[
   const ring = blockPoints(block);
   if (ring.length < 3) return [];
   const bearing = longestEdgeBearing(ring);
-  const ROAD_BUFFER = 3; // metres from road centreline
+  const ROAD_BUFFER = 8; // metres from road centreline — keeps icons fully clear of road stroke
   const { points } = latticeInBlock(ring, count, bearing, opts.exclusions ?? [], layout, opts.roads, ROAD_BUFFER);
   return points.map(p => ({
     id: crypto.randomUUID(),

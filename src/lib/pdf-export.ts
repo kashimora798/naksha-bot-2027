@@ -210,6 +210,9 @@ export function renderMapToCanvas(
   const symSz = Math.max(20, Math.min(32, sc * 0.00032));
   {
     const pts = (data.symbols || []).map(s => ({ id: s.id, pt: proj(s), sym: s }));
+    
+    // 1. Calculate raw individual sizes first
+    const rawSizes = new Map<string, number>();
     for (let i = 0; i < pts.length; i++) {
       let minDist = Infinity;
       for (let j = 0; j < pts.length; j++) {
@@ -217,24 +220,60 @@ export function renderMapToCanvas(
         const d = Math.hypot(pts[i].pt[0] - pts[j].pt[0], pts[i].pt[1] - pts[j].pt[1]);
         if (d < minDist) minDist = d;
       }
-      
-      let multiplier = 1.0;
-      if (data.blocks && data.blocks.length > 0) {
-        const blk = data.blocks.find(b => {
-          if (b.points && b.points.length >= 3) {
-            return pointInPolygon(pts[i].sym, b.points);
-          }
-          return pts[i].sym.lat >= b.south && pts[i].sym.lat <= b.north && pts[i].sym.lng >= b.west && pts[i].sym.lng <= b.east;
-        });
-        if (blk) {
-          multiplier = (blk as any).symbolSizeMultiplier ?? 1.0;
-        }
-      }
-      
-      // Box ~85% of nearest-neighbor local spacing, clamped to [10, symSz]
-      const localSz = minDist < Infinity ? Math.max(10, Math.min(symSz, minDist * 0.85)) : symSz;
-      symbolSizes.set(pts[i].id, localSz * multiplier);
+      const localSz = minDist < Infinity ? Math.max(10, Math.min(symSz * 0.85, minDist * 0.55)) : symSz * 0.85;
+      rawSizes.set(pts[i].id, localSz);
     }
+
+    // 2. Harmonize sizes per block (if blocks exist)
+    const blockMap = new Map<string, typeof pts>(); // blockId -> symbols list
+    const unassigned: typeof pts = [];
+
+    pts.forEach(p => {
+      let containingBlock: any = null;
+      if (data.blocks && data.blocks.length > 0) {
+        containingBlock = data.blocks.find(b => {
+          if (b.points && b.points.length >= 3) {
+            return pointInPolygon(p.sym, b.points);
+          }
+          return p.sym.lat >= b.south && p.sym.lat <= b.north && p.sym.lng >= b.west && p.sym.lng <= b.east;
+        });
+      }
+      if (containingBlock) {
+        if (!blockMap.has(containingBlock.id)) {
+          blockMap.set(containingBlock.id, []);
+        }
+        blockMap.get(containingBlock.id)!.push(p);
+      } else {
+        unassigned.push(p);
+      }
+    });
+
+    // Average the size within each block
+    blockMap.forEach((blockPts, blockId) => {
+      const sizes = blockPts.map(p => rawSizes.get(p.id) || symSz);
+      const avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+      
+      const blk = data.blocks?.find(b => b.id === blockId);
+      const multiplier = (blk as any)?.symbolSizeMultiplier ?? 1.0;
+      
+      blockPts.forEach(p => {
+        symbolSizes.set(p.id, avgSize * multiplier);
+      });
+    });
+
+    // 3. Cluster unassigned symbols and average sizes per cluster
+    const xyPts = unassigned.map(p => ({ x: p.pt[0], y: p.pt[1] }));
+    const clusters = clusterByProximity(xyPts, 90, 2); // 90 pixels clustering radius
+
+    clusters.forEach(clusterIndices => {
+      const clusterPts = clusterIndices.map(idx => unassigned[idx]);
+      const sizes = clusterPts.map(p => rawSizes.get(p.id) || symSz);
+      const avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+      
+      clusterPts.forEach(p => {
+        symbolSizes.set(p.id, avgSize);
+      });
+    });
   }
 
   const getSymbolSize = (id: string): number => {
@@ -380,40 +419,7 @@ export function renderMapToCanvas(
     });
   }
 
-  // ─── BOUNDARY ───────────────────────────────────────────
-  // Spec (ORGI §xiv): HLB boundary drawn as a dashed line; neighbouring HLB/
-  // village names written OUTSIDE the boundary on each side.
-  ctx.strokeStyle = '#B00000'; ctx.lineWidth = 2.5; ctx.setLineDash([12, 6]);
-  ctx.beginPath();
-  data.boundaryPins.forEach((p, i) => { const [x, y] = proj(p); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.closePath();
-  ctx.fillStyle = 'rgba(176,0,0,0.04)'; ctx.fill(); ctx.stroke();
-  ctx.setLineDash([]);
-  data.boundaryPins.forEach((p, i) => {
-    const [x, y] = proj(p);
-    ctx.fillStyle = '#B00000'; ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFF'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), x, y);
-  });
 
-  // Neighbour names just outside each edge of the boundary bbox.
-  if (data.neighbours) {
-    const xs = data.boundaryPins.map(p => proj(p)[0]);
-    const ys = data.boundaryPins.map(p => proj(p)[1]);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const cx2 = (minX + maxX) / 2, cy2 = (minY + maxY) / 2;
-    ctx.fillStyle = '#7a0000'; ctx.font = `italic bold ${Math.max(9, symSz * 0.45)}px sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const lbl = (t: string | undefined, x: number, y: number) => {
-      if (!t) return;
-      ctx.save(); ctx.strokeStyle = '#FFF'; ctx.lineWidth = 3;
-      ctx.strokeText(`◄ ${t} ►`, x, y); ctx.fillText(`◄ ${t} ►`, x, y); ctx.restore();
-    };
-    lbl(data.neighbours.north, cx2, Math.max(20, minY - 10));
-    lbl(data.neighbours.south, cx2, Math.min(h - 14, maxY + 12));
-    lbl(data.neighbours.west, Math.max(30, minX - 8), cy2);
-    lbl(data.neighbours.east, Math.min(w - 30, maxX + 8), cy2);
-  }
 
   // ─── OSM ROADS ──────────────────────────────────────────
   if (options?.includeOsmRoads && options.osmRoads) {
@@ -658,13 +664,15 @@ export function renderMapToCanvas(
 
   // snappedSymbols is hoisted so landmark labels can reference it below.
   let snappedSymbols: { x: number, y: number, sym: PlacedSymbol, idealX: number, idealY: number }[] = [];
-  if (!options?.hideSymbols) {
-    // Render symbols exactly at their placed coordinates as in the editing window
-    for (const sym of data.symbols) {
-      const [idealX, idealY] = proj(sym);
-      snappedSymbols.push({ x: idealX, y: idealY, sym, idealX, idealY });
+  for (const sym of data.symbols) {
+    if (options?.hideSymbols && isNumberableSymbol(sym.symbol_type)) {
+      continue;
     }
+    const [idealX, idealY] = proj(sym);
+    snappedSymbols.push({ x: idealX, y: idealY, sym, idealX, idealY });
+  }
 
+  if (!options?.hideSymbols) {
     // Compute one bearing per block so all symbols share the same systematic orientation
     const blockBearings = new Map<string, number>();
     for (const block of (data.blocks || [])) {
@@ -729,14 +737,34 @@ export function renderMapToCanvas(
 
 
   // ─── LANDMARK LABELS ────────────────────────────────────
-  if (!options?.hideSymbols) {
+  if (true) {
     // Labels from explicit landmark layer
+    let pIdx = 1;
     for (const lm of (data.landmarks || [])) {
       if (lm.selectedForPdf === false) continue;
       const [x, y] = proj({ lat: lm.lat, lng: lm.lng });
-      ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.font = 'bold 14px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-      ctx.fillText(`• ${lm.name}`, x, y - 5);
+      
+      if (data.poiNamingApproach === 'number') {
+        // Draw a small circle badge with the number
+        ctx.fillStyle = '#6366f1';
+        ctx.beginPath();
+        ctx.arc(x, y, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(pIdx), x, y);
+        pIdx++;
+      } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillText(`• ${lm.name}`, x, y - 5);
+      }
     }
     // Labels for landmark-type placed symbols (temple/school/mosque/hospital etc.)
     const LANDMARK_SYMBOL_LABELS: Partial<Record<SymbolType, string>> = {
@@ -761,6 +789,38 @@ export function renderMapToCanvas(
     }
   }
 
+  // ─── BOUNDARY (Drawn on top of everyone) ────────────────
+  ctx.strokeStyle = '#B00000'; ctx.lineWidth = 2.5; ctx.setLineDash([12, 6]);
+  ctx.beginPath();
+  data.boundaryPins.forEach((p, i) => { const [x, y] = proj(p); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }); ctx.closePath();
+  ctx.fillStyle = 'rgba(176,0,0,0.04)'; ctx.fill(); ctx.stroke();
+  ctx.setLineDash([]);
+  data.boundaryPins.forEach((p, i) => {
+    const [x, y] = proj(p);
+    ctx.fillStyle = '#B00000'; ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFF'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), x, y);
+  });
+
+  // Neighbour names just outside each edge of the boundary bbox.
+  if (data.neighbours) {
+    const xs = data.boundaryPins.map(p => proj(p)[0]);
+    const ys = data.boundaryPins.map(p => proj(p)[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const cx2 = (minX + maxX) / 2, cy2 = (minY + maxY) / 2;
+    ctx.fillStyle = '#7a0000'; ctx.font = `italic bold ${Math.max(9, symSz * 0.45)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const lbl = (t: string | undefined, x: number, y: number) => {
+      if (!t) return;
+      ctx.save(); ctx.strokeStyle = '#FFF'; ctx.lineWidth = 3;
+      ctx.strokeText(`◄ ${t} ►`, x, y); ctx.fillText(`◄ ${t} ►`, x, y); ctx.restore();
+    };
+    lbl(data.neighbours.north, cx2, Math.max(20, minY - 10));
+    lbl(data.neighbours.south, cx2, Math.min(h - 14, maxY + 12));
+    lbl(data.neighbours.west, Math.max(30, minX - 8), cy2);
+    lbl(data.neighbours.east, Math.min(w - 30, maxX + 8), cy2);
+  }
 
   // ─── NORTH ARROW ────────────────────────────────────────
   const aX = w - 20, aY = 24;
@@ -814,7 +874,12 @@ export function renderMapToCanvas(
 // ═══════════════════════════════════════════════════════════
 // EXPORT — synchronous, reliable, zero-failure
 // ═══════════════════════════════════════════════════════════
-export function exportPDF(data: MapData, canvas?: CanvasLike, env: RenderEnv = browserEnv): void {
+export function exportPDF(
+  data: MapData, 
+  canvas?: CanvasLike, 
+  env: RenderEnv = browserEnv,
+  options?: Parameters<typeof renderMapToCanvas>[4]
+): void {
   const orient = data.orientation || 'portrait';
   const isL = orient === 'landscape';
   const a4W = isL ? 297 : 210;
@@ -827,7 +892,7 @@ export function exportPDF(data: MapData, canvas?: CanvasLike, env: RenderEnv = b
     imgData = canvas.toDataURL('image/jpeg', 0.92);
   } else {
     const c = env.createCanvas(cW, cH);
-    renderMapToCanvas(c, data, cW, cH);
+    renderMapToCanvas(c, data, cW, cH, options);
     imgData = c.toDataURL('image/jpeg', 0.92);
   }
 
@@ -853,6 +918,46 @@ export function exportPDF(data: MapData, canvas?: CanvasLike, env: RenderEnv = b
     `${data.enumeratorName || ''}  |  ${data.district}, ${data.state}  |  ${new Date().toLocaleDateString('en-IN')}`,
     a4W / 2, a4H - 2.5, { align: 'center' }
   );
+
+  // Naming approach: Numbered Index Directory Page
+  if (data.poiNamingApproach === 'number' && data.landmarks && data.landmarks.length > 0) {
+    doc.addPage();
+    
+    // Draw header on page 2
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, a4W, 15, 'F');
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(`HLB No: ${data.hlbNumber || '—'} - LANDMARK DIRECTORY`, a4W / 2, 10, { align: 'center' });
+
+    // Populate rows
+    const rows = data.landmarks
+      .filter(lm => lm.selectedForPdf !== false)
+      .map((lm, idx) => [String(idx + 1), lm.name, lm.type || 'POI']);
+
+    // Use autoTable
+    autoTable(doc, {
+      head: [['#', 'Landmark / POI Name', 'Type']],
+      body: rows,
+      startY: 20,
+      margin: { horizontal: 15 },
+      theme: 'grid',
+      headStyles: { fillColor: [99, 102, 241], halign: 'center' }, // Indigo header
+      columnStyles: {
+        0: { cellWidth: 15, halign: 'center' },
+        1: { fontStyle: 'bold' }
+      }
+    });
+
+    // Footer on page 2
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      `Generated on ${new Date().toLocaleDateString('en-IN')}`,
+      a4W / 2, a4H - 5, { align: 'center' }
+    );
+  }
 
   doc.save(`HLB_${data.hlbNumber || '0000'}_Naksha_2027.pdf`);
 }

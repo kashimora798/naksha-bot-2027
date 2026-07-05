@@ -675,8 +675,8 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
         const maxY = Math.max(...screenPts.map(p => p.y));
         const blockPxW = maxX - minX;
         const blockPxH = maxY - minY;
-        // Cap icon to 35% of the block's smaller pixel dimension (min 12px, max 80px)
-        const blockSizeCap = Math.max(12, Math.min(80, Math.min(blockPxW, blockPxH) * 0.35));
+        // Cap icon to 28% of the block's smaller pixel dimension (min 12px, max 80px)
+        const blockSizeCap = Math.max(12, Math.min(80, Math.min(blockPxW, blockPxH) * 0.28));
 
         if (cellMeters > 0) {
           // Convert cellMeters to pixel size at current zoom
@@ -686,7 +686,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
           const p1 = map.latLngToContainerPoint([lat, 0]);
           const p2 = map.latLngToContainerPoint([lat, degPerCell]);
           const cellPx = Math.abs(p2.x - p1.x);
-          const baseSize = Math.max(12, Math.min(blockSizeCap, cellPx * 1.0));
+          const baseSize = Math.max(12, Math.min(blockSizeCap, cellPx * 0.55));
           blockCellMap.set(blk.id, Math.max(8, Math.min(blockSizeCap, baseSize * multiplier)));
         }
         // Compute block bearing once (longest edge of the block polygon)

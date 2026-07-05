@@ -216,11 +216,11 @@ export function declutterSymbols(
   const area = boundary.length >= 3 ? approxArea(boundary) : 10000;
   const density = symbols.length / Math.max(1, area / 10000); // per hectare
 
-  // Key insight: marker icons are ~28px which at zoom 17-18 = ~15-20m
-  // Grid must be AT LEAST that large to prevent overlap
-  const defaultGrid = density > 80 ? 18 : density > 40 ? 22 : density > 15 ? 25 : 20;
+  // Key insight: marker icons are ~20px which at zoom 17-18 = ~12-16m
+  // Grid must be larger than that to prevent any visual overlap between boxes
+  const defaultGrid = density > 80 ? 22 : density > 40 ? 26 : density > 15 ? 28 : 24;
   const gridSize = options?.gridSize ?? defaultGrid;
-  const minDist = options?.minDist ?? Math.max(12, gridSize * 0.8);
+  const minDist = options?.minDist ?? Math.max(16, gridSize * 0.9);
 
   // Step 1: Grid snap (ensures rigid spacing)
   let result = snapToGrid(symbols, gridSize, boundary);

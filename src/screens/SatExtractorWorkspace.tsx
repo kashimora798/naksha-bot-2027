@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase';
 import { saveBoundaryToDb } from '../lib/survey-api';
 import type { Coordinate, MapData, SymbolType, RoadFeature, WaterBody, ForestArea, Landmark } from '../types';
 import { getBbox, getOSMName } from '../lib/geo';
+import { exportPDF } from '../lib/pdf-export';
+import { browserEnv } from '../lib/render-env.browser';
 
 interface Props {
   user: any;
@@ -60,7 +62,7 @@ function isPointNearBoundary(pt: Coordinate, boundary: Coordinate[], maxDistance
 // Pairwise distance-based deduplication to filter out overlapping Google buildings
 function removeOverlappingGoogleBuildings(buildings: any[]): any[] {
   const result: any[] = [];
-  const minDistanceDeg = 0.00008; // ~8.5 meters in degrees
+  const minDistanceDeg = 0.000135; // ~15 metres — prevents visually overlapping footprint polygons
   
   // Sort by confidence descending to prioritize higher confidence segments
   const sorted = [...buildings].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
@@ -133,6 +135,29 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
   // Print layout settings
   const [printTitle, setPrintTitle] = useState(mapData.hlbNumber ? `Nazari Naksha - HLB ${mapData.hlbNumber}` : 'Nazari Naksha');
   const [showPrintLegend, setShowPrintLegend] = useState(true);
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [printRotation, setPrintRotation] = useState(0);
+  const [isLandscape, setIsLandscape] = useState(true);
+  const [showBuildingsInPdf, setShowBuildingsInPdf] = useState(true);
+  const [showArrowsInPdf, setShowArrowsInPdf] = useState(true);
+  
+  // Refs for synchronization and print preview Leaflet instance
+  const previewMapContainerRef = useRef<HTMLDivElement>(null);
+  const previewMapRef = useRef<L.Map | null>(null);
+  const touchStartAngle = useRef<number | null>(null);
+  const baseRotation = useRef<number>(0);
+
+  const mapDataRef = useRef(mapData);
+  useEffect(() => { mapDataRef.current = mapData; }, [mapData]);
+
+  const updateRef = useRef(update);
+  useEffect(() => { updateRef.current = update; }, [update]);
+
+  const drawingModeRef = useRef(drawingMode);
+  useEffect(() => { drawingModeRef.current = drawingMode; }, [drawingMode]);
+
+  const tempPointsRef = useRef(tempPoints);
+  useEffect(() => { tempPointsRef.current = tempPoints; }, [tempPoints]);
   
   // Leaflet refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -149,18 +174,6 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     buildingsGroup?: L.FeatureGroup;
   }>({});
 
-  // Sync refs to avoid Leaflet closure stale state bugs
-  const mapDataRef = useRef(mapData);
-  useEffect(() => { mapDataRef.current = mapData; }, [mapData]);
-
-  const updateRef = useRef(update);
-  useEffect(() => { updateRef.current = update; }, [update]);
-
-  const drawingModeRef = useRef(drawingMode);
-  useEffect(() => { drawingModeRef.current = drawingMode; }, [drawingMode]);
-
-  const tempPointsRef = useRef(tempPoints);
-  useEffect(() => { tempPointsRef.current = tempPoints; }, [tempPoints]);
 
   // Monitor resize to toggle sidebar behavior
   useEffect(() => {
@@ -622,6 +635,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       if (poly) {
         poly.on('click', (e: L.LeafletMouseEvent) => {
           L.DomEvent.stopPropagation(e);
+          if (drawingModeRef.current !== 'none') return;
           const act = confirm(`Modify road "${r.name || 'Unnamed Road'}":\n\n- Click OK to Rename\n- Click Cancel to Delete`);
           if (act) {
             const newName = prompt(`Rename road "${r.name || 'Unnamed Road'}":`, r.name || '');
@@ -746,25 +760,39 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     // Declutter list to avoid overlapping text labels
     const cleanPois = declutterPOIs(poisList);
 
-    cleanPois.forEach(p => {
+    cleanPois.forEach((p, idx) => {
+      const isNumberMode = mapData.poiNamingApproach === 'number';
       const customIcon = L.divIcon({
         className: 'custom-poi-label-container',
-        html: `
-          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -10px); pointer-events: none;">
-            <div style="width: 7px; height: 7px; border-radius: 50%; background: #6366f1; border: 1.5px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.35);"></div>
-            <div style="margin-top: 2px; font-family: 'Public Sans', sans-serif; font-size: 8px; font-weight: 850; color: #0f172a; background: rgba(255,255,255,0.92); padding: 1px 4.5px; border-radius: 4px; border: 1px solid #cbd5e1; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; text-transform: uppercase; letter-spacing: 0.1px;">
-              ${p.name}
+        html: isNumberMode
+          ? `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -50%); pointer-events: none;">
+              <div style="display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #6366f1; border: 1.5px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-family: 'Public Sans', sans-serif; font-size: 9px; font-weight: 800; color: white;">
+                ${idx + 1}
+              </div>
             </div>
-          </div>
-        `,
+          `
+          : `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -10px); pointer-events: none;">
+              <div style="width: 7px; height: 7px; border-radius: 50%; background: #6366f1; border: 1.5px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.35);"></div>
+              <div style="margin-top: 2px; font-family: 'Public Sans', sans-serif; font-size: 8px; font-weight: 850; color: #0f172a; background: rgba(255,255,255,0.92); padding: 1px 4.5px; border-radius: 4px; border: 1px solid #cbd5e1; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; text-transform: uppercase; letter-spacing: 0.1px;">
+                ${p.name}
+              </div>
+            </div>
+          `,
         iconSize: [0, 0]
       });
 
       const marker = L.marker([p.lat, p.lng], { icon: customIcon, interactive: true });
       
+      if (isNumberMode) {
+        marker.bindTooltip(p.name, { direction: 'top', className: 'bg-slate-800 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow' });
+      }
+
       // Interactive POI renaming & deletion
       marker.on('click', (e: L.LeafletMouseEvent) => {
         L.DomEvent.stopPropagation(e);
+        if (drawingModeRef.current !== 'none') return;
         const act = confirm(`Modify landmark "${p.name}":\n\n- Click OK to Rename\n- Click Cancel to Delete`);
         if (act) {
           const newName = prompt(`Rename landmark "${p.name}":`, p.name);
@@ -863,22 +891,210 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       L.polygon(latlngs, {
         color: '#2563eb',
         fillColor: '#3b82f6',
-        fillOpacity: 0.5,
-        weight: 1.5
+        fillOpacity: 0.2,
+        weight: 1
       }).addTo(bg);
     });
 
     if (!showBuildings) bg.remove();
   };
 
-  // Toggle buildings footprint layer
+  // Touch Gesture Event Listeners for Rotation
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchStartAngle.current = Math.atan2(dy, dx) * 180 / Math.PI;
+      baseRotation.current = printRotation;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStartAngle.current !== null) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const currentAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+      const delta = currentAngle - touchStartAngle.current;
+      
+      let newRot = (baseRotation.current + delta) % 360;
+      if (newRot < 0) newRot += 360;
+      setPrintRotation(Math.round(newRot));
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartAngle.current = null;
+  };
+
+  // PDF Export Trigger
+  const handleDownloadPDF = () => {
+    const previewMap = previewMapRef.current;
+    if (!previewMap) return;
+
+    setExtractStatus('Generating high-resolution A4 map PDF...');
+    
+    setTimeout(() => {
+      try {
+        const bounds = previewMap.getBounds();
+        const focusBounds = {
+          south: bounds.getSouth(),
+          west: bounds.getWest(),
+          north: bounds.getNorth(),
+          east: bounds.getEast()
+        };
+
+        const docData: MapData = {
+          ...mapDataRef.current,
+          poiNamingApproach: mapDataRef.current.poiNamingApproach || 'label',
+          orientation: isLandscape ? 'landscape' : 'portrait'
+        };
+
+        exportPDF(docData, undefined, browserEnv, {
+          rotation: printRotation,
+          inkMode: 'color',
+          hideSymbols: !showBuildingsInPdf,
+          hideSerpentineArrows: !showArrowsInPdf
+        });
+
+      } catch (err) {
+        console.error('Failed to export PDF:', err);
+        alert('Could not export PDF. Please check coordinates.');
+      } finally {
+        setExtractStatus('');
+      }
+    }, 150);
+  };
+
+  // Initialize Print Preview Map
   useEffect(() => {
-    const map = mapRef.current;
-    const bg = layersRef.current.buildingsGroup;
-    if (!map || !bg) return;
-    if (showBuildings) bg.addTo(map);
-    else bg.remove();
-  }, [showBuildings]);
+    if (!showPrintPreview || !previewMapContainerRef.current) return;
+
+    const centerLatLng: [number, number] = mapDataRef.current.center 
+      ? [mapDataRef.current.center.lat, mapDataRef.current.center.lng] 
+      : [26.4499, 80.3319];
+
+    const previewMap = L.map(previewMapContainerRef.current, {
+      zoomControl: false,
+      attributionControl: false
+    }).setView(centerLatLng, mapDataRef.current.center ? 16 : 13);
+    previewMapRef.current = previewMap;
+
+    // Google Satellite Hybrid layer
+    L.tileLayer('https://mt1.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+      maxZoom: 22
+    }).addTo(previewMap);
+
+    // Boundary polygon
+    if (mapDataRef.current.boundaryPins && mapDataRef.current.boundaryPins.length >= 3) {
+      const poly = L.polygon(mapDataRef.current.boundaryPins.map(p => [p.lat, p.lng]), {
+        color: '#ef4444',
+        fillColor: 'transparent',
+        weight: 3,
+        dashArray: '8, 5'
+      }).addTo(previewMap);
+      
+      previewMap.fitBounds(poly.getBounds(), { padding: [15, 15] });
+    }
+
+    // Roads Group
+    const rg = L.featureGroup().addTo(previewMap);
+    const lg = L.featureGroup().addTo(previewMap);
+    (mapDataRef.current.roads || []).forEach(r => {
+      if (r.coords.length < 2) return;
+      const latlngs = r.coords.map((c: any) => [c.lat, c.lng]);
+      const pk = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'paved'].includes(r.highway);
+      const rs = ['residential', 'unclassified', 'service', 'living_street'].includes(r.highway);
+      const kt = ['footway', 'path', 'track', 'pedestrian', 'steps', 'unpaved'].includes(r.highway);
+      const lc = '#000';
+      const gc = '#FFF';
+
+      if (pk) {
+        L.polyline(latlngs, { color: lc, weight: 8, opacity: 0.95 }).addTo(rg);
+        L.polyline(latlngs, { color: gc, weight: 4, opacity: 0.95 }).addTo(rg);
+      } else if (rs) {
+        L.polyline(latlngs, { color: lc, weight: 6, opacity: 0.95 }).addTo(rg);
+        L.polyline(latlngs, { color: gc, weight: 2.5, opacity: 0.95 }).addTo(rg);
+      } else if (kt) {
+        L.polyline(latlngs, { color: lc, weight: 5, dashArray: '10,6', opacity: 0.95 }).addTo(rg);
+        L.polyline(latlngs, { color: gc, weight: 2, dashArray: '10,6', opacity: 0.95 }).addTo(rg);
+      } else {
+        L.polyline(latlngs, { color: lc, weight: 5, opacity: 0.95 }).addTo(rg);
+        L.polyline(latlngs, { color: gc, weight: 2, opacity: 0.95 }).addTo(rg);
+      }
+
+      if (r.name && isPointNearBoundary(r.coords[Math.floor(r.coords.length / 2)], mapDataRef.current.boundaryPins, 0.00065)) {
+        const midIdx = Math.floor(r.coords.length / 2);
+        const bearing = calculateBearing(r.coords[midIdx - 1], r.coords[midIdx]);
+        const customIcon = L.divIcon({
+          className: 'custom-road-label-container',
+          html: `<div style="transform: rotate(${bearing}deg); font-family: 'Public Sans', sans-serif; font-size: 8px; font-weight: 800; color: #1e293b; background: rgba(255,255,255,0.85); padding: 1px 4.5px; border-radius: 4px; border: 1px solid #94a3b8; white-space: nowrap;">${r.name}</div>`,
+          iconSize: [0, 0]
+        });
+        L.marker([r.coords[midIdx].lat, r.coords[midIdx].lng], { icon: customIcon, interactive: false }).addTo(lg);
+      }
+    });
+
+    // Water & Forests
+    const wg = L.featureGroup().addTo(previewMap);
+    (mapDataRef.current.waterBodies || []).forEach(w => {
+      const latlngs = w.coords.map((c: any) => [c.lat, c.lng]);
+      L.polygon(latlngs, { color: '#0369a1', fillColor: '#38bdf8', fillOpacity: 0.35, weight: 1.5 }).addTo(wg);
+    });
+    (mapDataRef.current.forests || []).forEach(f => {
+      const latlngs = f.points.map((c: any) => [c.lat, c.lng]);
+      L.polygon(latlngs, { color: '#166534', fillColor: '#22c55e', fillOpacity: 0.25, weight: 1.5 }).addTo(wg);
+    });
+
+    // POIs Group
+    const pg = L.featureGroup().addTo(previewMap);
+    const cleanPois = declutterPOIs(mapDataRef.current.landmarks || []);
+    cleanPois.forEach((p, idx) => {
+      const isNumberMode = mapDataRef.current.poiNamingApproach === 'number';
+      const customIcon = L.divIcon({
+        className: 'custom-poi-label-container',
+        html: isNumberMode 
+          ? `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -50%); pointer-events: none;">
+              <div style="display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #6366f1; border: 1.5px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-family: 'Public Sans', sans-serif; font-size: 9px; font-weight: 800; color: white;">
+                ${idx + 1}
+              </div>
+            </div>
+          `
+          : `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(-50%, -10px); pointer-events: none;">
+              <div style="width: 7px; height: 7px; border-radius: 50%; background: #6366f1; border: 1.5px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.35);"></div>
+              <div style="margin-top: 2px; font-family: 'Public Sans', sans-serif; font-size: 8px; font-weight: 850; color: #0f172a; background: rgba(255,255,255,0.92); padding: 1px 4.5px; border-radius: 4px; border: 1px solid #cbd5e1; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; text-transform: uppercase; letter-spacing: 0.1px;">
+                ${p.name}
+              </div>
+            </div>
+          `,
+        iconSize: [0, 0]
+      });
+      const marker = L.marker([p.lat, p.lng], { icon: customIcon, interactive: true });
+      if (isNumberMode) {
+        marker.bindTooltip(p.name, { direction: 'top', className: 'bg-slate-800 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow' });
+      }
+      marker.addTo(pg);
+    });
+
+    // Google Buildings
+    const bg = L.featureGroup().addTo(previewMap);
+    const bldList = (mapDataRef.current.symbols || []).filter(s => s.polygon != null);
+    bldList.forEach(b => {
+      if (!b.polygon || !b.polygon.coordinates) return;
+      const latlngs = b.polygon.coordinates[0].map(([lng, lat]: any) => [lat, lng]);
+      L.polygon(latlngs, { color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 1 }).addTo(bg);
+    });
+
+    setTimeout(() => {
+      previewMap.invalidateSize();
+    }, 200);
+
+    return () => {
+      previewMap.remove();
+      previewMapRef.current = null;
+    };
+  }, [showPrintPreview, mapData.poiNamingApproach]);
 
   return (
     <div className="flex h-screen w-screen bg-slate-900 overflow-hidden font-public-sans text-slate-100 print:bg-white print:text-black">
@@ -1008,14 +1224,21 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
               {drawingMode === 'none' ? (
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => { setDrawingMode('road'); setTempPoints([]); }}
+                    onClick={() => {
+                      setDrawingMode('road');
+                      setTempPoints([]);
+                      if (window.innerWidth < 768) setSidebarOpen(false);
+                    }}
                     className="py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-bold shadow transition-all cursor-pointer flex flex-col items-center justify-center gap-1"
                   >
                     <span>🛣️</span>
                     <span>Draw Road</span>
                   </button>
                   <button
-                    onClick={() => setDrawingMode('poi')}
+                    onClick={() => {
+                      setDrawingMode('poi');
+                      if (window.innerWidth < 768) setSidebarOpen(false);
+                    }}
                     className="py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-bold shadow transition-all cursor-pointer flex flex-col items-center justify-center gap-1"
                   >
                     <span>📍</span>
@@ -1174,27 +1397,43 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
                   />
                 </div>
 
+                {/* POI Naming Toggle */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">POI Naming Approach</label>
+                  <div className="grid grid-cols-2 gap-1 bg-slate-900 p-1 rounded-lg border border-slate-700">
+                    <button
+                      onClick={() => update({ poiNamingApproach: 'label' })}
+                      className={`py-1.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
+                        (mapData.poiNamingApproach || 'label') === 'label'
+                          ? 'bg-violet-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Direct Label
+                    </button>
+                    <button
+                      onClick={() => update({ poiNamingApproach: 'number' })}
+                      className={`py-1.5 text-[10px] font-bold rounded transition-all cursor-pointer ${
+                        (mapData.poiNamingApproach || 'label') === 'number'
+                          ? 'bg-violet-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Numbered List
+                    </button>
+                  </div>
+                </div>
+
                 <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs text-slate-300">
                   <input type="checkbox" checked={showPrintLegend} onChange={e => setShowPrintLegend(e.target.checked)} className="rounded accent-violet-500 border-slate-700 bg-slate-900 w-3.5 h-3.5" />
                   <span>Show Map Legend Box</span>
                 </label>
 
                 <button
-                  onClick={() => {
-                    const map = mapRef.current;
-                    const poly = layersRef.current.boundary;
-                    if (map && poly) {
-                      map.fitBounds(poly.getBounds(), { padding: [15, 15] });
-                      setTimeout(() => {
-                        window.print();
-                      }, 350);
-                    } else {
-                      window.print();
-                    }
-                  }}
-                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg active:scale-95 transition-all"
+                  onClick={() => setShowPrintPreview(true)}
+                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg active:scale-95 transition-all cursor-pointer"
                 >
-                  Print Layout Map 🖨️
+                  Configure & Download PDF 🖨️
                 </button>
               </div>
             </div>
@@ -1279,6 +1518,126 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
           }
         }
       `}</style>
+      {/* ── DEDICATED PRINT & PDF ROTATION PREVIEW MODAL ── */}
+      {showPrintPreview && (
+        <div className="fixed inset-0 z-[3000] bg-slate-950/95 flex flex-col items-center justify-between p-4 sm:p-6 overflow-y-auto">
+          
+          {/* Header */}
+          <div className="w-full max-w-5xl flex items-center justify-between border-b border-slate-800 pb-3 mb-2">
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-wider text-slate-200">A4 PDF Map Layout Preview</h2>
+              <p className="text-[10px] text-slate-400 mt-0.5">Use pinch gestures or slider to rotate the map. Zoom and drag to align.</p>
+            </div>
+            <button
+              onClick={() => setShowPrintPreview(false)}
+              className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors shadow-sm cursor-pointer"
+            >
+              Close Setup
+            </button>
+          </div>
+
+          {/* Map Preview Page Wrapper */}
+          <div 
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            className="flex-1 flex items-center justify-center w-full max-h-[70vh] py-4"
+          >
+            <div 
+              className="relative bg-slate-900 shadow-2xl overflow-hidden border border-slate-700 rounded-xl transition-all duration-150"
+              style={{
+                width: isLandscape ? 'min(90vw, 560px)' : 'min(90vw, 396px)',
+                height: isLandscape ? 'min(63vw, 396px)' : 'min(127vw, 560px)',
+                aspectRatio: isLandscape ? '297/210' : '210/297'
+              }}
+            >
+              {/* Actual Map Container */}
+              <div 
+                ref={previewMapContainerRef} 
+                className="absolute inset-0 origin-center transition-transform duration-100 ease-out"
+                style={{
+                  transform: `rotate(${printRotation}deg)`,
+                  width: '100%',
+                  height: '100%'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Controls Footer */}
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+            {/* Slider Rotation control */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                <span>ROTATE MAP ALIGNMENT</span>
+                <span className="text-violet-400 font-mono">{printRotation}°</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="360"
+                step="1"
+                value={printRotation}
+                onChange={e => setPrintRotation(parseInt(e.target.value))}
+                className="w-full accent-violet-500 bg-slate-950 cursor-pointer h-1.5 rounded-lg"
+              />
+            </div>
+
+            {/* Toggle options for PDF elements */}
+            <div className="grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-[10px] font-bold text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={showBuildingsInPdf}
+                  onChange={e => setShowBuildingsInPdf(e.target.checked)}
+                  className="rounded accent-violet-500 border-slate-800 bg-slate-950 w-3.5 h-3.5 animate-transition"
+                />
+                <span>Include Buildings in PDF</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none text-[10px] font-bold text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={showArrowsInPdf}
+                  onChange={e => setShowArrowsInPdf(e.target.checked)}
+                  className="rounded accent-violet-500 border-slate-800 bg-slate-950 w-3.5 h-3.5 animate-transition"
+                />
+                <span>Include Arrows in PDF</span>
+              </label>
+            </div>
+
+            {/* Page Settings */}
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">A4 PAGE ORIENTATION</label>
+                <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                  <button
+                    onClick={() => setIsLandscape(true)}
+                    className={`py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${isLandscape ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400'}`}
+                  >
+                    Landscape
+                  </button>
+                  <button
+                    onClick={() => setIsLandscape(false)}
+                    className={`py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${!isLandscape ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400'}`}
+                  >
+                    Portrait
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={handleDownloadPDF}
+                  className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-lg text-xs font-black shadow-md hover:shadow-indigo-900/50 active:scale-95 transition-all cursor-pointer text-center uppercase tracking-wider"
+                >
+                  Download PDF Map 📥
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
 
     </div>
   );

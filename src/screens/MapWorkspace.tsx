@@ -896,8 +896,9 @@ export default function MapWorkspace(props: Props) {
       if (d < minDist) minDist = d;
     }
     
-    // Size is 75% of local spacing in pixels, clamped to [12px, 24px]
-    return minDist < Infinity ? Math.max(12, Math.min(24, minDist * 0.75)) : 24;
+    // Size is 50% of local spacing in pixels, clamped to [10px, 20px]
+    // 50% (not 75%) guarantees visible white space between every neighbour pair
+    return minDist < Infinity ? Math.max(10, Math.min(20, minDist * 0.50)) : 20;
   }
 
   function mkIcon(sym:PlacedSymbol):L.DivIcon{

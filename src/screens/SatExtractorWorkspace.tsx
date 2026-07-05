@@ -31,6 +31,32 @@ function calculateBearing(p1: Coordinate, p2: Coordinate): number {
   return brng;
 }
 
+// Helper to check if point is inside boundary
+const pointInPolygon = (pt: Coordinate, vs: Coordinate[]) => {
+  let x = pt.lng, y = pt.lat;
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    let xi = vs[i].lng, yi = vs[i].lat;
+    let xj = vs[j].lng, yj = vs[j].lat;
+    let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+};
+
+// Helper to check if a point is inside or very close to the boundary polygon
+function isPointNearBoundary(pt: Coordinate, boundary: Coordinate[], maxDistanceDeg = 0.0012): boolean {
+  if (boundary.length === 0) return false;
+  if (pointInPolygon(pt, boundary)) return true;
+  for (const pin of boundary) {
+    const dLat = pt.lat - pin.lat;
+    const dLng = pt.lng - pin.lng;
+    const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+    if (dist < maxDistanceDeg) return true;
+  }
+  return false;
+}
+
 // Pairwise distance-based deduplication to filter out overlapping Google buildings
 function removeOverlappingGoogleBuildings(buildings: any[]): any[] {
   const result: any[] = [];
@@ -286,7 +312,16 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
   // Auto Fetch OSM roads, water, and POIs
   const triggerOSMFetch = async (pins: Coordinate[]) => {
     setExtractStatus('Fetching roads, water bodies, and local POIs from OpenStreetMap...');
-    const bb = getBbox(pins);
+    
+    // Pad the bounding box slightly (~160 meters) to capture nearby roads and crossings
+    const box = getBbox(pins);
+    const pad = 0.0015;
+    const bb = {
+      north: box.north + pad,
+      south: box.south - pad,
+      east: box.east + pad,
+      west: box.west - pad
+    };
     
     // Construct Overpass query
     const overpassQuery = `
@@ -295,9 +330,11 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
         way["highway"](${bb.south},${bb.west},${bb.north},${bb.east});
         way["natural"="water"](${bb.south},${bb.west},${bb.north},${bb.east});
         way["landuse"="forest"](${bb.south},${bb.west},${bb.north},${bb.east});
-        node["amenity"](${bb.south},${bb.west},${bb.north},${bb.east});
-        node["shop"](${bb.south},${bb.west},${bb.north},${bb.east});
-        node["tourism"](${bb.south},${bb.west},${bb.north},${bb.east});
+        way["natural"="wood"](${bb.south},${bb.west},${bb.north},${bb.east});
+        
+        // Fetch all named features (temples, buildings, mosques, shops, nurseries, landmarks)
+        node["name"](${bb.south},${bb.west},${bb.north},${bb.east});
+        way["name"][!"highway"](${bb.south},${bb.west},${bb.north},${bb.east});
       );
       out body geom;
     `;
@@ -317,19 +354,6 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       const parsedWater: WaterBody[] = [];
       const parsedForests: ForestArea[] = [];
       const parsedPOIs: Landmark[] = [];
-
-      // Helper to check if point is inside boundary
-      const pointInPolygon = (pt: Coordinate, vs: Coordinate[]) => {
-        let x = pt.lng, y = pt.lat;
-        let inside = false;
-        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-          let xi = vs[i].lng, yi = vs[i].lat;
-          let xj = vs[j].lng, yj = vs[j].lat;
-          let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-          if (intersect) inside = !inside;
-        }
-        return inside;
-      };
 
       for (const el of elements) {
         const tags = el.tags || {};
@@ -364,14 +388,29 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
               name: elName || 'Forest Area',
               points: coords
             });
+          } else if (elName) {
+            // Named way polygon landmark (e.g. school, temple, building compound)
+            const pt = { lat: coords[0].lat, lng: coords[0].lng };
+            if (isPointNearBoundary(pt, pins, 0.0015)) {
+              const sumLat = coords.reduce((acc: number, curr: any) => acc + curr.lat, 0);
+              const sumLng = coords.reduce((acc: number, curr: any) => acc + curr.lng, 0);
+              parsedPOIs.push({
+                id: `landmark-${el.id || crypto.randomUUID()}`,
+                name: elName,
+                type: tags.amenity || tags.building || tags.landuse || 'POI',
+                lat: sumLat / coords.length,
+                lng: sumLng / coords.length,
+                selectedForPdf: true
+              });
+            }
           }
         } else if (el.type === 'node') {
           const pt = { lat: el.lat, lng: el.lon };
-          if (pointInPolygon(pt, pins)) {
+          if (elName && isPointNearBoundary(pt, pins, 0.0015)) {
             const type = tags.amenity || tags.shop || tags.tourism || 'POI';
             parsedPOIs.push({
               id: `landmark-${el.id || crypto.randomUUID()}`,
-              name: elName || type,
+              name: elName,
               type: type,
               lat: el.lat,
               lng: el.lon,
@@ -436,20 +475,23 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
         rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2, opacity: 0.95 }));
       }
 
-      // Aligned Road Name Labels
+      // Aligned Road Name Labels (Only rendered if road segment is near the boundary)
       if (r.name && r.coords.length >= 2) {
         const midIdx = Math.floor(r.coords.length / 2);
         const p1 = r.coords[midIdx - 1];
         const p2 = r.coords[midIdx];
-        const bearing = calculateBearing(p1, p2);
 
-        const customIcon = L.divIcon({
-          className: 'custom-road-label-container',
-          html: `<div style="transform: rotate(${bearing}deg); font-family: 'Public Sans', sans-serif; font-size: 8px; font-weight: 800; color: #1e293b; background: rgba(255,255,255,0.85); padding: 1px 4.5px; border-radius: 4px; border: 1px solid #94a3b8; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.05); pointer-events: none;">${r.name}</div>`,
-          iconSize: [0, 0]
-        });
+        if (isPointNearBoundary(p2, mapData.boundaryPins, 0.00065)) {
+          const bearing = calculateBearing(p1, p2);
 
-        L.marker([p2.lat, p2.lng], { icon: customIcon, interactive: false }).addTo(lg);
+          const customIcon = L.divIcon({
+            className: 'custom-road-label-container',
+            html: `<div style="transform: rotate(${bearing}deg); font-family: 'Public Sans', sans-serif; font-size: 8px; font-weight: 800; color: #1e293b; background: rgba(255,255,255,0.85); padding: 1px 4.5px; border-radius: 4px; border: 1px solid #94a3b8; white-space: nowrap; box-shadow: 0 1px 2px rgba(0,0,0,0.05); pointer-events: none;">${r.name}</div>`,
+            iconSize: [0, 0]
+          });
+
+          L.marker([p2.lat, p2.lng], { icon: customIcon, interactive: false }).addTo(lg);
+        }
       }
     });
 

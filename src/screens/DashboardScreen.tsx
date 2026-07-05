@@ -7,6 +7,7 @@ import ProfileScreen from './ProfileScreen';
 import DonationPopup from '../components/DonationPopup';
 import { useTranslation, LanguageSelector } from '../lib/i18n';
 import { extractHLBBoundaryFromPDF, runTracePipeline, unpackMask } from '../lib/hlb-pdf-extractor';
+import { fetchSavedBoundariesFromDb } from '../lib/survey-api';
 
 export interface Project {
   id: string;
@@ -51,6 +52,7 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   const [extractStatus, setExtractStatus] = useState('');
   const [extractError, setExtractError] = useState<string | null>(null);
   const [ocrFailedData, setOcrFailedData] = useState<any | null>(null);
+  const [recentBoundaries, setRecentBoundaries] = useState<any[]>([]);
 
   // Video Tutorial Popup States
   const [showVideoModal, setShowVideoModal] = useState(false);
@@ -283,6 +285,11 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
   useEffect(() => {
     async function loadProjects() {
       if (!user?.id) return;
+      
+      fetchSavedBoundariesFromDb(user.id)
+        .then(list => setRecentBoundaries(list))
+        .catch(e => console.warn('Failed to load recent boundaries:', e));
+
       try {
         // Own projects + assigned project IDs in parallel
         const [ownResult, assignmentsResult] = await Promise.all([
@@ -1287,6 +1294,46 @@ I have successfully contributed to support your studies!
                     <span className="text-[10px] text-slate-400 mt-1">Only Census georeferenced maps (.pdf)</span>
                   </div>
                 </div>
+
+                {recentBoundaries.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Or select a recently extracted boundary:
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 max-h-[140px] overflow-y-auto pr-1">
+                      {recentBoundaries.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          onClick={() => {
+                            const geo = item.boundary_geojson;
+                            const coords = geo?.geometry?.coordinates?.[0] || geo?.coordinates?.[0];
+                            if (!coords || coords.length < 3) return;
+                            const boundaryPins = coords.map(([lng, lat]: any) => ({ lat, lng }));
+                            
+                            setShowAdvancedMapModal(false);
+                            setPdfFile(null);
+                            setHlbCode('');
+                            setExtractError(null);
+                            setExtractStatus('');
+
+                            onNewProject({
+                              hlbNumber: item.hlb_number,
+                              boundaryPins,
+                              boundaryClosed: true,
+                              center: item.center,
+                              isAutoFetched: true,
+                              mode: 'sat-extractor' as any
+                            });
+                          }}
+                          className="text-left p-2.5 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/20 transition-all cursor-pointer group flex flex-col"
+                        >
+                          <span className="text-xs font-bold text-slate-800 font-mono group-hover:text-indigo-600">HLB {item.hlb_number}</span>
+                          <span className="text-[9px] text-slate-400 mt-0.5">{new Date(item.created_at || item.timestamp).toLocaleDateString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {extractError && (

@@ -3,7 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from '../lib/supabase';
 import { saveBoundaryToDb } from '../lib/survey-api';
-import type { Coordinate, MapData, SymbolType } from '../types';
+import type { Coordinate, MapData, SymbolType, RoadFeature, WaterBody, ForestArea, Landmark } from '../types';
 import { getBbox, getOSMName } from '../lib/geo';
 
 interface Props {
@@ -24,12 +24,37 @@ function calculateBearing(p1: Coordinate, p2: Coordinate): number {
   const y = Math.sin(dLon) * Math.cos(lat2);
   const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
   let brng = Math.atan2(y, x) * 180 / Math.PI;
-  // Normalize to 0-180 to avoid upside-down text
   if (brng < 0) brng += 360;
   if (brng > 90 && brng <= 270) {
     brng = (brng + 180) % 360;
   }
   return brng;
+}
+
+// Pairwise distance-based deduplication to filter out overlapping Google buildings
+function removeOverlappingGoogleBuildings(buildings: any[]): any[] {
+  const result: any[] = [];
+  const minDistanceDeg = 0.00008; // ~8.5 meters in degrees
+  
+  // Sort by confidence descending to prioritize higher confidence segments
+  const sorted = [...buildings].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+  
+  for (const b of sorted) {
+    let tooClose = false;
+    for (const kept of result) {
+      const dLat = b.lat - kept.lat;
+      const dLng = b.lng - kept.lng;
+      const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (dist < minDistanceDeg) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (!tooClose) {
+      result.push(b);
+    }
+  }
+  return result;
 }
 
 export default function SatExtractorWorkspace({ user, mapData, projectId, update, onSaveAndExit }: Props) {
@@ -66,6 +91,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     roadsGroup?: L.FeatureGroup;
     roadLabelsGroup?: L.FeatureGroup;
     waterGroup?: L.FeatureGroup;
+    forestsGroup?: L.FeatureGroup;
     poiGroup?: L.FeatureGroup;
     buildingsGroup?: L.FeatureGroup;
   }>({});
@@ -74,7 +100,6 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // Set initial view Kanpur or boundary center
     const centerLatLng: [number, number] = mapData.center 
       ? [mapData.center.lat, mapData.center.lng] 
       : [26.4499, 80.3319];
@@ -85,7 +110,6 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     }).setView(centerLatLng, mapData.center ? 16 : 13);
     mapRef.current = map;
 
-    // Custom zoom control position
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     // Google Satellite Hybrid layer
@@ -103,10 +127,10 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     layersRef.current.roadsGroup = L.featureGroup().addTo(map);
     layersRef.current.roadLabelsGroup = L.featureGroup().addTo(map);
     layersRef.current.waterGroup = L.featureGroup().addTo(map);
+    layersRef.current.forestsGroup = L.featureGroup().addTo(map);
     layersRef.current.poiGroup = L.featureGroup().addTo(map);
     layersRef.current.buildingsGroup = L.featureGroup().addTo(map);
 
-    // Force Leaflet size recalculation to prevent blank gray screen layout bug
     setTimeout(() => {
       map.invalidateSize();
     }, 250);
@@ -136,6 +160,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     lg.roadsGroup?.clearLayers();
     lg.roadLabelsGroup?.clearLayers();
     lg.waterGroup?.clearLayers();
+    lg.forestsGroup?.clearLayers();
     lg.poiGroup?.clearLayers();
     lg.buildingsGroup?.clearLayers();
   };
@@ -173,14 +198,14 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       // Render existing features from project state
       renderRoadsLayer(mapData.roads || []);
       renderWaterLayer(mapData.waterBodies || []);
+      renderForestsLayer(mapData.forests || []);
+      renderPOIsLayer(mapData.landmarks || []);
       
-      // Separate POIs and Google buildings from symbols list
-      const poisList = (mapData.symbols || []).filter(s => s.symbol_type === 'temple'); // POIs
-      const bldList = (mapData.symbols || []).filter(s => s.polygon != null); // Google building footprints
-      renderPOIsLayer(poisList);
+      // Google building footprints
+      const bldList = (mapData.symbols || []).filter(s => s.polygon != null);
       renderBuildingsLayer(bldList);
     }
-  }, [mapData.boundaryPins, mapData.roads, mapData.waterBodies, mapData.symbols, drawBoundary]);
+  }, [mapData.boundaryPins, mapData.roads, mapData.waterBodies, mapData.forests, mapData.landmarks, mapData.symbols, drawBoundary]);
 
   // Toggle boundary layer
   useEffect(() => {
@@ -260,7 +285,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
 
   // Auto Fetch OSM roads, water, and POIs
   const triggerOSMFetch = async (pins: Coordinate[]) => {
-    setExtractStatus('Fetching roads, water bodies, and local POIs...');
+    setExtractStatus('Fetching roads, water bodies, and local POIs from OpenStreetMap...');
     const bb = getBbox(pins);
     
     // Construct Overpass query
@@ -288,9 +313,10 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       const elements = data.elements || [];
 
       // Process elements
-      const parsedRoads: any[] = [];
-      const parsedWater: any[] = [];
-      const parsedPOIs: any[] = [];
+      const parsedRoads: RoadFeature[] = [];
+      const parsedWater: WaterBody[] = [];
+      const parsedForests: ForestArea[] = [];
+      const parsedPOIs: Landmark[] = [];
 
       // Helper to check if point is inside boundary
       const pointInPolygon = (pt: Coordinate, vs: Coordinate[]) => {
@@ -313,48 +339,66 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
           const coords = el.geometry.map((g: any) => ({ lat: g.lat, lng: g.lon }));
           
           if (tags.highway) {
-            parsedRoads.push({ coords, name: elName, highway: tags.highway });
-          } else if (tags.natural === 'water' || tags.landuse === 'forest') {
-            parsedWater.push({ coords, name: elName || (tags.natural ? 'Water Body' : 'Forest'), type: tags.natural || 'forest' });
+            parsedRoads.push({
+              id: `road-${el.id || crypto.randomUUID()}`,
+              coords,
+              highway: tags.highway,
+              name: elName,
+              confirmed: true,
+              source: 'osm',
+              osm_id: el.id
+            });
+          } else if (tags.natural === 'water') {
+            const sumLat = coords.reduce((acc: number, curr: any) => acc + curr.lat, 0);
+            const sumLng = coords.reduce((acc: number, curr: any) => acc + curr.lng, 0);
+            parsedWater.push({
+              id: `water-${el.id || crypto.randomUUID()}`,
+              name: elName || 'Water Body',
+              type: 'pond',
+              coords,
+              center: { lat: sumLat / coords.length, lng: sumLng / coords.length }
+            });
+          } else if (tags.landuse === 'forest' || tags.natural === 'wood') {
+            parsedForests.push({
+              id: `forest-${el.id || crypto.randomUUID()}`,
+              name: elName || 'Forest Area',
+              points: coords
+            });
           }
         } else if (el.type === 'node') {
           const pt = { lat: el.lat, lng: el.lon };
           if (pointInPolygon(pt, pins)) {
             const type = tags.amenity || tags.shop || tags.tourism || 'POI';
-            parsedPOIs.push({ lat: el.lat, lng: el.lon, name: elName || type, type });
+            parsedPOIs.push({
+              id: `landmark-${el.id || crypto.randomUUID()}`,
+              name: elName || type,
+              type: type,
+              lat: el.lat,
+              lng: el.lon,
+              selectedForPdf: true
+            });
           }
         }
       }
-
-      // Map POIs to Symbols
-      const landmarkSymbols = parsedPOIs.map(p => ({
-        id: crypto.randomUUID(),
-        symbol_type: 'temple' as SymbolType, // Default to temple / POI symbol type
-        lat: p.lat,
-        lng: p.lng,
-        number: null,
-        placed_at: new Date().toISOString(),
-        auto_detected: true,
-        label: p.name
-      }));
 
       // Update project state, triggering auto-save to database
       update({
         roads: parsedRoads,
         waterBodies: parsedWater,
-        symbols: [...(mapData.symbols || []).filter(s => s.polygon != null), ...landmarkSymbols] // preserve google buildings
+        forests: parsedForests,
+        landmarks: parsedPOIs
       });
 
     } catch (e: any) {
       console.warn("Failed to fetch features from OSM:", e);
-      setExtractError("Fetched boundary, but failed to fetch detailed roads/landmarks from OSM.");
+      setExtractError("Fetched boundary, but failed to fetch detailed OSM layers.");
     } finally {
       setExtractStatus('');
     }
   };
 
   // Render roads to Map
-  const renderRoadsLayer = (rdsList: any[]) => {
+  const renderRoadsLayer = (rdsList: RoadFeature[]) => {
     const rg = layersRef.current.roadsGroup;
     const lg = layersRef.current.roadLabelsGroup;
     if (!rg || !lg) return;
@@ -364,8 +408,6 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
 
     rdsList.forEach(r => {
       const latlngs = r.coords.map((c: any) => [c.lat, c.lng]);
-      
-      // Styling roads
       const isMajor = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'].includes(r.highway);
       const poly = L.polyline(latlngs, {
         color: isMajor ? '#1e293b' : '#64748b',
@@ -412,8 +454,8 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     else lg.remove();
   }, [showRoadNames]);
 
-  // Render water/landcover to Map
-  const renderWaterLayer = (watList: any[]) => {
+  // Render water bodies to Map
+  const renderWaterLayer = (watList: WaterBody[]) => {
     const wg = layersRef.current.waterGroup;
     if (!wg) return;
     wg.clearLayers();
@@ -421,8 +463,8 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     watList.forEach(w => {
       const latlngs = w.coords.map((c: any) => [c.lat, c.lng]);
       L.polygon(latlngs, {
-        color: w.type === 'forest' ? '#166534' : '#0369a1',
-        fillColor: w.type === 'forest' ? '#22c55e' : '#38bdf8',
+        color: '#0369a1',
+        fillColor: '#38bdf8',
         fillOpacity: 0.35,
         weight: 1.5
       }).bindTooltip(w.name, { sticky: true }).addTo(wg);
@@ -440,8 +482,36 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     else wg.remove();
   }, [showWater]);
 
+  // Render forest bodies to Map
+  const renderForestsLayer = (forestsList: ForestArea[]) => {
+    const fg = layersRef.current.forestsGroup;
+    if (!fg) return;
+    fg.clearLayers();
+
+    forestsList.forEach(f => {
+      const latlngs = f.points.map((c: any) => [c.lat, c.lng]);
+      L.polygon(latlngs, {
+        color: '#166534',
+        fillColor: '#22c55e',
+        fillOpacity: 0.25,
+        weight: 1.5
+      }).bindTooltip(f.name, { sticky: true }).addTo(fg);
+    });
+
+    if (!showWater) fg.remove();
+  };
+
+  // Toggle forest bodies visibility (grouped with water bodies toggle)
+  useEffect(() => {
+    const map = mapRef.current;
+    const fg = layersRef.current.forestsGroup;
+    if (!map || !fg) return;
+    if (showWater) fg.addTo(map);
+    else fg.remove();
+  }, [showWater]);
+
   // Render POIs to Map
-  const renderPOIsLayer = (poisList: any[]) => {
+  const renderPOIsLayer = (poisList: Landmark[]) => {
     const pg = layersRef.current.poiGroup;
     if (!pg) return;
     pg.clearLayers();
@@ -455,7 +525,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       });
 
       L.marker([p.lat, p.lng], { icon: customIcon })
-        .bindTooltip(p.label || p.name, { direction: 'top', className: 'bg-slate-800 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow' })
+        .bindTooltip(p.name, { direction: 'top', className: 'bg-slate-800 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow' })
         .addTo(pg);
     });
 
@@ -496,8 +566,11 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       const list = res.data?.buildings || [];
       const valid = list.filter((b: any) => b.polygon && Array.isArray(b.polygon.coordinates));
 
+      // Remove overlapping duplicate structures returned by GEE
+      const deduped = removeOverlappingGoogleBuildings(valid);
+
       // Map to PlacedSymbols
-      const newBuildingSymbols = valid.map((b: any) => ({
+      const newBuildingSymbols = deduped.map((b: any) => ({
         id: `building-${crypto.randomUUID()}`,
         symbol_type: 'pucca_house' as SymbolType,
         lat: b.lat,
@@ -510,7 +583,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
 
       // Update state, saving to database
       update({
-        symbols: [...(mapData.symbols || []).filter(s => s.polygon == null), ...newBuildingSymbols] // preserve landmarks
+        symbols: [...(mapData.symbols || []).filter(s => s.polygon == null), ...newBuildingSymbols]
       });
 
     } catch (e: any) {
@@ -642,6 +715,26 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
             </div>
           )}
 
+          {/* OSM Roads & Landmarks Manual Button */}
+          {mapData.boundaryPins && mapData.boundaryPins.length > 0 && (
+            <div className="bg-slate-800/40 border border-slate-700/80 rounded-xl p-4 space-y-3">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-public-sans flex items-center justify-between">
+                <span>🗺️ OSM Roads & Forests</span>
+                {mapData.roads && mapData.roads.length > 0 && (
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono font-bold">Fetched</span>
+                )}
+              </h3>
+              <button
+                onClick={() => triggerOSMFetch(mapData.boundaryPins)}
+                disabled={!!extractStatus}
+                className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg active:scale-95 transition-all disabled:opacity-50"
+              >
+                {extractStatus && extractStatus.includes('OpenStreetMap') ? 'Fetching OSM Features...' : 'Fetch Roads & Landmarks (OSM) 🗺️'}
+              </button>
+              <p className="text-[9px] text-slate-400 leading-snug">Queries OpenStreetMap for roads, local rivers/ponds, forests, and landmarks.</p>
+            </div>
+          )}
+
           {/* Google Open Buildings Action */}
           {mapData.boundaryPins && mapData.boundaryPins.length > 0 && (
             <div className="bg-slate-800/40 border border-slate-700/80 rounded-xl p-4 space-y-4">
@@ -732,7 +825,18 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
                 </label>
 
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    const map = mapRef.current;
+                    const poly = layersRef.current.boundary;
+                    if (map && poly) {
+                      map.fitBounds(poly.getBounds(), { padding: [15, 15] });
+                      setTimeout(() => {
+                        window.print();
+                      }, 350);
+                    } else {
+                      window.print();
+                    }
+                  }}
                   className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg active:scale-95 transition-all"
                 >
                   Print Layout Map 🖨️
@@ -782,13 +886,16 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       {/* Print Styles Sheet injected to customize layout during browser print */}
       <style>{`
         @media print {
+          @page {
+            size: A4 landscape;
+            margin: 5mm;
+          }
           body, html, #root {
             height: 100% !important;
             width: 100% !important;
             background: white !important;
             color: black !important;
           }
-          /* Hide sidebar and any controls */
           .print\\:hidden, 
           header, 
           nav, 
@@ -798,7 +905,9 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
           .leaflet-control-attribution {
             display: none !important;
           }
-          /* Expand Leaflet map to absolute full viewport page */
+          .leaflet-tile-pane {
+            display: none !important;
+          }
           .print\\:h-screen {
             position: absolute !important;
             inset: 0 !important;
@@ -806,9 +915,12 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
             width: 100vw !important;
             z-index: 1 !important;
           }
-          /* Style Leaflet controls to keep them white and high-contrast */
           .leaflet-container {
             background: white !important;
+          }
+          .custom-road-label-container div {
+            border-color: #475569 !important;
+            box-shadow: none !important;
           }
         }
       `}</style>

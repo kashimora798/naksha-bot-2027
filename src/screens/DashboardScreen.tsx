@@ -642,7 +642,9 @@ export default function DashboardScreen({ user, userProfile, onLoadProject, onNe
               <div className="pl-2">
                 <div className="flex items-start justify-between mb-2 pr-6">
                   <h3 className="text-sm font-bold font-public-sans text-[var(--color-charcoal)] group-hover:text-[var(--color-saffron)] transition-colors truncate">
-                    {isCanvas && <span className="mr-1">🧩</span>}{project.name || 'Untitled Map'}
+                    {isCanvas && <span className="mr-1">🧩</span>}
+                    {project.data?.mode === 'sat-extractor' && <span className="mr-1">🛰️</span>}
+                    {project.name || 'Untitled Map'}
                   </h3>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 mb-2">

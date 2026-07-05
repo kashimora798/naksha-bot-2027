@@ -407,13 +407,34 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     lg.clearLayers();
 
     rdsList.forEach(r => {
+      if (r.coords.length < 2) return;
       const latlngs = r.coords.map((c: any) => [c.lat, c.lng]);
-      const isMajor = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'].includes(r.highway);
-      const poly = L.polyline(latlngs, {
-        color: isMajor ? '#1e293b' : '#64748b',
-        weight: isMajor ? 5 : 3,
-        opacity: 0.95
-      }).addTo(rg);
+      
+      const pk = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'paved'].includes(r.highway);
+      const rs = ['residential', 'unclassified', 'service', 'living_street'].includes(r.highway);
+      const kt = ['footway', 'path', 'track', 'pedestrian', 'steps', 'unpaved'].includes(r.highway);
+
+      const lc = '#000'; // casing color
+      const gc = '#FFF'; // inline center color
+
+      let poly;
+      if (pk) {
+        poly = L.polyline(latlngs, { color: lc, weight: 8, opacity: 0.95 });
+        rg.addLayer(poly);
+        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 4, opacity: 0.95 }));
+      } else if (rs) {
+        poly = L.polyline(latlngs, { color: lc, weight: 6, opacity: 0.95 });
+        rg.addLayer(poly);
+        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2.5, opacity: 0.95 }));
+      } else if (kt) {
+        poly = L.polyline(latlngs, { color: lc, weight: 5, dashArray: '10,6', opacity: 0.95 });
+        rg.addLayer(poly);
+        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2, dashArray: '10,6', opacity: 0.95 }));
+      } else {
+        poly = L.polyline(latlngs, { color: lc, weight: 5, opacity: 0.95 });
+        rg.addLayer(poly);
+        rg.addLayer(L.polyline(latlngs, { color: gc, weight: 2, opacity: 0.95 }));
+      }
 
       // Aligned Road Name Labels
       if (r.name && r.coords.length >= 2) {
@@ -628,14 +649,15 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
   return (
     <div className="flex h-screen w-screen bg-slate-900 overflow-hidden font-public-sans text-slate-100 print:bg-white print:text-black">
       
-      {/* Printable Title Overlays (rendered only in Print View) */}
-      <div className="hidden print:block absolute top-6 left-6 z-[9999] bg-white/95 border-2 border-slate-800 p-4 rounded-xl shadow-lg w-72">
-        <h2 className="text-xl font-black text-slate-900 font-public-sans uppercase tracking-tight">{printTitle || 'Nazari Naksha'}</h2>
-        <div className="text-[10px] text-slate-500 font-semibold space-y-1 mt-2">
-          <p>🏢 Block Number: {hlbCode || '—'}</p>
-          <p>🧑‍💼 Inspector Signature: __________________</p>
-          <p>📅 Generated Date: {new Date().toLocaleDateString()}</p>
-        </div>
+      {/* Printable Title Strip (rendered only in Print View at the bottom) */}
+      <div className="hidden print:flex absolute bottom-4 left-1/2 -translate-x-1/2 z-[9999] bg-white/95 border border-slate-300 px-6 py-2 rounded-full shadow-md items-center gap-6 text-[10px] font-bold text-slate-700 font-public-sans uppercase tracking-wide whitespace-nowrap">
+        <span>📋 {printTitle || 'Nazari Naksha'}</span>
+        <span className="w-px h-3 bg-slate-300"></span>
+        <span>🏢 HLB: {hlbCode || '—'}</span>
+        <span className="w-px h-3 bg-slate-300"></span>
+        <span>📅 Date: {new Date().toLocaleDateString()}</span>
+        <span className="w-px h-3 bg-slate-300"></span>
+        <span>✍️ Inspector Sign: __________________</span>
       </div>
 
       {showPrintLegend && (

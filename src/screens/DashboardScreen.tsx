@@ -1265,6 +1265,16 @@ I have successfully contributed to support your studies!
                 <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-3xl mx-auto mb-3 shadow-inner">⚡</div>
                 <h3 className="text-lg font-extrabold text-slate-800 font-public-sans">Advanced Auto-Map Extractor</h3>
                 <p className="text-xs text-slate-500 mt-1">Upload georeferenced GeoPDF to automatically trace boundary and fetch roads via Python microservice.</p>
+                <div className="mt-2">
+                  <a
+                    href="https://ybrtqteoagkptglqedsw.supabase.co/storage/v1/object/sign/t/WhatsApp%20Video%202026-07-07%20at%203.52.53%20PM.mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lM2I3OGM3OC1lNTFlLTQ1MzEtOTViMC1iY2VkMTMwZGE2ZjAiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ0L1doYXRzQXBwIFZpZGVvIDIwMjYtMDctMDcgYXQgMy41Mi41MyBQTS5tcDQiLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgzNDIwNTA2LCJleHAiOjE4MTQ5NTY1MDZ9.cLJoZGf9I3xi3W1-2oby3D36bpIVD8fSjw9YpNKkCjM"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-indigo-600 hover:text-indigo-500 font-bold underline inline-flex items-center gap-1 transition-colors"
+                  >
+                    ❓ What is georeferenced GeoPDF?
+                  </a>
+                </div>
               </div>
 
               <div className="space-y-4">

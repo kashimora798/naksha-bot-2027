@@ -227,38 +227,180 @@ def detect_boundary_lines(map_img: np.ndarray, brightness_thresh: int = 205,
 # ---------------------------------------------------------------------------
 
 def locate_label(map_img: np.ndarray, target_text: str,
-                  brightness_thresh: int = 225) -> tuple[int, int]:
+                  brightness_thresholds: tuple = (225, 210, 195, 180)) -> tuple[int, int]:
     """
-    OCRs the bold white HLB-number labels on the map and returns the pixel
-    (col, row) center of the one matching `target_text`. Raises if not found.
+    OCRs the bold white HLB-number label matching `target_text` and returns
+    its pixel (col, row) center. Raises if not found after all fallbacks.
+
+    Made resolution-independent after a real failure: an earlier version
+    used fixed absolute pixel-size filters (e.g. "8 < w < 60") tuned to one
+    map's DPI, which silently rejected valid digit blobs on maps exported
+    at a different resolution/font size. This version:
+      1. Sizes its blob filter relative to the image dimensions instead of
+         fixed pixel counts, so it adapts across maps.
+      2. Merges nearby glyphs into whole-number blobs before cropping (the
+         same trick that measurably improved landmark-label OCR — see
+         osm_enrichment.ocr_all_labels), rather than reading lone characters.
+      3. Cascades through several brightness thresholds, since JPEG2000
+         compression artifacts can dull "white" unevenly between maps.
+      4. Falls back to fuzzy matching (handles OCR confusing e.g. a leading
+         "0" for "O") if no exact string match is found after all of the above.
+
+    If this still fails on a real file, it likely means classical OCR
+    genuinely cannot read that particular label — at that point, the right
+    move is a targeted vision-LLM call on the specific candidate crop (not
+    on the whole map — see extract_hlb_boundary's docstring / the project
+    notes on why localization and reading are different problems).
     """
-    bright = np.all(map_img > brightness_thresh, axis=2).astype(np.uint8) * 255
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(bright, connectivity=8)
+    h_img, w_img = map_img.shape[:2]
+    candidates = []  # (ocr_text, col, row) across all thresholds, for fuzzy fallback
 
-    text_mask = np.zeros_like(bright)
-    for i in range(1, n):
-        x, y, w, h, area = stats[i]
-        fill_ratio = area / (w * h + 1e-6)
-        if 8 < w < 60 and 8 < h < 40 and fill_ratio > 0.25:
-            text_mask[labels == i] = 255
+    for thresh in brightness_thresholds:
+        bright = np.all(map_img > thresh, axis=2).astype(np.uint8) * 255
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 5))
+        merged = cv2.dilate(bright, kernel, iterations=1)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(merged, connectivity=8)
 
-    data = pytesseract.image_to_data(
-        Image.fromarray(text_mask),
-        output_type=pytesseract.Output.DICT,
-        config="--psm 11 -c tessedit_char_whitelist=0123456789",
+        for i in range(1, n):
+            x, y, w, h, area = stats[i]
+            # Relative-size filter: a number label shouldn't span more than
+            # ~15% of image width or ~5% of image height, regardless of DPI.
+            if w < 20 or h < 8 or w > 0.15 * w_img or h > 0.05 * h_img:
+                continue
+            pad = 6
+            x0, y0 = max(0, x - pad), max(0, y - pad)
+            x1, y1 = min(w_img, x + w + pad), min(h_img, y + h + pad)
+            crop = map_img[y0:y1, x0:x1]
+            crop_big = cv2.resize(crop, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+            gray = cv2.cvtColor(crop_big, cv2.COLOR_RGB2GRAY)
+            _, bw = cv2.threshold(gray, 190, 255, cv2.THRESH_BINARY)
+            text = pytesseract.image_to_string(
+                bw, config="--psm 7 -c tessedit_char_whitelist=0123456789"
+            ).strip()
+            if not text:
+                continue
+            if text == target_text:
+                return int(x + w / 2), int(y + h / 2)
+            candidates.append((text, int(x + w / 2), int(y + h / 2)))
+
+    # Fuzzy fallback: catches near-misses like OCR reading "0" as "O" or
+    # confusing similar digits, as long as it's the same length as the target.
+    try:
+        from rapidfuzz import fuzz
+        same_len = [c for c in candidates if len(c[0]) == len(target_text)]
+        if same_len:
+            best_text, best_col, best_row = max(
+                same_len, key=lambda c: fuzz.ratio(c[0], target_text)
+            )
+            if fuzz.ratio(best_text, target_text) >= 80:
+                return best_col, best_row
+    except ImportError:
+        pass
+
+    raise ValueError(
+        f"Could not locate label '{target_text}' on the map via OCR "
+        f"(closest candidates seen: {[c[0] for c in candidates][:5]}). "
+        "Consider a targeted vision-LLM read on candidate crops as a fallback."
     )
-
-    for i, text in enumerate(data["text"]):
-        if text.strip() == target_text:
-            x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
-            return int(x + w / 2), int(y + h / 2)
-
-    raise ValueError(f"Could not locate label '{target_text}' on the map via OCR.")
 
 
 # ---------------------------------------------------------------------------
 # Step 5 — Isolate the enclosed polygon and simplify its contour
 # ---------------------------------------------------------------------------
+
+def find_label_candidates(map_img: np.ndarray, brightness_thresholds: tuple = (225, 210, 195, 180)) -> list[dict]:
+    """
+    Shape-based candidate detection only (no OCR) — returns every bold white
+    blob that's plausibly a text label, as cropped images + pixel position.
+    Used directly by locate_label() for classical OCR, and reused by
+    read_label_with_vision() below so the AI fallback only ever has to read
+    a handful of small, pre-isolated crops rather than search a whole map.
+    """
+    h_img, w_img = map_img.shape[:2]
+    seen_boxes = set()
+    candidates = []
+    for thresh in brightness_thresholds:
+        bright = np.all(map_img > thresh, axis=2).astype(np.uint8) * 255
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 5))
+        merged = cv2.dilate(bright, kernel, iterations=1)
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(merged, connectivity=8)
+        for i in range(1, n):
+            x, y, w, h, area = stats[i]
+            if w < 20 or h < 8 or w > 0.15 * w_img or h > 0.05 * h_img:
+                continue
+            box = (x // 10, y // 10)  # dedupe near-identical boxes seen at multiple thresholds
+            if box in seen_boxes:
+                continue
+            seen_boxes.add(box)
+            pad = 6
+            x0, y0 = max(0, x - pad), max(0, y - pad)
+            x1, y1 = min(w_img, x + w + pad), min(h_img, y + h + pad)
+            crop = map_img[y0:y1, x0:x1]
+            crop_big = cv2.resize(crop, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+            candidates.append({"crop": crop_big, "col": int(x + w / 2), "row": int(y + h / 2)})
+    return candidates
+
+
+def read_label_with_vision(crop_rgb: np.ndarray, api_key: str) -> str:
+    """
+    Sends ONE small pre-cropped candidate image to Claude and asks it to
+    transcribe the digits — used only as a fallback after classical OCR
+    (locate_label) fails on every candidate. Deliberately scoped to single
+    small crops, not the full map: asking a vision model to both *find* and
+    *read* a label across a large complex image risks imprecise coordinate
+    guesses (a known weakness of vision LLMs); asking it to read one crop
+    it's already looking straight at is a much easier, more reliable task.
+
+    NOT TESTED — this sandbox has no ANTHROPIC_API_KEY available, so this
+    function is written carefully but unverified against the live API.
+    Confirm response parsing works before relying on it.
+    """
+    import base64, requests
+
+    _, buf = cv2.imencode(".png", cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR))
+    b64 = base64.b64encode(buf).decode()
+
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 20,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}},
+                    {"type": "text", "text": "This is a cropped label from a map. Reply with ONLY the digits shown, nothing else. If unclear, reply UNKNOWN."},
+                ],
+            }],
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    text_blocks = [b["text"] for b in resp.json()["content"] if b["type"] == "text"]
+    return "".join(text_blocks).strip()
+
+
+def locate_label_with_vision_fallback(map_img: np.ndarray, target_text: str, api_key: str | None = None) -> tuple[int, int]:
+    """
+    Tries classical OCR first (locate_label); only spends an API call per
+    candidate crop if that fails entirely AND an api_key is supplied.
+    """
+    try:
+        return locate_label(map_img, target_text)
+    except ValueError:
+        if not api_key:
+            raise
+        for cand in find_label_candidates(map_img):
+            if read_label_with_vision(cand["crop"], api_key) == target_text:
+                return cand["col"], cand["row"]
+        raise ValueError(f"'{target_text}' not found even with vision fallback.")
+
+
 
 def isolate_polygon(sealed_line_mask: np.ndarray, seed: tuple[int, int],
                      simplify_tolerance_frac: float = 0.002) -> np.ndarray:
@@ -299,56 +441,4 @@ def to_geojson(pixel_pts: np.ndarray, transform: GeoTransform, properties: dict)
     }
 
 
-# ---------------------------------------------------------------------------
-# End-to-end orchestration
-# ---------------------------------------------------------------------------
-
-def extract_hlb_boundary(pdf_path: str, hlb_number: str, properties: dict | None = None) -> dict:
-    """
-    Runs the full pipeline on a single PDF and returns a GeoJSON Feature for
-    the requested HLB number. Raises ValueError at whichever step fails, so
-    callers can fall back to manual tracing for that file.
-    """
-    geo_meta = read_geo_metadata(pdf_path)
-    if geo_meta is None:
-        raise ValueError(
-            "PDF has no embedded /Measure /GEO metadata — not a GeoPDF. "
-            "Fall back to manual boundary tracing or landmark-based georeferencing."
-        )
-
-    map_img = extract_map_raster(pdf_path, geo_meta)
-    sealed_lines = detect_boundary_lines(map_img)
-    seed = locate_label(map_img, hlb_number)
-    pixel_pts = isolate_polygon(sealed_lines, seed)
-
-    h, w = map_img.shape[:2]
-    transform = GeoTransform(
-        crop_w=w, crop_h=h,
-        lat_at_y0=geo_meta["lat_at_y0"], lat_at_y1=geo_meta["lat_at_y1"],
-        lon_at_x0=geo_meta["lon_at_x0"], lon_at_x1=geo_meta["lon_at_x1"],
-    )
-
-    props = {"hlb_no": hlb_number}
-    if properties:
-        props.update(properties)
-
-    return to_geojson(pixel_pts, transform, props)
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract an HLB boundary polygon from a Census layout-map GeoPDF.")
-    parser.add_argument("pdf_path", help="Path to the layout map PDF")
-    parser.add_argument("--hlb", required=True, help="HLB number to extract, e.g. 0542")
-    parser.add_argument("--out", default="hlb_boundary.geojson", help="Output GeoJSON path")
-    args = parser.parse_args()
-
-    feature = extract_hlb_boundary(args.pdf_path, args.hlb)
-    with open(args.out, "w") as f:
-        json.dump(feature, f, indent=2)
-
-    n_verts = len(feature["geometry"]["coordinates"][0]) - 1
-    print(f"Extracted HLB {args.hlb}: {n_verts} vertices -> {args.out}")
+# ---------------------------------------------------------------------

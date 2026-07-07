@@ -441,4 +441,61 @@ def to_geojson(pixel_pts: np.ndarray, transform: GeoTransform, properties: dict)
     }
 
 
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# End-to-end orchestration
+# ---------------------------------------------------------------------------
+
+def extract_hlb_boundary(pdf_path: str, hlb_number: str, properties: dict | None = None) -> dict:
+    """
+    Runs the full pipeline on a single PDF and returns a GeoJSON Feature for
+    the requested HLB number. Raises ValueError at whichever step fails, so
+    callers can fall back to manual tracing for that file.
+    """
+    import os
+    geo_meta = read_geo_metadata(pdf_path)
+    if geo_meta is None:
+        raise ValueError(
+            "PDF has no embedded /Measure /GEO metadata — not a GeoPDF. "
+            "Fall back to manual boundary tracing or landmark-based georeferencing."
+        )
+
+    map_img = extract_map_raster(pdf_path, geo_meta)
+    sealed_lines = detect_boundary_lines(map_img)
+    
+    # Locate label using the new vision fallback pipeline
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    seed = locate_label_with_vision_fallback(map_img, hlb_number, api_key=api_key)
+    pixel_pts = isolate_polygon(sealed_lines, seed)
+
+    h, w = map_img.shape[:2]
+    transform = GeoTransform(
+        crop_w=w, crop_h=h,
+        lat_at_y0=geo_meta["lat_at_y0"], lat_at_y1=geo_meta["lat_at_y1"],
+        lon_at_x0=geo_meta["lon_at_x0"], lon_at_x1=geo_meta["lon_at_x1"],
+    )
+
+    props = {"hlb_no": hlb_number}
+    if properties:
+        props.update(properties)
+
+    return to_geojson(pixel_pts, transform, props)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Extract an HLB boundary polygon from a Census layout-map GeoPDF.")
+    parser.add_argument("pdf_path", help="Path to the layout map PDF")
+    parser.add_argument("--hlb", required=True, help="HLB number to extract, e.g. 0542")
+    parser.add_argument("--out", default="hlb_boundary.geojson", help="Output GeoJSON path")
+    args = parser.parse_args()
+
+    feature = extract_hlb_boundary(args.pdf_path, args.hlb)
+    with open(args.out, "w") as f:
+        json.dump(feature, f, indent=2)
+
+    n_verts = len(feature["geometry"]["coordinates"][0]) - 1
+    print(f"Extracted HLB {args.hlb}: {n_verts} vertices -> {args.out}")
+

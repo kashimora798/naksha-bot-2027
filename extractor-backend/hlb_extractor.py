@@ -261,7 +261,7 @@ def locate_label(map_img: np.ndarray, target_text: str,
         merged = cv2.dilate(bright, kernel, iterations=1)
         n, labels, stats, _ = cv2.connectedComponentsWithStats(merged, connectivity=8)
 
-        # Build a single mask containing only valid candidate text regions
+        # Build a single mask containing only clean original characters within candidate regions
         text_mask = np.zeros_like(bright)
         for i in range(1, n):
             x, y, w, h, area = stats[i]
@@ -269,7 +269,8 @@ def locate_label(map_img: np.ndarray, target_text: str,
             # ~15% of image width or ~5% of image height, regardless of DPI.
             if w < 20 or h < 8 or w > 0.15 * w_img or h > 0.05 * h_img:
                 continue
-            text_mask[labels == i] = 255
+            # Copy pixels from the original 'bright' (non-dilated) image inside this bounding box
+            text_mask[y:y+h, x:x+w] = bright[y:y+h, x:x+w]
 
         # If no candidates at this threshold, skip Tesseract call
         if not np.any(text_mask):

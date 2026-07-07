@@ -261,27 +261,44 @@ def locate_label(map_img: np.ndarray, target_text: str,
         merged = cv2.dilate(bright, kernel, iterations=1)
         n, labels, stats, _ = cv2.connectedComponentsWithStats(merged, connectivity=8)
 
+        # Build a single mask containing only valid candidate text regions
+        text_mask = np.zeros_like(bright)
         for i in range(1, n):
             x, y, w, h, area = stats[i]
             # Relative-size filter: a number label shouldn't span more than
             # ~15% of image width or ~5% of image height, regardless of DPI.
             if w < 20 or h < 8 or w > 0.15 * w_img or h > 0.05 * h_img:
                 continue
-            pad = 6
-            x0, y0 = max(0, x - pad), max(0, y - pad)
-            x1, y1 = min(w_img, x + w + pad), min(h_img, y + h + pad)
-            crop = map_img[y0:y1, x0:x1]
-            crop_big = cv2.resize(crop, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
-            gray = cv2.cvtColor(crop_big, cv2.COLOR_RGB2GRAY)
-            _, bw = cv2.threshold(gray, 190, 255, cv2.THRESH_BINARY)
-            text = pytesseract.image_to_string(
-                bw, config="--psm 7 -c tessedit_char_whitelist=0123456789"
-            ).strip()
-            if not text:
+            text_mask[labels == i] = 255
+
+        # If no candidates at this threshold, skip Tesseract call
+        if not np.any(text_mask):
+            continue
+
+        # Run Tesseract EXACTLY ONCE on the entire candidate mask
+        data = pytesseract.image_to_data(
+            Image.fromarray(text_mask),
+            output_type=pytesseract.Output.DICT,
+            config="--psm 11 -c tessedit_char_whitelist=0123456789",
+        )
+
+        for i, text in enumerate(data["text"]):
+            clean_text = text.strip()
+            if not clean_text:
                 continue
-            if text == target_text:
-                return int(x + w / 2), int(y + h / 2)
-            candidates.append((text, int(x + w / 2), int(y + h / 2)))
+            x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
+            cx, cy = int(x + w / 2), int(y + h / 2)
+            
+            if clean_text == target_text:
+                return cx, cy
+            
+            # Simple normalizations to catch common OCR mistakes (e.g. O instead of 0)
+            norm_text = clean_text.replace("O", "0").replace("o", "0")
+            norm_target = target_text.replace("O", "0").replace("o", "0")
+            if norm_text == norm_target:
+                return cx, cy
+
+            candidates.append((clean_text, cx, cy))
 
     # Fuzzy fallback: catches near-misses like OCR reading "0" as "O" or
     # confusing similar digits, as long as it's the same length as the target.

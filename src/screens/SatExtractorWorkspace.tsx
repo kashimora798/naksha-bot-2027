@@ -1199,6 +1199,16 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
                     onChange={e => setPdfFile(e.target.files?.[0] || null)}
                     className="w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-500 cursor-pointer"
                   />
+                  <div className="mt-2">
+                    <a
+                      href="https://ybrtqteoagkptglqedsw.supabase.co/storage/v1/object/sign/t/WhatsApp%20Video%202026-07-07%20at%203.52.53%20PM.mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lM2I3OGM3OC1lNTFlLTQ1MzEtOTViMC1iY2VkMTMwZGE2ZjAiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ0L1doYXRzQXBwIFZpZGVvIDIwMjYtMDctMDcgYXQgMy41Mi41MyBQTS5tcDQiLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgzNDIwNTA2LCJleHAiOjE4MTQ5NTY1MDZ9.cLJoZGf9I3xi3W1-2oby3D36bpIVD8fSjw9YpNKkCjM"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-violet-400 hover:text-violet-300 font-bold underline flex items-center gap-1 transition-colors"
+                    >
+                      ❓ What is georeferenced GeoPDF?
+                    </a>
+                  </div>
                 </div>
 
                 <button

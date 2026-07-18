@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as turf from "https://esm.sh/@turf/turf@6.5.0";
 
 // ============================================================================
@@ -17,7 +18,7 @@ import * as turf from "https://esm.sh/@turf/turf@6.5.0";
 // ============================================================================
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': '*', // TODO: restrict to production domain before launch
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -443,6 +444,19 @@ function mergeAcrossSources(groups: any[][]): any[] {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   try {
+    // Authenticate: forward caller's JWT through Supabase client
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } },
+    );
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { north, south, east, west, boundary, useGoogle, minConfidence } = await req.json();
     if ([north, south, east, west].some(v => typeof v !== 'number')) {
       return new Response(JSON.stringify({ error: 'Missing/invalid bounding box' }), {

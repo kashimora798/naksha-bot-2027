@@ -11,9 +11,9 @@ create table if not exists public.users (
 -- Enable Row Level Security (RLS)
 alter table public.users enable row level security;
 
--- Create policies
-create policy "Public profiles are viewable by everyone." on public.users
-  for select using (true);
+-- Create policies (restrict reads to own profile only — prevents email enumeration)
+create policy "Users can view their own profile." on public.users
+  for select using (auth.uid() = id);
 
 create policy "Users can insert their own profile." on public.users
   for insert with check (auth.uid() = id);

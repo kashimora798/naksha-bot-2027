@@ -163,7 +163,9 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const lastP = useRef({ x: 0, y: 0 });
   const frameRef = useRef<HTMLDivElement>(null);
 
-  const isPaid = true; // App is now free — always allow full quality & export
+  // INTENTIONAL: Payment gate disabled for hackathon demo — all features unlocked.
+  // To re-enable, query project.is_paid from Supabase instead of hardcoding.
+  const isPaid = true;
   const regenLimitReached = !isDemoMode && regenUsed >= regenAllowance;
 
   useEffect(() => {

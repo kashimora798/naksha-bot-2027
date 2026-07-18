@@ -124,7 +124,7 @@ To dominate Google search for Census 2027:
    ```env
    VITE_MAPBOX_TOKEN=your_mapbox_token_here
    VITE_SUPABASE_URL=your_supabase_url
-   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
    VITE_PAYMENT_ENV=sandbox
    ```
 

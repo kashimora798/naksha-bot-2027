@@ -32,3 +32,16 @@ gee-key*.json
 .env.*
 
 .vercel
+
+# Scratch/temp files
+temp.*
+temp_*
+
+# AI session transcripts
+*session*context*
+
+# PDF reference documents
+*.pdf
+
+# Build output
+dist/

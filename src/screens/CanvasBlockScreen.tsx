@@ -8,6 +8,7 @@ import { detectBlocks, mergeBlocks, splitBlock, relabelBlocks, blockPoints, labe
 import { placeGroupsInBlock, blockGrid, minEdgeDistM, type LayoutMode, type SymGroup } from '../lib/placement-blocks';
 import { renderMapToCanvas, findNearestRoadBearing } from '../lib/pdf-export';
 import { supabase } from '../lib/supabase';
+import { Sheet } from '../components/ui/Sheet';
 
 interface Props {
   mapData: MapData;
@@ -2015,154 +2016,119 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       </div>
 
       {/* Help Tour Dialog Overlay */}
-      {showHelp && (
-        <div className="absolute inset-0 z-[2000] bg-black/60 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
-            {/* Modal Header */}
-            <div className="px-4 py-3 bg-[var(--color-saffron)] text-white flex items-center justify-between">
-              <span className="font-bold flex items-center gap-2">
-                📖 NakshaBot Editor Guide
-              </span>
-              <button 
-                onClick={() => setShowHelp(false)} 
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/20 hover:bg-white/30 text-white text-lg font-bold transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-            {/* Modal Body */}
-            <div className="flex-grow p-5 overflow-y-auto text-sm text-[var(--color-charcoal)]">
-              {helpStep === 0 && (
-                <div className="flex flex-col gap-3">
-                  <h3 className="font-bold text-lg text-[var(--color-saffron)]">Welcome to Census Map Maker!</h3>
-                  <p>This editor helps you prepare official maps for the 2027 Census. The editing process is split into 4 simple steps shown at the top of your screen.</p>
-                  <p className="bg-amber-50 border border-amber-200 text-amber-800 p-2.5 rounded-lg text-xs leading-relaxed font-semibold">
-                    💡 Pro Tip: On mobile devices, you can collapse the bottom controls panel anytime using the "Collapse ▽" button to get a full view of your map canvas.
-                  </p>
-                </div>
-              )}
-              {helpStep === 1 && (
-                <div className="flex flex-col gap-3">
-                  <h3 className="font-bold text-lg text-[var(--color-saffron)]">📍 Step 1: Set Location</h3>
-                  <p>In this phase, you set the geographic center of your census block.</p>
-                  <ul className="list-disc pl-5 flex flex-col gap-1.5 text-xs text-gray-600 font-semibold">
-                    <li>Input the GPS coordinates (Latitude & Longitude) of your region.</li>
-                    <li>Click "Go" to pan the map automatically to the target center.</li>
-                    <li>Once positioned, click "Start Boundary Draft →" to lock in the center.</li>
-                  </ul>
-                </div>
-              )}
-              {helpStep === 2 && (
-                <div className="flex flex-col gap-3">
-                  <h3 className="font-bold text-lg text-[var(--color-saffron)]">🔴 Step 2: Trace Boundary</h3>
-                  <p>Define the outer boundaries of your census block unit.</p>
-                  <ul className="list-disc pl-5 flex flex-col gap-1.5 text-xs text-gray-600 font-semibold">
-                    <li><strong>Drop Pins:</strong> Tap on the map to place pins outlining the border. You need at least 3 pins.</li>
-                    <li><strong>Adjustments:</strong> Use "Undo last pin" to correct the last point.</li>
-                    <li><strong>Finish:</strong> Click "Close boundary" to secure the polygon boundaries.</li>
-                  </ul>
-                </div>
-              )}
-              {helpStep === 3 && (
-                <div className="flex flex-col gap-3">
-                  <h3 className="font-bold text-lg text-[var(--color-saffron)]">🛣️ Step 3: Draw Roads</h3>
-                  <p>Trace the road network to define individual census blocks.</p>
-                  <ul className="list-disc pl-5 flex flex-col gap-1.5 text-xs text-gray-600 font-semibold">
-                    <li><strong>OSM Sync:</strong> Click "Fetch OSM roads" to instantly load public roads.</li>
-                    <li><strong>Draw Manually:</strong> Tap "Draw road", then click points along the street. Click "Finish road" when done.</li>
-                    <li><strong>Route Snapping:</strong> Tap "Route-draw", click start/endpoints, and LocationIQ will match the coordinates to real roads.</li>
-                    <li><strong>Modify/Delete:</strong> Tap any road line on the map to rename, snap, or delete it.</li>
-                  </ul>
-                </div>
-              )}
-              {helpStep === 4 && (
-                <div className="flex flex-col gap-3">
-                  <h3 className="font-bold text-lg text-[var(--color-saffron)]">🧩 Step 4: Populate &amp; Edit Canvas</h3>
-                  <p>Split the boundary into census blocks and place symbols.</p>
-                  <ul className="list-disc pl-5 flex flex-col gap-1.5 text-xs text-gray-600 font-semibold">
-                    <li><strong>Block Detection:</strong> Tap "Detect blocks". Roads will partition the boundary into blocks.</li>
-                    <li><strong>Populate Houses:</strong> Tap a block to select it. Configure number of houses, symbol type, layout mode (Grid, along Roads, Serpentine) and click "Place".</li>
-                    <li><strong>Arrange/Swap:</strong> Toggle "Arrange" to drag-and-drop symbols, or "Swap" to exchange positions of two houses.</li>
-                    <li><strong>Split/Merge:</strong> Select blocks to merge them or split a block by drawing a cutting line.</li>
-                    <li><strong>Exclusions:</strong> Click "Draw Field" to trace exclusion zones (e.g. forests, ponds) where houses shouldn't be placed.</li>
-                  </ul>
-                </div>
-              )}
-            </div>
-            {/* Modal Footer */}
-            <div className="px-4 py-3 bg-gray-50 border-t flex items-center justify-between">
-              <button 
-                onClick={() => setHelpStep(s => Math.max(0, s - 1))}
-                disabled={helpStep === 0}
-                className="px-3 py-1.5 bg-white border rounded text-xs font-semibold text-gray-600 disabled:opacity-40"
-              >
-                ← Previous
-              </button>
-              <span className="text-xs font-bold text-gray-400">
-                {helpStep + 1} / 5
-              </span>
-              {helpStep < 4 ? (
-                <button 
-                  onClick={() => setHelpStep(s => s + 1)}
-                  className="px-3 py-1.5 bg-[var(--color-saffron)] hover:bg-[var(--color-saffron-container)] text-white rounded text-xs font-semibold transition-colors"
-                >
-                  Next →
-                </button>
-              ) : (
-                <button 
-                  onClick={() => { setShowHelp(false); setHelpStep(0); }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold transition-colors"
-                >
-                  Get Started!
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tutorial Video Dialog Overlay */}
-      {showVideoTutorial && (
-        <div className="absolute inset-0 z-[2000] bg-black/75 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-              <span className="font-bold flex items-center gap-2 text-base font-[Baloo_2]">
-                🎥 Nazri Naksha Tutorial Video
-              </span>
-              <button 
-                onClick={() => setShowVideoTutorial(false)} 
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 text-white text-lg font-bold transition-all transform hover:scale-105 active:scale-95"
-              >
-                ✕
-              </button>
-            </div>
-            {/* Modal Body */}
-            <div className="p-4 bg-slate-950 flex items-center justify-center">
-              <div className="relative w-full overflow-hidden rounded-2xl aspect-video bg-black shadow-inner">
-                <iframe
-                  className="absolute inset-0 w-full h-full border-0"
-                  src="https://www.youtube.com/embed/CmojjKhI220?autoplay=1"
-                  title="How to make nazri naksha for census 2027 . HLB nazri naksha making tutorial in 10 minutes"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                  allowFullScreen
-                ></iframe>
+      <Sheet open={showHelp} onClose={() => setShowHelp(false)} title="📖 NakshaBot Editor Guide" maxWidth="md">
+        <div className="space-y-4 text-sm text-[var(--color-ink)]">
+          {helpStep === 0 && (
+            <div className="flex flex-col gap-3">
+              <h3 className="font-bold text-lg text-[var(--color-accent)] font-public-sans">Welcome to Census Map Maker!</h3>
+              <p>This editor helps you prepare official maps for the 2027 Census. The editing process is split into 4 simple steps shown at the top of your screen.</p>
+              <div className="bg-[var(--color-accent-tint)] border border-indigo-200 text-[var(--color-accent)] p-3 rounded-[var(--radius-md)] text-xs leading-relaxed font-semibold">
+                💡 Pro Tip: On mobile devices, you can collapse the bottom controls panel anytime using the "Collapse ▽" button to get a full view of your map canvas.
               </div>
             </div>
-            {/* Modal Footer */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-semibold">
-              <span>Census 2027 Nazri Naksha Making Tutorial</span>
-              <button 
-                onClick={() => setShowVideoTutorial(false)}
-                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition-all transform hover:scale-105 active:scale-95"
-              >
-                Close Video
-              </button>
+          )}
+          {helpStep === 1 && (
+            <div className="flex flex-col gap-3">
+              <h3 className="font-bold text-lg text-[var(--color-accent)] font-public-sans">📍 Step 1: Set Location</h3>
+              <p>In this phase, you set the geographic center of your census block.</p>
+              <ul className="list-disc pl-5 flex flex-col gap-1.5 text-xs text-[var(--color-ink-secondary)] font-semibold">
+                <li>Input the GPS coordinates (Latitude & Longitude) of your region.</li>
+                <li>Click "Go" to pan the map automatically to the target center.</li>
+                <li>Once positioned, click "Start Boundary Draft →" to lock in the center.</li>
+              </ul>
             </div>
+          )}
+          {helpStep === 2 && (
+            <div className="flex flex-col gap-3">
+              <h3 className="font-bold text-lg text-[var(--color-accent)] font-public-sans">🔴 Step 2: Trace Boundary</h3>
+              <p>Define the outer boundaries of your census block unit.</p>
+              <ul className="list-disc pl-5 flex flex-col gap-1.5 text-xs text-[var(--color-ink-secondary)] font-semibold">
+                <li><strong>Drop Pins:</strong> Tap on the map to place pins outlining the border. You need at least 3 pins.</li>
+                <li><strong>Adjustments:</strong> Use "Undo last pin" to correct the last point.</li>
+                <li><strong>Finish:</strong> Click "Close boundary" to secure the polygon boundaries.</li>
+              </ul>
+            </div>
+          )}
+          {helpStep === 3 && (
+            <div className="flex flex-col gap-3">
+              <h3 className="font-bold text-lg text-[var(--color-accent)] font-public-sans">🛣️ Step 3: Draw Roads</h3>
+              <p>Trace the road network to define individual census blocks.</p>
+              <ul className="list-disc pl-5 flex flex-col gap-1.5 text-xs text-[var(--color-ink-secondary)] font-semibold">
+                <li><strong>OSM Sync:</strong> Click "Fetch OSM roads" to instantly load public roads.</li>
+                <li><strong>Draw Manually:</strong> Tap "Draw road", then click points along the street. Click "Finish road" when done.</li>
+                <li><strong>Route Snapping:</strong> Tap "Route-draw", click start/endpoints, and LocationIQ will match coordinates to real roads.</li>
+                <li><strong>Modify/Delete:</strong> Tap any road line on the map to rename, snap, or delete it.</li>
+              </ul>
+            </div>
+          )}
+          {helpStep === 4 && (
+            <div className="flex flex-col gap-3">
+              <h3 className="font-bold text-lg text-[var(--color-accent)] font-public-sans">🧩 Step 4: Populate & Edit Canvas</h3>
+              <p>Split the boundary into census blocks and place symbols.</p>
+              <ul className="list-disc pl-5 flex flex-col gap-1.5 text-xs text-[var(--color-ink-secondary)] font-semibold">
+                <li><strong>Block Detection:</strong> Tap "Detect blocks". Roads will partition the boundary into blocks.</li>
+                <li><strong>Populate Houses:</strong> Tap a block to select it. Configure number of houses, symbol type, layout mode and click "Place".</li>
+                <li><strong>Arrange/Swap:</strong> Toggle "Arrange" to drag-and-drop symbols, or "Swap" to exchange positions of two houses.</li>
+                <li><strong>Split/Merge:</strong> Select blocks to merge them or split a block by drawing a cutting line.</li>
+                <li><strong>Exclusions:</strong> Click "Draw Field" to trace exclusion zones where houses shouldn't be placed.</li>
+              </ul>
+            </div>
+          )}
+
+          <div className="pt-3 border-t border-[var(--color-hairline)] flex items-center justify-between">
+            <button 
+              onClick={() => setHelpStep(s => Math.max(0, s - 1))}
+              disabled={helpStep === 0}
+              className="px-3 py-1.5 bg-[var(--color-surface-2)] border border-[var(--color-hairline)] rounded-[var(--radius-sm)] text-xs font-semibold text-[var(--color-ink)] disabled:opacity-40 cursor-pointer"
+            >
+              ← Previous
+            </button>
+            <span className="text-xs font-bold text-[var(--color-ink-tertiary)] font-jetbrains-mono">
+              {helpStep + 1} / 5
+            </span>
+            {helpStep < 4 ? (
+              <button 
+                onClick={() => setHelpStep(s => s + 1)}
+                className="px-3.5 py-1.5 bg-[var(--color-accent)] text-white rounded-[var(--radius-sm)] text-xs font-bold transition-all cursor-pointer"
+              >
+                Next →
+              </button>
+            ) : (
+              <button 
+                onClick={() => { setShowHelp(false); setHelpStep(0); }}
+                className="px-3.5 py-1.5 bg-[var(--color-success)] text-white rounded-[var(--radius-sm)] text-xs font-bold transition-all cursor-pointer"
+              >
+                Get Started!
+              </button>
+            )}
           </div>
         </div>
-      )}
+      </Sheet>
+
+      {/* Tutorial Video Dialog Overlay */}
+      <Sheet open={showVideoTutorial} onClose={() => setShowVideoTutorial(false)} title="🎥 Nazri Naksha Tutorial Video" maxWidth="3xl">
+        <div className="space-y-4">
+          <div className="relative w-full overflow-hidden rounded-[var(--radius-lg)] aspect-video bg-black shadow-inner">
+            <iframe
+              className="absolute inset-0 w-full h-full border-0"
+              src="https://www.youtube.com/embed/CmojjKhI220?autoplay=1"
+              title="How to make nazri naksha for census 2027 . HLB nazri naksha making tutorial in 10 minutes"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          </div>
+          <div className="pt-2 flex items-center justify-between text-xs text-[var(--color-ink-secondary)] font-semibold">
+            <span>Census 2027 Nazri Naksha Making Tutorial</span>
+            <button 
+              onClick={() => setShowVideoTutorial(false)}
+              className="px-4 py-2 bg-[var(--color-ink)] text-white rounded-[var(--radius-md)] font-bold transition-all cursor-pointer"
+            >
+              Close Video
+            </button>
+          </div>
+        </div>
+      </Sheet>
     </div>
   );
 }

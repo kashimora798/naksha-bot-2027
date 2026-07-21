@@ -165,7 +165,7 @@ function SVGTimelineChart({ data, days, onDaysChange }: SVGTimelineChartProps) {
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h3 className="text-gray-100 font-bold text-base font-[Baloo_2]">Growth & Activity Trends</h3>
+          <h3 className="text-gray-100 font-bold text-base font-public-sans">Growth & Activity Trends</h3>
           <p className="text-xs text-gray-500">Daily comparison of new registrations and projects created</p>
         </div>
         <div className="flex items-center gap-3">

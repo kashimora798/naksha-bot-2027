@@ -21,7 +21,7 @@ export default function ProgressBar({ currentStep }: Props) {
   return (
     <div className="bg-white border-b border-gray-200 px-4 pt-2 pb-1 z-50 relative">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-semibold text-orange-600 font-[Baloo_2]">
+        <span className="text-xs font-semibold text-orange-600 font-public-sans">
           Step {currentStep} of 8
         </span>
         <span className="text-xs text-gray-500 font-[Noto_Sans]">

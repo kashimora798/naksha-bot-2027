@@ -33,7 +33,7 @@ export default function BlogRulesPage() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
             <img src="/logo.png" alt="NakshaBot Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-xl font-[Baloo_2] text-slate-800 tracking-tight">NakshaBot</span>
+            <span className="font-bold text-xl font-public-sans text-slate-800 tracking-tight">NakshaBot</span>
           </Link>
           <div className="flex items-center gap-4">
             <Link to="/sign-in" className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</Link>
@@ -48,7 +48,7 @@ export default function BlogRulesPage() {
       <div className="pt-32 pb-20 px-6 max-w-3xl mx-auto">
         <div className="mb-8">
           <span className="text-orange-600 font-bold tracking-wider uppercase text-sm">Guidelines</span>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 mt-2 mb-6 font-[Baloo_2]">
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 mt-2 mb-6 font-public-sans">
             Nazari Naksha Rules and Format
           </h1>
           <div className="flex items-center gap-4 text-sm text-slate-500">

@@ -452,7 +452,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                 </svg>
               </div>
               <div>
-                <p className="font-black text-base font-[Baloo_2]">Preparing your PDF…</p>
+                <p className="font-black text-base font-public-sans">Preparing your PDF…</p>
                 <p className="text-white/80 text-xs">Please don't close this tab</p>
               </div>
             </div>
@@ -515,7 +515,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
     return (
       <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex flex-col items-center justify-start px-4 py-8 overflow-auto">
         <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mb-4 shadow-lg"><span className="text-white text-3xl">✓</span></div>
-        <h2 className="text-xl font-bold text-gray-800 font-[Baloo_2] mb-1">नक्शा तैयार है!</h2>
+        <h2 className="text-xl font-bold text-gray-800 font-public-sans mb-1">नक्शा तैयार है!</h2>
         <p className="text-sm text-gray-500 mb-4">PDF downloaded — {totalPages} pages</p>
         <div className="w-full max-w-xs bg-white rounded-2xl shadow-lg p-5 text-center space-y-3">
           <p className="text-sm text-gray-600">HLB_{mapData.hlbNumber}_Naksha_2027.pdf</p>
@@ -529,7 +529,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           {selectedAiCount > 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ {selectedAiCount} AI Survey Map{selectedAiCount > 1 ? 's' : ''} included</p>}
           {aiImg && selectedAiCount === 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ AI Survey Map included</p>}
           <div className="bg-amber-50 rounded-lg p-2"><p className="text-xs text-amber-700">💡 Print at cyber café — A4 {orient}</p></div>
-          <button onClick={() => { setDonationStage('ask'); setShowDonation(true); }} className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-[Baloo_2] shadow" style={{ height: 52 }}>Return to Dashboard</button>
+          <button onClick={() => { setDonationStage('ask'); setShowDonation(true); }} className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-public-sans shadow" style={{ height: 52 }}>Return to Dashboard</button>
           <button onClick={() => handleExport()} className="w-full py-2 border-2 border-orange-300 text-orange-600 rounded-xl text-sm font-semibold">📥 Download Again</button>
         </div>
 
@@ -544,12 +544,12 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   <div className="text-4xl mb-2">🙏</div>
                   {donationHindi ? (
                     <>
-                      <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot बिल्कुल मुफ्त है</h3>
+                      <h3 className="text-xl font-black font-public-sans">NakshaBot बिल्कुल मुफ्त है</h3>
                       <p className="text-sm text-white/85 mt-1">एक छात्र ने अकेले बनाया है</p>
                     </>
                   ) : (
                     <>
-                      <h3 className="text-xl font-black font-[Baloo_2]">NakshaBot is 100% Free</h3>
+                      <h3 className="text-xl font-black font-public-sans">NakshaBot is 100% Free</h3>
                       <p className="text-sm text-white/85 mt-1">Built solo by a student</p>
                     </>
                   )}
@@ -675,12 +675,12 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   <div className="text-5xl mb-3">✨</div>
                   {donationHindi ? (
                     <>
-                      <h3 className="text-xl font-black font-[Baloo_2] leading-snug">आपने आज कुछ असली किया।</h3>
+                      <h3 className="text-xl font-black font-public-sans leading-snug">आपने आज कुछ असली किया।</h3>
                       <p className="text-sm text-white/80 mt-2 leading-relaxed">घंटों का काम मिनटों में — यही इस ऐप का मकसद है।</p>
                     </>
                   ) : (
                     <>
-                      <h3 className="text-xl font-black font-[Baloo_2] leading-snug">You built something real today.</h3>
+                      <h3 className="text-xl font-black font-public-sans leading-snug">You built something real today.</h3>
                       <p className="text-sm text-white/80 mt-2 leading-relaxed">Hours of work done in minutes — that's what this is for.</p>
                     </>
                   )}
@@ -788,12 +788,12 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
                   <div className="text-5xl mb-3">📲</div>
                   {donationHindi ? (
                     <>
-                      <h3 className="text-xl font-black font-[Baloo_2] leading-snug">एक छोटी सी मदद?</h3>
+                      <h3 className="text-xl font-black font-public-sans leading-snug">एक छोटी सी मदद?</h3>
                       <p className="text-sm text-white/85 mt-2 leading-relaxed">जो अभी भी हाथ से नक्शा बना रहे हैं — उन्हें बता दीजिए।</p>
                     </>
                   ) : (
                     <>
-                      <h3 className="text-xl font-black font-[Baloo_2] leading-snug">One small favour?</h3>
+                      <h3 className="text-xl font-black font-public-sans leading-snug">One small favour?</h3>
                       <p className="text-sm text-white/85 mt-2 leading-relaxed">Know someone still drawing maps by hand? Send them this.</p>
                     </>
                   )}
@@ -843,7 +843,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
             {!feedbackSubmitted ? (
               <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
-                <h3 className="font-bold text-slate-800 mb-2 font-[Baloo_2] text-xl">नक्शा कैसा लगा? / How is the Map? 🚀</h3>
+                <h3 className="font-bold text-slate-800 mb-2 font-public-sans text-xl">नक्शा कैसा लगा? / How is the Map? 🚀</h3>
                 <div className="text-xs text-slate-500 mb-4 leading-relaxed space-y-2">
                   <p>
                     मैं एक छात्र हूँ जिसने अकेले यह ऐप बनाया है। आपका फीडबैक मेरे लिए सबसे बड़ी मदद है — <strong>कृपया 1 मिनट निकालकर जरूर बताएं कि ऐप कैसा लगा!</strong>
@@ -926,7 +926,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
             ) : (
               <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8 text-center relative animate-in fade-in zoom-in duration-300">
                 <div className="text-6xl mb-4">🙏</div>
-                <h3 className="font-bold text-green-800 text-2xl mb-2 font-[Baloo_2]">धन्यवाद! / Thank You!</h3>
+                <h3 className="font-bold text-green-800 text-2xl mb-2 font-public-sans">धन्यवाद! / Thank You!</h3>
                 <p className="text-sm text-slate-600 mb-4 leading-relaxed">
                   आपका फीडबैक मिल गया है। इससे ऐप को बेहतर बनाने में बहुत मदद मिलेगी।
                   <br />
@@ -952,7 +952,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
                 <button 
                   onClick={() => setShowFeedback(false)} 
-                  className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-[Baloo_2] shadow hover:bg-orange-600"
+                  className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-public-sans shadow hover:bg-orange-600"
                   style={{ minHeight: '48px' }}
                 >
                   बंद करें / Close
@@ -996,7 +996,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
         {aiPreviewImg && (
           <div className="absolute inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl p-6 shadow-2xl max-w-2xl w-full flex flex-col max-h-full">
-              <h3 className="text-xl font-bold mb-4 font-[Baloo_2]">AI Image Preview (Debug)</h3>
+              <h3 className="text-xl font-bold mb-4 font-public-sans">AI Image Preview (Debug)</h3>
               <p className="text-slate-500 text-sm mb-4">This is the exact image about to be sent to the AI engine. Approve it to continue.</p>
               <div className="flex-1 min-h-0 bg-slate-100 rounded-xl overflow-auto border border-slate-200 mb-6 flex justify-center">
                 <img src={aiPreviewImg} alt="AI Input Preview" className="max-w-full object-contain" />
@@ -1231,7 +1231,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
             {aiImg && (
               <>
                 <div className="flex items-center justify-between">
-                  <h3 className="text-white font-bold text-sm font-[Baloo_2]">AI Map Preview</h3>
+                  <h3 className="text-white font-bold text-sm font-public-sans">AI Map Preview</h3>
                   <div className="flex gap-2">
                     {!regenLimitReached && (
                       <button onClick={() => { setAiImg(null); setTimeout(generateAI, 100); }} className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">🔄 Regenerate</button>
@@ -1327,7 +1327,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
               <img src={displayImg} alt="Preview" className="absolute inset-0 w-full h-full object-cover select-none" draggable={false}
                 style={{ transform: `translate(${panX}px,${panY}px) rotate(${rotate}deg) scale(${zoom})`, transformOrigin: 'center center', transition: isDrag.current ? 'none' : 'transform 0.1s', cursor: isDrag.current ? 'grabbing' : 'grab' }} />
               <div className="absolute top-0 inset-x-0 bg-white/85 text-center py-1 z-10 pointer-events-none">
-                <span className="text-xs font-bold font-[Baloo_2]">HLB {mapData.hlbNumber}</span>
+                <span className="text-xs font-bold font-public-sans">HLB {mapData.hlbNumber}</span>
               </div>
               <div className="absolute bottom-0 inset-x-0 bg-white/85 text-center py-0.5 z-10 pointer-events-none">
                 <span className="text-[9px] text-gray-500">{mapData.enumeratorName} | {mapData.district}, {mapData.state}</span>
@@ -1345,7 +1345,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
             <div className="flex items-center gap-2 px-3 py-2">
               <span className="shrink-0 text-[10px] font-black text-white bg-orange-500 rounded-full w-5 h-5 flex items-center justify-center">6</span>
               <button onClick={() => setTourOpen(o => !o)} className="flex-1 min-w-0 text-left">
-                <span className="block text-sm font-bold text-slate-800 font-[Baloo_2] leading-tight truncate">Print & export your map</span>
+                <span className="block text-sm font-bold text-slate-800 font-public-sans leading-tight truncate">Print & export your map</span>
               </button>
               <button onClick={() => setTourOpen(o => !o)} className="shrink-0 text-slate-400 hover:text-slate-700 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100" aria-label={tourOpen ? 'Collapse' : 'Expand'}>
                 <span className={`inline-block transition-transform ${tourOpen ? 'rotate-180' : ''}`}>⌄</span>

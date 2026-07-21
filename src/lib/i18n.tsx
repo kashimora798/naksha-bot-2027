@@ -77,7 +77,7 @@ export interface TranslationDict {
   downloading: string;
 }
 
-const translations: Record<Language, TranslationDict> = {
+export const translations: Record<Language, TranslationDict> = {
   en: {
     brand: "NakshaBot",
     subBrand: "Census 2027 Mapping",
@@ -675,6 +675,13 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
     localStorage.setItem('nakshabot_language', lang);
+    try {
+      import('./tolgee').then(({ tolgee }) => {
+        tolgee.changeLanguage(lang);
+      });
+    } catch {
+      // Fallback
+    }
   };
 
   const t = (key: keyof TranslationDict): string => {

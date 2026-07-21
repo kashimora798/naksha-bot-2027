@@ -106,7 +106,7 @@ export default function SessionsDashboard() {
             <div className="text-4xl mb-4">🗺️</div>
             <h3 className="font-bold text-gray-800 text-lg mb-2">No Sessions Found</h3>
             <p className="text-sm text-gray-500 mb-6">You haven't started any live surveys yet.</p>
-            <button onClick={() => navigate('/live-prep')} className="bg-[var(--color-saffron)] text-white font-bold py-3 px-6 rounded-xl shadow-lg active:scale-95 transition-all">
+            <button onClick={() => navigate('/live-prep')} className="bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-bold py-3 px-6 rounded-xl shadow-md active:scale-95 transition-all cursor-pointer">
               Start New Survey
             </button>
           </div>
@@ -169,14 +169,14 @@ export default function SessionsDashboard() {
                 <div className="mt-4 flex gap-2">
                   <button 
                     onClick={() => navigate(`/live-session/${session.session_id}`)}
-                    className="flex-1 bg-gray-100 text-gray-700 font-bold text-sm py-3 rounded-xl hover:bg-gray-200 active:scale-95 transition-all"
+                    className="flex-1 bg-[var(--color-surface-2)] text-[var(--color-ink)] font-bold text-sm py-3 rounded-xl hover:bg-slate-200 border border-[var(--color-hairline)] active:scale-95 transition-all cursor-pointer"
                   >
                     View Register & Map
                   </button>
                   {session.state !== 'completed' && (
                     <button 
                       onClick={() => navigate(`/live-survey?session=${session.session_id}`)}
-                      className="flex-1 bg-[var(--color-saffron)] text-white font-bold text-sm py-3 rounded-xl shadow-md hover:bg-orange-600 active:scale-95 transition-all"
+                      className="flex-1 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-bold text-sm py-3 rounded-xl shadow-md active:scale-95 transition-all cursor-pointer"
                     >
                       Resume Survey
                     </button>
@@ -191,7 +191,7 @@ export default function SessionsDashboard() {
       {/* Floating Action Button */}
       <button 
         onClick={() => navigate('/live-prep')}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-[var(--color-saffron)] text-white rounded-full shadow-[0_4px_14px_rgba(255,107,0,0.4)] flex items-center justify-center text-2xl active:scale-90 transition-transform z-20"
+        className="fixed bottom-6 right-6 w-14 h-14 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white rounded-full shadow-[var(--shadow-lg)] flex items-center justify-center text-3xl font-bold active:scale-90 transition-all z-20 cursor-pointer"
       >
         +
       </button>

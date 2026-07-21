@@ -2,42 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    
-    <!-- Primary Meta Tags -->
-    <title>NakshaBot — HLO Map Maker | Free Nazari Naksha for Census 2027</title>
-    <meta name="title" content="NakshaBot — HLO Map Maker | Free Nazari Naksha for Census 2027" />
-    <meta name="description" content="NakshaBot is the #1 free HLO map maker and HLB nazari naksha generator for Census 2027. Auto-generate official layout maps, enumeration block maps, and serpentine paths in minutes using AI and satellite data. Used by enumerators across all Indian states." />
-    <meta name="keywords" content="HLO map maker, HLB map maker, HLO nazari naksha, free nazari naksha maker, nazari naksha online, census 2027 map maker, HLB map generator, census map maker free, नजरी नक्शा, HLO नक्शा बनाओ, जनगणना नक्शा ऑनलाइन, फ्री नजरी नक्शा मेकर, जनगणना 2027 नक्शा, HLO map maker online, HLB layout map, census enumeration block map, nazari naksha kaise banaye, HLO app nazari naksha, census map generator India, UP nazari naksha, Bihar census map, Kerala HLB map, Maharashtra census naksha, uttarakhand census map, rajasthan HLO map, Enumeration Block Map, Block Map Generator, Census Map AI, Survey Map Tool, NakshaBot" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      ⚠️  DO NOT add <title>, <meta name="description">, <link rel="canonical">,
+          <meta property="og:*">, or <meta property="twitter:*"> here.
+          These are ALL injected per-page by React Helmet (react-helmet-async)
+          to avoid duplicate/conflicting tags that cause Google "Redirect errors"
+          in Search Console. Duplicate canonical tags make Google treat state pages
+          as duplicates of the homepage and refuse to index them.
+    -->
+
+    <!-- Sitewide non-SEO tags only -->
+    <meta name="theme-color" content="#4340D3" />
     <meta name="author" content="NakshaBot — examsetu.dev" />
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-    <link rel="canonical" href="https://examsetu.dev/" />
-    <meta name="theme-color" content="#f97316" />
-    <link rel="alternate" hreflang="en" href="https://examsetu.dev/" />
-    <link rel="alternate" hreflang="hi" href="https://examsetu.dev/" />
-    <link rel="alternate" hreflang="x-default" href="https://examsetu.dev/" />
-
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://examsetu.dev/" />
-    <meta property="og:title" content="NakshaBot — #1 Free HLO Map Maker & Nazari Naksha Generator for Census 2027" />
-    <meta property="og:description" content="Auto-generate official HLB layout maps and nazari naksha instantly. The best free census map maker used by enumerators across India." />
-    <meta property="og:image" content="https://examsetu.dev/logo.png" />
-    <meta property="og:site_name" content="NakshaBot" />
-    <meta property="og:locale" content="en_IN" />
-
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://examsetu.dev/" />
-    <meta property="twitter:title" content="NakshaBot — #1 Free HLO Map Maker & Nazari Naksha Generator for Census 2027" />
-    <meta property="twitter:description" content="Auto-generate official HLB layout maps and nazari naksha instantly. The best free census map maker for Census 2027." />
-    <meta property="twitter:image" content="https://examsetu.dev/logo.png" />
-
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
     <link rel="manifest" href="/manifest.json" />
-    
-    <!-- JSON-LD Structured Data: SoftwareApplication -->
+
+    <!-- JSON-LD: SoftwareApplication — sitewide, does NOT affect per-page canonical -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -62,7 +45,7 @@
       "aggregateRating": {
         "@type": "AggregateRating",
         "ratingValue": "4.8",
-        "ratingCount": "2450",
+        "ratingCount": "3447",
         "bestRating": "5"
       }
     }
@@ -97,23 +80,16 @@
     }
     </script>
 
-    <!-- JSON-LD: BreadcrumbList -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://examsetu.dev/" }
-      ]
-    }
-    </script>
-
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&family=Noto+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Baloo+2:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin="" />
+
     <style>
       * { -webkit-tap-highlight-color: transparent; }
     </style>

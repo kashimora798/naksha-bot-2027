@@ -1,19 +1,62 @@
 @import "tailwindcss";
 
 @theme {
-  --color-warm-paper: #fcf9f4;
-  --color-saffron: #a04100;
-  --color-saffron-container: #ff6b00;
-  --color-india-green: #006d37;
-  --color-charcoal: #1c1c19;
-  
+  /* Ink (text) */
+  --color-ink: #1c1c1e;
+  --color-ink-secondary: rgba(28,28,30,0.62);
+  --color-ink-tertiary: rgba(28,28,30,0.32);
+
+  /* Surfaces */
+  --color-canvas: #f7f6f2;      /* page background — replaces warm-paper */
+  --color-surface: #ffffff;     /* card/sheet background */
+  --color-surface-2: #f2f2f0;   /* secondary flat surface, e.g. metric cards */
+  --color-hairline: rgba(28,28,30,0.08);
+
+  /* One accent, used only for actionable elements */
+  --color-accent: #4340D3;      /* indigo — replaces saffron as THE brand color */
+  --color-accent-tint: #EDECFB;
+  --color-accent-hover: #34319F;
+
+  /* Status — semantic only, never decorative */
+  --color-success: #1D8A4E;
+  --color-warning: #B4650B;
+  --color-danger: #C0322A;
+
+  /* Legacy aliases for backward compatibility */
+  --color-saffron: #4340D3;
+  --color-saffron-container: #4340D3;
+  --color-india-green: #1D8A4E;
+  --color-warm-paper: #f7f6f2;
+  --color-warm-ink: #1c1c1e;
+  --color-charcoal: #1c1c1e;
+  --color-secondary-text: rgba(28,28,30,0.62);
+
+  --shadow-warm-1: 0 1px 2px rgba(28,28,30,0.06);
+  --shadow-warm-2: 0 4px 16px rgba(28,28,30,0.08);
+  --shadow-warm-inner: inset 0 2px 4px 0 rgba(28,28,30,0.08);
+
+  /* Radius scale */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  /* Shadow scale — soft and diffuse */
+  --shadow-sm: 0 1px 2px rgba(28,28,30,0.06);
+  --shadow-md: 0 4px 16px rgba(28,28,30,0.08);
+  --shadow-lg: 0 16px 40px rgba(28,28,30,0.14);
+
+  /* Fonts — Baloo_2 is retired, consolidate to two families */
   --font-public-sans: 'Public Sans', sans-serif;
   --font-noto-sans: 'Noto Sans', sans-serif;
   --font-jetbrains-mono: 'JetBrains Mono', monospace;
-  
-  --shadow-warm-1: 0 4px 6px -1px rgba(255, 107, 0, 0.08), 0 2px 4px -2px rgba(255, 107, 0, 0.08);
-  --shadow-warm-2: 0 10px 15px -3px rgba(255, 107, 0, 0.08), 0 4px 6px -4px rgba(255, 107, 0, 0.08);
-  --shadow-warm-inner: inset 0 2px 4px 0 rgba(255, 107, 0, 0.08);
+}
+
+:root {
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-fast: 0.18s;
+  --duration-medium: 0.32s;
 }
 
 /* Custom fonts */
@@ -22,8 +65,8 @@
     font-family: 'Noto Sans', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: var(--color-warm-paper);
-    color: var(--color-charcoal);
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
   }
 }
 
@@ -61,16 +104,17 @@
 /* Custom scrollbar */
 .scrollbar-thin::-webkit-scrollbar {
   height: 4px;
+  width: 4px;
 }
 .scrollbar-thin::-webkit-scrollbar-track {
   background: transparent;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: rgba(28,28,30,0.2);
   border-radius: 4px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: rgba(28,28,30,0.4);
 }
 
 /* Smooth transitions */
@@ -78,15 +122,60 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Pulse animations */
+/* Animations */
 @keyframes pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.3); opacity: 0.6; }
 }
 
 @keyframes guidePulse {
-  0%, 100% { transform: scale(1); opacity: 0.8; box-shadow: 0 0 0 0 rgba(255, 107, 0, 0.4); }
-  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 8px rgba(255, 107, 0, 0); }
+  0%, 100% { transform: scale(1); opacity: 0.8; box-shadow: 0 0 0 0 rgba(67, 64, 211, 0.4); }
+  50% { transform: scale(1.15); opacity: 1; box-shadow: 0 0 0 8px rgba(67, 64, 211, 0); }
+}
+
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes modalScaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-sheet-up {
+  animation: sheetSlideUp var(--duration-medium) var(--ease-spring) forwards;
+}
+
+.animate-modal-in {
+  animation: modalScaleIn var(--duration-medium) var(--ease-spring) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--duration-fast) ease-out forwards;
+}
+
+.animate-slide-left {
+  animation: slideInLeft var(--duration-medium) var(--ease-spring) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sheet-up,
+  .animate-modal-in,
+  .animate-slide-left {
+    animation: fadeIn var(--duration-fast) ease-out forwards !important;
+    transform: none !important;
+  }
 }
 
 /* Canvas crisp rendering */
@@ -94,7 +183,10 @@ canvas {
   image-rendering: -webkit-optimize-contrast;
 }
 
-/* Ensure minimum touch targets */
-button {
-  min-height: 52px;
+/* Touch targets: responsive per-component minimum sizing on mobile/touch, without global min-height: 52px */
+@media (max-width: 767px), (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }

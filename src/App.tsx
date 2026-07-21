@@ -402,7 +402,7 @@ export default function App() {
   if (!isLoaded || profileLoading) {
     return <div className="h-screen w-screen bg-gray-50 flex flex-col items-center justify-center">
       <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4 animate-bounce"><span className="text-2xl">🗺️</span></div>
-      <p className="text-slate-500 font-bold font-[Baloo_2] animate-pulse">Loading NakshaBot...</p>
+      <p className="text-slate-500 font-bold font-public-sans animate-pulse">Loading NakshaBot...</p>
     </div>;
   }
 

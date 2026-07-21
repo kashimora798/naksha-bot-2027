@@ -1,10 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY; // Note: Ensure this is the anon key
+const supabaseUrl =
+  import.meta.env.VITE_SUPABASE_URL ||
+  'https://ybrtqteoagkptglqedsw.supabase.co';
 
-if (!supabaseUrl || !supabaseKey) {
-  console.warn('Missing Supabase environment variables');
+const supabaseKey =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  'sb_publishable_HmxfOXMSiU4s9J9JDpmQ3Q_qRleibX_';
+
+if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) {
+  console.warn('Using fallback Supabase environment variables');
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseKey || '');
+export const supabase = createClient(supabaseUrl, supabaseKey);

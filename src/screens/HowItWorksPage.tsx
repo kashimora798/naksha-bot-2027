@@ -55,7 +55,7 @@ export default function HowItWorksPage() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
             <img src="/logo.png" alt="NakshaBot Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-xl font-[Baloo_2] text-slate-800 tracking-tight">NakshaBot</span>
+            <span className="font-bold text-xl font-public-sans text-slate-800 tracking-tight">NakshaBot</span>
           </Link>
           <div className="flex items-center gap-4">
             <Link to="/sign-in" className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</Link>
@@ -68,7 +68,7 @@ export default function HowItWorksPage() {
 
       {/* Content */}
       <div className="pt-32 pb-20 px-6 max-w-3xl mx-auto">
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 mb-6 font-[Baloo_2]">
+        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-slate-900 mb-6 font-public-sans">
           How to Make a Nazari Naksha for Census 2027
         </h1>
         <p className="text-xl text-slate-600 mb-12">

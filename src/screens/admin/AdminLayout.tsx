@@ -27,8 +27,8 @@ export default function AdminLayout() {
 
   if (authorized === null) {
     return (
-      <div className="h-screen w-screen bg-gray-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      <div className="h-screen w-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -39,12 +39,12 @@ export default function AdminLayout() {
   };
 
   return (
-    <div className="h-screen bg-gray-950 text-gray-100 flex font-mono overflow-hidden">
+    <div className="h-screen bg-slate-950 text-slate-100 flex font-public-sans overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-52 shrink-0 h-full flex flex-col border-r border-gray-800 py-6 px-4 gap-1">
-        <div className="text-orange-400 font-bold text-sm tracking-widest uppercase mb-6 px-2">
+      <aside className="w-56 shrink-0 h-full flex flex-col border-r border-slate-800 py-6 px-4 gap-1 bg-slate-900/50">
+        <div className="text-[var(--color-accent-tint)] font-bold text-sm tracking-wider uppercase mb-6 px-2">
           NakshaBot<br />
-          <span className="text-gray-500 font-normal text-xs normal-case tracking-normal">admin</span>
+          <span className="text-slate-400 font-normal text-xs normal-case tracking-normal">Admin Dashboard</span>
         </div>
         {NAV.map(item => {
           const active = item.path === '/kratagya'
@@ -54,10 +54,10 @@ export default function AdminLayout() {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors ${
+              className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-[var(--radius-md)] text-sm font-semibold transition-all ${
                 active
-                  ? 'bg-orange-500/20 text-orange-300'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                  ? 'bg-[var(--color-accent)] text-white shadow-sm'
+                  : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
               }`}
             >
               <span className="text-xs">{item.icon}</span>
@@ -65,10 +65,10 @@ export default function AdminLayout() {
             </Link>
           );
         })}
-        <div className="mt-auto">
+        <div className="mt-auto pt-4 border-t border-slate-800">
           <button
             onClick={handleSignOut}
-            className="w-full text-left px-3 py-2 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            className="w-full text-left px-3.5 py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
           >
             Sign out
           </button>
@@ -76,7 +76,7 @@ export default function AdminLayout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 overflow-auto">
+      <main className="flex-1 min-w-0 overflow-auto bg-slate-950">
         <Outlet />
       </main>
     </div>

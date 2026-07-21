@@ -488,7 +488,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
       L.polygon(fb.points.map((p: any) => [p.lat, p.lng]), { color: '#2E7D32', weight: 3, dashArray: '10,5', fillColor: '#66BB6A', fillOpacity: 0.15 }).addTo(frmGrp.current);
       const c = fb.points[0];
       L.marker([c.lat, c.lng], {
-        icon: L.divIcon({ html: `<div style="font:bold 13px 'Baloo 2',sans-serif;color:#2E7D32;text-shadow:1px 1px 3px white,-1px -1px 3px white;text-align:center;pointer-events:none">🌾 Farm ${fb.label}</div>`, className: '', iconSize: [95, 22], iconAnchor: [47, 11] }), interactive: false,
+        icon: L.divIcon({ html: `<div style="font:bold 13px 'Public Sans',sans-serif;color:#2E7D32;text-shadow:1px 1px 3px white,-1px -1px 3px white;text-align:center;pointer-events:none">🌾 Farm ${fb.label}</div>`, className: '', iconSize: [95, 22], iconAnchor: [47, 11] }), interactive: false,
       }).addTo(frmGrp.current);
     });
 
@@ -1044,70 +1044,70 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
   if (phase === 'LOCATION_ENTRY') {
     const parsed = smsText ? parseCoords(smsText) : null;
     return (
-      <div className="fixed inset-0 z-[9999] h-[100dvh] w-[100dvw] bg-[var(--color-warm-paper)] flex flex-col overflow-auto font-noto-sans">
-        <div className="bg-[var(--color-saffron)] text-white px-4 pt-4 pb-3 shadow-md flex-shrink-0">
+      <div className="fixed inset-0 z-[9999] h-[100dvh] w-[100dvw] bg-[var(--color-canvas)] flex flex-col overflow-auto font-noto-sans">
+        <div className="bg-[var(--color-accent)] text-white px-4 pt-4 pb-3 shadow-md flex-shrink-0">
           <div className="flex items-center gap-3 mb-1">
-            <button onClick={onExit} className="text-white/80 hover:text-white min-w-[44px] min-h-[44px] flex items-center">← Back</button>
+            <button onClick={onExit} className="text-white hover:text-white/80 font-bold min-w-[44px] min-h-[44px] flex items-center cursor-pointer">← Back</button>
             <div>
-              <h2 className="text-lg font-bold font-public-sans">चलते-चलते नक्शा</h2>
-              <p className="text-xs opacity-80">Live Survey Mode — Step 1/3</p>
+              <h2 className="text-lg font-bold font-public-sans text-white">चलते-चलते नक्शा</h2>
+              <p className="text-xs text-white/80">Live Survey Mode — Step 1/3</p>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 px-4 py-4 space-y-4">
+        <div className="flex-1 px-4 py-4 space-y-4 max-w-lg mx-auto w-full">
           {!manualMode ? (
-            <div className="bg-white rounded-2xl p-4 shadow-[var(--shadow-warm-1)]">
-              <h3 className="font-bold text-[var(--color-warm-ink)] mb-2 text-sm">📱 Paste Location Message</h3>
-              <p className="text-xs text-[var(--color-secondary-text)] mb-3">Paste the SMS or Google Maps link you received for your HLB area</p>
+            <div className="bg-[var(--color-surface)] rounded-2xl p-4 shadow-[var(--shadow-sm)] border border-[var(--color-hairline)]">
+              <h3 className="font-bold text-[var(--color-ink)] mb-2 text-sm">📱 Paste Location Message</h3>
+              <p className="text-xs text-[var(--color-ink-secondary)] mb-3">Paste the SMS or Google Maps link you received for your HLB area</p>
               <textarea
-                className="w-full border border-gray-200 rounded-xl p-3 text-sm font-noto-sans focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)] min-h-[100px] resize-none"
+                className="w-full border border-[var(--color-hairline)] bg-[var(--color-surface)] text-[var(--color-ink)] rounded-xl p-3 text-sm font-noto-sans focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] min-h-[100px] resize-none"
                 placeholder="Paste SMS text or Maps link here..."
                 value={smsText}
                 onChange={e => setSmsText(e.target.value)}
               />
               {parsed && (
-                <div className="mt-2 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
-                  <span className="text-green-600 font-bold">✓</span>
+                <div className="mt-2 bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2">
+                  <span className="text-emerald-600 font-bold">✓</span>
                   <div>
-                    <p className="text-xs font-bold text-green-700">Coordinates detected!</p>
-                    <p className="text-xs text-green-600">{parsed.lat.toFixed(5)}, {parsed.lng.toFixed(5)}</p>
+                    <p className="text-xs font-bold text-emerald-700">Coordinates detected!</p>
+                    <p className="text-xs text-emerald-600 font-jetbrains-mono">{parsed.lat.toFixed(5)}, {parsed.lng.toFixed(5)}</p>
                   </div>
                 </div>
               )}
               {smsText && !parsed && (
-                <p className="text-xs text-amber-600 mt-2">No coordinates found. Try manual entry below.</p>
+                <p className="text-xs text-amber-600 mt-2 font-medium">No coordinates found. Try manual entry below.</p>
               )}
               <button
                 onClick={() => parsed && handleLocationConfirm(parsed.lat, parsed.lng, 'HLB Area')}
                 disabled={!parsed}
-                className={`mt-3 w-full py-3 rounded-xl font-bold text-white ${parsed ? 'bg-[var(--color-saffron)] active:scale-95 shadow' : 'bg-gray-200 text-gray-400'}`}
+                className={`mt-3 w-full py-3 rounded-xl font-bold transition-all cursor-pointer ${parsed ? 'bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] shadow-md active:scale-95' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}`}
               >
                 Continue with this location
               </button>
             </div>
           ) : (
-            <div className="bg-white rounded-2xl p-4 shadow-[var(--shadow-warm-1)]">
-              <h3 className="font-bold text-[var(--color-warm-ink)] mb-3 text-sm">📍 Enter Coordinates Manually</h3>
+            <div className="bg-[var(--color-surface)] rounded-2xl p-4 shadow-[var(--shadow-sm)] border border-[var(--color-hairline)]">
+              <h3 className="font-bold text-[var(--color-ink)] mb-3 text-sm">📍 Enter Coordinates Manually</h3>
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 mb-1 block">Area Name (optional)</label>
-                  <input className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]" placeholder="e.g. Ward 4, Kanpur" value={locationName} onChange={e => setLocationName(e.target.value)} />
+                  <label className="text-xs font-bold text-[var(--color-ink-secondary)] mb-1 block">Area Name (optional)</label>
+                  <input className="w-full border border-[var(--color-hairline)] bg-[var(--color-surface)] text-[var(--color-ink)] rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" placeholder="e.g. Ward 4, Kanpur" value={locationName} onChange={e => setLocationName(e.target.value)} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-bold text-gray-500 mb-1 block">Latitude</label>
-                    <input className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]" placeholder="26.4499" type="number" step="any" value={manualLat} onChange={e => setManualLat(e.target.value)} />
+                    <label className="text-xs font-bold text-[var(--color-ink-secondary)] mb-1 block">Latitude</label>
+                    <input className="w-full border border-[var(--color-hairline)] bg-[var(--color-surface)] text-[var(--color-ink)] rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" placeholder="26.4499" type="number" step="any" value={manualLat} onChange={e => setManualLat(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-gray-500 mb-1 block">Longitude</label>
-                    <input className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-saffron)]" placeholder="80.3319" type="number" step="any" value={manualLng} onChange={e => setManualLng(e.target.value)} />
+                    <label className="text-xs font-bold text-[var(--color-ink-secondary)] mb-1 block">Longitude</label>
+                    <input className="w-full border border-[var(--color-hairline)] bg-[var(--color-surface)] text-[var(--color-ink)] rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" placeholder="80.3319" type="number" step="any" value={manualLng} onChange={e => setManualLng(e.target.value)} />
                   </div>
                 </div>
                 <button
                   onClick={() => { const la = parseFloat(manualLat); const lo = parseFloat(manualLng); if (!isNaN(la) && !isNaN(lo)) handleLocationConfirm(la, lo, locationName || 'Survey Area'); }}
                   disabled={!manualLat || !manualLng || isNaN(parseFloat(manualLat)) || isNaN(parseFloat(manualLng))}
-                  className={`w-full py-3 rounded-xl font-bold text-white ${manualLat && manualLng ? 'bg-[var(--color-india-green)] active:scale-95 shadow' : 'bg-gray-200 text-gray-400'}`}
+                  className={`w-full py-3 rounded-xl font-bold transition-all cursor-pointer ${manualLat && manualLng ? 'bg-[var(--color-success)] text-white hover:opacity-90 active:scale-95 shadow-md' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}`}
                 >
                   Continue
                 </button>
@@ -1115,7 +1115,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
             </div>
           )}
 
-          <button onClick={() => setManualMode(!manualMode)} className="w-full py-3 text-[var(--color-saffron)] font-bold text-sm border border-[var(--color-saffron)] rounded-xl active:bg-orange-50">
+          <button onClick={() => setManualMode(!manualMode)} className="w-full py-3 text-[var(--color-accent)] font-bold text-sm border border-[var(--color-accent)] bg-[var(--color-surface)] rounded-xl hover:bg-[var(--color-accent-tint)] transition-all cursor-pointer">
             {manualMode ? '📱 Use SMS / Maps link instead' : '⌨️ Enter coordinates manually'}
           </button>
 
@@ -1126,7 +1126,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
                 handleLocationConfirm(pos.coords.latitude, pos.coords.longitude, 'Current Location');
               }, undefined, { enableHighAccuracy: true });
             }}
-            className="w-full py-3 bg-[var(--color-warm-ink)] text-white font-bold rounded-xl active:scale-95 shadow"
+            className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl active:scale-95 shadow-md hover:bg-slate-800 transition-all cursor-pointer"
           >
             📍 Use My Current Location
           </button>
@@ -1299,11 +1299,11 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
 
         <button
           onClick={handleStart}
-          className="w-full min-h-[56px] rounded-full font-bold text-white text-lg font-baloo bg-[var(--color-saffron)] shadow-[var(--shadow-warm-2)] active:scale-95 transition-all mb-4"
+          className="w-full min-h-[52px] rounded-[var(--radius-xl)] font-bold text-white text-base font-public-sans bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] shadow-[var(--shadow-md)] active:scale-95 transition-all mb-4 cursor-pointer flex items-center justify-center gap-2"
         >
           🚶‍♂️ Survey शुरू करें
         </button>
-        <p className="text-center text-xs text-[var(--color-secondary-text)] mb-6">Map is cached offline for this area</p>
+        <p className="text-center text-xs text-[var(--color-ink-secondary)] mb-6">Map is cached offline for this area</p>
       </div>
     );
   }

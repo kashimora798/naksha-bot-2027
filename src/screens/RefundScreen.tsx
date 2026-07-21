@@ -4,7 +4,7 @@ export default function RefundScreen() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden selection:bg-orange-200 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto bg-white p-8 sm:p-12 shadow-xl rounded-2xl ring-1 ring-slate-200">
-        <h1 className="text-4xl font-bold font-[Baloo_2] text-slate-900 mb-8 pb-4 border-b border-slate-100">Refund and Cancellation Policy</h1>
+        <h1 className="text-4xl font-bold font-public-sans text-slate-900 mb-8 pb-4 border-b border-slate-100">Refund and Cancellation Policy</h1>
         
         <div className="prose prose-slate max-w-none text-slate-600 leading-relaxed space-y-6">
           <p>

@@ -210,7 +210,7 @@ export default function SMSParseScreen({ onComplete, onBack, isDemoMode, userId 
         {isDemoMode && (
           <>
             <div className="space-y-3">
-              <h3 className="text-lg font-black text-slate-800 font-[Baloo_2]">Two ways to map</h3>
+              <h3 className="text-lg font-black text-slate-800 font-public-sans">Two ways to map</h3>
               <div className="bg-white border-2 border-orange-200 rounded-2xl p-4 flex gap-3">
                 <span className="text-2xl">🖥️</span>
                 <div>

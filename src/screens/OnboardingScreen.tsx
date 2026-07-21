@@ -144,7 +144,7 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
               <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
                 <span className="text-5xl">🗺️</span>
               </div>
-              <h1 className="text-3xl font-bold font-[Baloo_2] text-slate-800 mb-4">Welcome to NakshaBot!</h1>
+              <h1 className="text-3xl font-bold font-public-sans text-slate-800 mb-4">Welcome to NakshaBot!</h1>
               <p className="text-slate-600 mb-6 text-lg leading-relaxed">
                 We are building the smartest digital assistant for Census mapping and surveys. 
                 Our mission is to help enumerators effortlessly generate block maps, number houses, 
@@ -163,7 +163,7 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
           {currentStep === 2 && (
             <div className="animate-in fade-in slide-in-from-right-8 duration-500">
               <button onClick={() => setCurrentStep(1)} className="text-slate-400 hover:text-slate-600 font-bold text-sm mb-4">← Back</button>
-              <h2 className="text-2xl font-bold font-[Baloo_2] text-slate-800 mb-2">Tell us about yourself</h2>
+              <h2 className="text-2xl font-bold font-public-sans text-slate-800 mb-2">Tell us about yourself</h2>
               <p className="text-slate-500 mb-8">This helps us personalize your mapping experience.</p>
               
               <div className="space-y-5">
@@ -217,7 +217,7 @@ export default function OnboardingScreen({ user, onComplete }: Props) {
           {currentStep === 3 && (
             <div className="animate-in fade-in slide-in-from-right-8 duration-500">
               <button onClick={() => setCurrentStep(2)} className="text-slate-400 hover:text-slate-600 font-bold text-sm mb-4">← Back</button>
-              <h2 className="text-2xl font-bold font-[Baloo_2] text-slate-800 mb-2">Your Working Area</h2>
+              <h2 className="text-2xl font-bold font-public-sans text-slate-800 mb-2">Your Working Area</h2>
               <p className="text-slate-500 mb-4 text-sm">Set up your default HLB so you can create maps instantly next time. <span className="text-slate-400">(Optional — you can add it later.)</span></p>
 
               <div className="flex gap-3 mb-3">

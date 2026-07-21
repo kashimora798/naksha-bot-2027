@@ -7,6 +7,8 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./index.css";
 import { LanguageProvider } from "./lib/i18n";
+import { TolgeeProvider } from "@tolgee/react";
+import { tolgee } from "./lib/tolgee";
 
 // Polyfill for crypto.randomUUID (fixes crashes on mobile/HTTP local networks)
 if (!window.crypto) {
@@ -42,6 +44,11 @@ import LiveSurveyScreen from "./screens/LiveSurveyScreen";
 import HowItWorksPage from "./screens/HowItWorksPage";
 import FaqPage from "./screens/FaqPage";
 import StateLandingPage from "./screens/StateLandingPage";
+import TamilNaduCensusMapPage from "./screens/TamilNaduCensusMapPage";
+import TripuraCensusMapPage from "./screens/TripuraCensusMapPage";
+import WestBengalCensusMapPage from "./screens/WestBengalCensusMapPage";
+import AssamCensusMapPage from "./screens/AssamCensusMapPage";
+import ManipurCensusMapPage from "./screens/ManipurCensusMapPage";
 import BlogSchedulePage from "./screens/BlogSchedulePage";
 import BlogRulesPage from "./screens/BlogRulesPage";
 import SeoArticlePage from "./screens/SeoArticlePage";
@@ -58,83 +65,87 @@ import AdminAnnouncementsScreen from "./screens/admin/AdminAnnouncementsScreen";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <LanguageProvider>
-      <HelmetProvider>
-        <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LandingScreen />} />
-          <Route path="/app" element={<App />} />
-          
-          <Route path="/live-dashboard" element={<SessionsDashboard />} />
-          <Route path="/live-session/:id" element={<SessionDetailScreen />} />
-          <Route path="/live-prep" element={<LiveSurveyPrep />} />
-          <Route path="/live-survey" element={<LiveSurveyScreen onExit={() => {}} />} />
-          
-          <Route path="/how-it-works" element={<HowItWorksPage />} />
-          <Route path="/faq" element={<FaqPage />} />
-          
-          <Route path="/schedule" element={<BlogSchedulePage />} />
-          <Route path="/rules" element={<BlogRulesPage />} />
-          
-          {/* SEO Pages */}
-          {seoArticles.map((article) => (
-            <Route key={article.id} path={article.url} element={<SeoArticlePage articleId={article.id} />} />
-          ))}
-          
-          {/* State Pages */}
-          <Route path="/up-census-map" element={<StateLandingPage stateKey="UP" />} />
-          <Route path="/maharashtra-census-map" element={<StateLandingPage stateKey="MH" />} />
-          <Route path="/bihar-census-map" element={<StateLandingPage stateKey="BR" />} />
-          <Route path="/mp-census-map" element={<StateLandingPage stateKey="MP" />} />
-          <Route path="/rajasthan-census-map" element={<StateLandingPage stateKey="RJ" />} />
-          <Route path="/hp-census-map" element={<StateLandingPage stateKey="HP" />} />
-          <Route path="/kerala-census-map" element={<StateLandingPage stateKey="KL" />} />
-          <Route path="/west-bengal-census-map" element={<StateLandingPage stateKey="WB" />} />
-          <Route path="/tamil-nadu-census-map" element={<StateLandingPage stateKey="TN" />} />
-          <Route path="/karnataka-census-map" element={<StateLandingPage stateKey="KA" />} />
-          <Route path="/gujarat-census-map" element={<StateLandingPage stateKey="GJ" />} />
-          <Route path="/punjab-haryana-census-map" element={<StateLandingPage stateKey="PBHR" />} />
-          <Route path="/uttarakhand-census-map" element={<StateLandingPage stateKey="UK" />} />
-          <Route path="/jharkhand-census-map" element={<StateLandingPage stateKey="JH" />} />
-          <Route path="/odisha-census-map" element={<StateLandingPage stateKey="OD" />} />
-          <Route path="/assam-census-map" element={<StateLandingPage stateKey="AS" />} />
-          <Route path="/chhattisgarh-census-map" element={<StateLandingPage stateKey="CG" />} />
-          <Route path="/telangana-census-map" element={<StateLandingPage stateKey="TS" />} />
-          <Route path="/andhra-pradesh-census-map" element={<StateLandingPage stateKey="AP" />} />
-          <Route path="/jk-census-map" element={<StateLandingPage stateKey="JK" />} />
-          <Route path="/delhi-census-map" element={<StateLandingPage stateKey="DL" />} />
-          <Route path="/goa-census-map" element={<StateLandingPage stateKey="GA" />} />
-          <Route path="/tripura-census-map" element={<StateLandingPage stateKey="TR" />} />
-          <Route path="/meghalaya-census-map" element={<StateLandingPage stateKey="ML" />} />
-          <Route path="/manipur-census-map" element={<StateLandingPage stateKey="MN" />} />
-          <Route path="/nagaland-census-map" element={<StateLandingPage stateKey="NL" />} />
-          <Route path="/mizoram-census-map" element={<StateLandingPage stateKey="MZ" />} />
-          <Route path="/sikkim-census-map" element={<StateLandingPage stateKey="SK" />} />
-          
-          {/* Legacy Routes */}
-          <Route path="/terms" element={<TermsScreen />} />
-          <Route path="/terms.html" element={<TermsScreen />} />
-          <Route path="/refunds" element={<RefundScreen />} />
-          <Route path="/refunds.html" element={<RefundScreen />} />
-          <Route path="/contact" element={<ContactScreen />} />
-          <Route path="/contact.html" element={<ContactScreen />} />
-          <Route path="/sign-in" element={<SignInScreen />} />
-          <Route path="/sign-up" element={<SignUpScreen />} />
+    <TolgeeProvider tolgee={tolgee}>
+      <LanguageProvider>
+        <HelmetProvider>
+          <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<LandingScreen />} />
+            <Route path="/app" element={<App />} />
+            
+            <Route path="/live-dashboard" element={<SessionsDashboard />} />
+            <Route path="/live-session/:id" element={<SessionDetailScreen />} />
+            <Route path="/live-prep" element={<LiveSurveyPrep />} />
+            <Route path="/live-survey" element={<LiveSurveyScreen onExit={() => {}} />} />
+            
+            <Route path="/how-it-works" element={<HowItWorksPage />} />
+            <Route path="/faq" element={<FaqPage />} />
+            
+            <Route path="/schedule" element={<BlogSchedulePage />} />
+            <Route path="/rules" element={<BlogRulesPage />} />
+            
+            {/* SEO Pages */}
+            {seoArticles.map((article) => (
+              <Route key={article.id} path={article.url} element={<SeoArticlePage articleId={article.id} />} />
+            ))}
+            
+            {/* State Pages */}
+            <Route path="/up-census-map" element={<StateLandingPage stateKey="UP" />} />
+            <Route path="/maharashtra-census-map" element={<StateLandingPage stateKey="MH" />} />
+            <Route path="/bihar-census-map" element={<StateLandingPage stateKey="BR" />} />
+            <Route path="/mp-census-map" element={<StateLandingPage stateKey="MP" />} />
+            <Route path="/rajasthan-census-map" element={<StateLandingPage stateKey="RJ" />} />
+            <Route path="/hp-census-map" element={<StateLandingPage stateKey="HP" />} />
+            <Route path="/kerala-census-map" element={<StateLandingPage stateKey="KL" />} />
+            {/* Deep SEO Pages — native language blog articles */}
+            <Route path="/west-bengal-census-map" element={<WestBengalCensusMapPage />} />
+            <Route path="/tamil-nadu-census-map" element={<TamilNaduCensusMapPage />} />
+            <Route path="/tripura-census-map" element={<TripuraCensusMapPage />} />
+            <Route path="/assam-census-map" element={<AssamCensusMapPage />} />
+            <Route path="/manipur-census-map" element={<ManipurCensusMapPage />} />
+            {/* Standard State Pages */}
+            <Route path="/karnataka-census-map" element={<StateLandingPage stateKey="KA" />} />
+            <Route path="/gujarat-census-map" element={<StateLandingPage stateKey="GJ" />} />
+            <Route path="/punjab-haryana-census-map" element={<StateLandingPage stateKey="PBHR" />} />
+            <Route path="/uttarakhand-census-map" element={<StateLandingPage stateKey="UK" />} />
+            <Route path="/jharkhand-census-map" element={<StateLandingPage stateKey="JH" />} />
+            <Route path="/odisha-census-map" element={<StateLandingPage stateKey="OD" />} />
+            <Route path="/chhattisgarh-census-map" element={<StateLandingPage stateKey="CG" />} />
+            <Route path="/telangana-census-map" element={<StateLandingPage stateKey="TS" />} />
+            <Route path="/andhra-pradesh-census-map" element={<StateLandingPage stateKey="AP" />} />
+            <Route path="/jk-census-map" element={<StateLandingPage stateKey="JK" />} />
+            <Route path="/delhi-census-map" element={<StateLandingPage stateKey="DL" />} />
+            <Route path="/goa-census-map" element={<StateLandingPage stateKey="GA" />} />
+            <Route path="/meghalaya-census-map" element={<StateLandingPage stateKey="ML" />} />
+            <Route path="/nagaland-census-map" element={<StateLandingPage stateKey="NL" />} />
+            <Route path="/mizoram-census-map" element={<StateLandingPage stateKey="MZ" />} />
+            <Route path="/sikkim-census-map" element={<StateLandingPage stateKey="SK" />} />
+            
+            {/* Legacy Routes */}
+            <Route path="/terms" element={<TermsScreen />} />
+            <Route path="/terms.html" element={<TermsScreen />} />
+            <Route path="/refunds" element={<RefundScreen />} />
+            <Route path="/refunds.html" element={<RefundScreen />} />
+            <Route path="/contact" element={<ContactScreen />} />
+            <Route path="/contact.html" element={<ContactScreen />} />
+            <Route path="/sign-in" element={<SignInScreen />} />
+            <Route path="/sign-up" element={<SignUpScreen />} />
 
-          {/* Admin — invisible, route only */}
-          <Route path="/kratagya" element={<AdminLayout />}>
-            <Route index element={<AdminDashboard />} />
-            <Route path="users" element={<AdminUsersScreen />} />
-            <Route path="users/:id" element={<AdminUserDetail />} />
-            <Route path="projects" element={<AdminProjectsScreen />} />
-            <Route path="sessions" element={<AdminSessionsScreen />} />
-            <Route path="feedback" element={<AdminFeedbackScreen />} />
-            <Route path="donations" element={<AdminDonationsScreen />} />
-            <Route path="announcements" element={<AdminAnnouncementsScreen />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </HelmetProvider>
-    </LanguageProvider>
+            {/* Admin — invisible, route only */}
+            <Route path="/kratagya" element={<AdminLayout />}>
+              <Route index element={<AdminDashboard />} />
+              <Route path="users" element={<AdminUsersScreen />} />
+              <Route path="users/:id" element={<AdminUserDetail />} />
+              <Route path="projects" element={<AdminProjectsScreen />} />
+              <Route path="sessions" element={<AdminSessionsScreen />} />
+              <Route path="feedback" element={<AdminFeedbackScreen />} />
+              <Route path="donations" element={<AdminDonationsScreen />} />
+              <Route path="announcements" element={<AdminAnnouncementsScreen />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </HelmetProvider>
+      </LanguageProvider>
+    </TolgeeProvider>
   </StrictMode>
 );

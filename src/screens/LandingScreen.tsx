@@ -17,7 +17,7 @@ export default function LandingScreen() {
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden selection:bg-orange-200">
       <Helmet>
         <title>HLB Map Maker Online | Nazri Naksha Generator - NakshaBot</title>
-        <meta name="description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹5 में A4 PDF download करें। HLO ready format।" />
+        <meta name="description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, 100% Free A4 PDF download करें। HLO ready format।" />
         <meta name="keywords" content="HLO map maker, HLB map maker, nazari naksha online, census 2027 map maker, नजरी नक्शा, HLO नक्शा बनाओ, जनगणना नक्शा ऑनलाइन, census enumeration block map, nazari naksha kaise banaye" />
         <link rel="canonical" href="https://examsetu.dev/" />
         <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
@@ -26,7 +26,7 @@ export default function LandingScreen() {
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://examsetu.dev/" />
         <meta property="og:title" content="HLB Map Maker Online | Nazri Naksha Generator - NakshaBot" />
-        <meta property="og:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹5 में A4 PDF download करें। HLO ready format।" />
+        <meta property="og:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, 100% Free A4 PDF download करें। HLO ready format।" />
         <meta property="og:image" content="https://examsetu.dev/logo.png" />
         <meta property="og:site_name" content="NakshaBot" />
         <meta property="og:locale" content="en_IN" />
@@ -35,7 +35,7 @@ export default function LandingScreen() {
         <meta property="twitter:card" content="summary_large_image" />
         <meta property="twitter:url" content="https://examsetu.dev/" />
         <meta property="twitter:title" content="HLB Map Maker Online | Nazri Naksha Generator - NakshaBot" />
-        <meta property="twitter:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, ₹5 में A4 PDF download करें। HLO ready format।" />
+        <meta property="twitter:description" content="HLB map बनाएं 15 मिनट में। Census 2027 के लिए nazri naksha online maker। SMS paste करें, AI map बनाएं, 100% Free A4 PDF download करें। HLO ready format।" />
         <meta property="twitter:image" content="https://examsetu.dev/logo.png" />
         
         {/* Schema markups */}
@@ -105,21 +105,21 @@ export default function LandingScreen() {
       </Helmet>
       
       {/* ─── NAVIGATION ─── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200/50">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-[var(--color-surface)]/80 backdrop-blur-md border-b border-[var(--color-hairline)]">
+        <div className="max-w-[1120px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/logo.png" alt="NakshaBot Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-xl font-[Baloo_2] text-slate-800 tracking-tight">NakshaBot</span>
+            <span className="font-bold text-xl font-public-sans text-[var(--color-ink)] tracking-tight">NakshaBot</span>
           </div>
           <div className="hidden md:flex items-center gap-8">
-            <a href="#idea" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">The Idea</a>
-            <a href="#process" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">How it Works</a>
-            <a href="#tutorial" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">Tutorial</a>
-            <a href="#features" className="text-sm font-semibold text-slate-600 hover:text-orange-500 transition-colors">Features</a>
+            <a href="#idea" className="text-sm font-semibold text-[var(--color-ink-secondary)] hover:text-[var(--color-accent)] transition-colors">The Idea</a>
+            <a href="#process" className="text-sm font-semibold text-[var(--color-ink-secondary)] hover:text-[var(--color-accent)] transition-colors">How it Works</a>
+            <a href="#tutorial" className="text-sm font-semibold text-[var(--color-ink-secondary)] hover:text-[var(--color-accent)] transition-colors">Tutorial</a>
+            <a href="#features" className="text-sm font-semibold text-[var(--color-ink-secondary)] hover:text-[var(--color-accent)] transition-colors">Features</a>
           </div>
           <div className="flex items-center gap-4">
-            <Link to="/sign-in" className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</Link>
-            <Link to="/sign-up" className="text-sm font-bold bg-slate-900 text-white px-6 py-2.5 rounded-full hover:bg-slate-800 transition-all transform hover:scale-105 active:scale-95 shadow-md inline-block">
+            <Link to="/sign-in" className="text-sm font-semibold text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors hidden sm:block">Log in</Link>
+            <Link to="/sign-up" className="text-sm font-bold bg-[var(--color-accent)] text-white px-6 py-2.5 rounded-[var(--radius-full)] hover:bg-[var(--color-accent-hover)] transition-all shadow-[var(--shadow-sm)] inline-block">
               Get Started
             </Link>
           </div>
@@ -127,40 +127,139 @@ export default function LandingScreen() {
       </nav>
 
       {/* ─── HERO SECTION ─── */}
-      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
-        {/* Background Gradients */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1000px] h-[500px] opacity-30 pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-orange-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
-          <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-teal-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
-          <div className="absolute -bottom-8 left-1/3 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
-        </div>
-
-        <div className="max-w-5xl mx-auto px-6 relative z-10 text-center">
+      <section className="relative pt-32 pb-20 lg:pt-44 lg:pb-28 overflow-hidden">
+        <div className="max-w-[1120px] mx-auto px-6 relative z-10 text-center">
           <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs border border-orange-200 shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[var(--radius-full)] bg-[var(--color-accent-tint)] text-[var(--color-accent)] font-semibold text-xs border border-indigo-200">
+              <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] animate-pulse"></span>
               Built for Census 2027
             </div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 text-amber-300 font-bold text-xs border border-slate-700 shadow-lg">
-              🏆 1st on the Internet
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[var(--radius-full)] bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-300 shadow-sm">
+              🎁 100% Free for All Enumerators
             </div>
           </div>
           
-          <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900 mb-8 leading-tight font-[Baloo_2]">
-            HLB Map Maker — <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-rose-500">Nazri Naksha</span> Online बनाएं Census 2027 के लिए
+          <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight text-[var(--color-ink)] mb-8 leading-tight font-public-sans">
+            HLB Map Maker — <span className="text-[var(--color-accent)]">Nazri Naksha</span> Online बनाएं Census 2027 के लिए
           </h1>
           
-          <p className="text-lg lg:text-xl text-slate-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-            NakshaBot भारत का पहला HLB Map Maker tool है जो Census 2027 के प्रगणकों को nazri naksha बनाने में मदद करता है। अपना HLO assignment SMS paste करें, satellite map पर boundary देखें, और printable A4 HLB map PDF download करें — सिर्फ ₹5 में।
+          <p className="text-lg lg:text-xl text-[var(--color-ink-secondary)] mb-10 max-w-2xl mx-auto leading-relaxed">
+            NakshaBot भारत का पहला HLB Map Maker tool है जो Census 2027 के प्रगणकों को nazri naksha बनाने में मदद करता है। अपना HLO assignment SMS paste करें, satellite map पर boundary देखें, और printable A4 HLB map PDF download करें — बिल्कुल 100% मुफ़्त (100% Free)!
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/sign-up" className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold rounded-2xl shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 transition-all text-lg flex items-center justify-center gap-2">
+            <Link to="/sign-up" className="w-full sm:w-auto px-8 py-4 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-bold rounded-[var(--radius-xl)] shadow-[var(--shadow-md)] transition-all text-base flex items-center justify-center gap-2">
               Start Creating Free <span className="text-xl">→</span>
             </Link>
-            <Link to="/sign-in" className="w-full sm:w-auto px-8 py-4 bg-white text-slate-700 font-bold rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all text-lg flex items-center justify-center">
+            <Link to="/sign-in" className="w-full sm:w-auto px-8 py-4 bg-[var(--color-surface-2)] text-[var(--color-ink)] hover:bg-slate-200 font-bold rounded-[var(--radius-xl)] border border-[var(--color-hairline)] transition-all text-base flex items-center justify-center">
               Log into Dashboard
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── TRUST & PLATFORM STATS BAR ─── */}
+      <section className="py-12 bg-[var(--color-surface)] border-y border-[var(--color-hairline)]">
+        <div className="max-w-[1120px] mx-auto px-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 text-center">
+            <div className="p-4 rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] border border-[var(--color-hairline)]">
+              <p className="text-3xl lg:text-4xl font-extrabold text-[var(--color-accent)] font-public-sans tracking-tight">3,447+</p>
+              <p className="text-xs lg:text-sm font-semibold text-[var(--color-ink-secondary)] mt-1">सत्यापित प्रगणक (Registered Users)</p>
+            </div>
+            <div className="p-4 rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] border border-[var(--color-hairline)]">
+              <p className="text-3xl lg:text-4xl font-extrabold text-[var(--color-accent)] font-public-sans tracking-tight">6,047+</p>
+              <p className="text-xs lg:text-sm font-semibold text-[var(--color-ink-secondary)] mt-1">नक्शे तैयार (Projects Created)</p>
+            </div>
+            <div className="p-4 rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] border border-[var(--color-hairline)]">
+              <p className="text-3xl lg:text-4xl font-extrabold text-emerald-600 font-public-sans tracking-tight">100%</p>
+              <p className="text-xs lg:text-sm font-semibold text-[var(--color-ink-secondary)] mt-1">RGI Census 2027 Compliant</p>
+            </div>
+            <div className="p-4 rounded-[var(--radius-lg)] bg-[var(--color-surface-2)] border border-[var(--color-hairline)]">
+              <p className="text-3xl lg:text-4xl font-extrabold text-emerald-600 font-public-sans tracking-tight">100% Free</p>
+              <p className="text-xs lg:text-sm font-semibold text-[var(--color-ink-secondary)] mt-1">मुफ़्त A4 PDF Export</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── REAL ENUMERATOR TESTIMONIALS & FEEDBACK ─── */}
+      <section className="py-20 bg-[var(--color-canvas)] border-b border-[var(--color-hairline)]">
+        <div className="max-w-[1120px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-[var(--radius-full)] bg-[var(--color-accent-tint)] text-[var(--color-accent)] font-bold text-xs mb-3 border border-indigo-200">
+              💬 Real User Feedback & Reviews
+            </div>
+            <h2 className="text-3xl lg:text-4xl font-extrabold font-public-sans text-[var(--color-ink)] mb-4">
+              प्रगणकों का भरोसा (Trusted by 3,400+ Census Enumerators)
+            </h2>
+            <p className="text-base lg:text-lg text-[var(--color-ink-secondary)] max-w-2xl mx-auto leading-relaxed">
+              Read real WhatsApp messages and field feedback from census enumerators who created their official Nazri Naksha maps using NakshaBot.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* Feedback Card 1 */}
+            <div className="bg-[var(--color-surface)] p-6 rounded-[var(--radius-xl)] border border-[var(--color-hairline)] shadow-[var(--shadow-sm)] flex flex-col justify-between space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-1 text-amber-400 text-sm">
+                  ★★★★★
+                </div>
+                <p className="text-sm text-[var(--color-ink)] leading-relaxed italic">
+                  "I had shared it with my colleagues in an unofficial census group of Kerala. Thank you very much brother for making it... By using your website it helped me a lot for mapping and building my map area!"
+                </p>
+              </div>
+              <div className="pt-4 border-t border-[var(--color-hairline)] flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center">
+                  KL
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-[var(--color-ink)]">Census Enumerator</p>
+                  <p className="text-[10px] text-[var(--color-ink-secondary)]">Kerala Group • Verified Feedback</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Feedback Card 2 */}
+            <div className="bg-[var(--color-surface)] p-6 rounded-[var(--radius-xl)] border border-[var(--color-hairline)] shadow-[var(--shadow-sm)] flex flex-col justify-between space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-1 text-amber-400 text-sm">
+                  ★★★★★
+                </div>
+                <p className="text-sm text-[var(--color-ink)] leading-relaxed italic">
+                  "Thank you for your help of making that AI assistant of census mapping. It really helped and I also donated a small amount from my side for this great work!"
+                </p>
+              </div>
+              <div className="pt-4 border-t border-[var(--color-hairline)] flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-indigo-100 text-[var(--color-accent)] font-bold text-xs flex items-center justify-center">
+                  GK
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-[var(--color-ink)]">Goutham Kiran</p>
+                  <p className="text-[10px] text-[var(--color-ink-secondary)]">Verified Donor & Enumerator</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Feedback Card 3 */}
+            <div className="bg-[var(--color-surface)] p-6 rounded-[var(--radius-xl)] border border-[var(--color-hairline)] shadow-[var(--shadow-sm)] flex flex-col justify-between space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-1 text-amber-400 text-sm">
+                  ★★★★★
+                </div>
+                <p className="text-sm text-[var(--color-ink)] leading-relaxed italic">
+                  "Very useful tool! Saved hours of hand drawing Nazri Naksha. Generated accurate A4 layout PDF with proper house numbers and roads."
+                </p>
+              </div>
+              <div className="pt-4 border-t border-[var(--color-hairline)] flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 font-bold text-xs flex items-center justify-center">
+                  AG
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-[var(--color-ink)]">Ashlin George & Anjana</p>
+                  <p className="text-[10px] text-[var(--color-ink-secondary)]">Field Survey Officers</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -170,7 +269,7 @@ export default function LandingScreen() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-12">
             <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">Map Quality Showcase</h2>
-            <h2 id="sample-maps-title" className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-4">
+            <h2 id="sample-maps-title" className="text-3xl lg:text-4xl font-bold font-public-sans text-slate-900 mb-4">
               Generated Census Map Quality & Accuracy (नक्शा की गुणवत्ता)
             </h2>
             <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
@@ -211,7 +310,7 @@ export default function LandingScreen() {
               {selectedSample === 'sample1' ? (
                 <>
                   <span className="inline-block px-3 py-1 bg-green-100 text-green-700 font-bold text-xs rounded-full">Rural Layout</span>
-                  <h3 className="text-2xl font-bold text-slate-800 font-[Baloo_2]">Sample 1: Village Enumeration Block</h3>
+                  <h3 className="text-2xl font-bold text-slate-800 font-public-sans">Sample 1: Village Enumeration Block</h3>
                   <p className="text-slate-600 text-sm leading-relaxed">
                     This sample demonstrates a rural layout featuring spaced pucca/kutcha houses, a central block structure, and path routing. 
                     Notice how houses are neatly aligned along the road boundaries, maximizing space and keeping symbols highly readable.
@@ -257,7 +356,7 @@ export default function LandingScreen() {
               ) : (
                 <>
                   <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 font-bold text-xs rounded-full">Urban Layout</span>
-                  <h3 className="text-2xl font-bold text-slate-800 font-[Baloo_2]">Sample 2: Congested City Block</h3>
+                  <h3 className="text-2xl font-bold text-slate-800 font-public-sans">Sample 2: Congested City Block</h3>
                   <p className="text-slate-600 text-sm leading-relaxed">
                     This sample showcases a high-density urban block where space optimization is critical. 
                     NakshaBot dynamically calculates block margins, adjusting house size boundaries and aligning houses along roads to prevent overlaps.
@@ -353,7 +452,7 @@ export default function LandingScreen() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">Canvas Editor Features</h2>
-            <h2 id="canvas-features-title" className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-4">
+            <h2 id="canvas-features-title" className="text-3xl lg:text-4xl font-bold font-public-sans text-slate-900 mb-4">
               Advanced Canvas Mode (नक्शा कैनवास फीचर्स)
             </h2>
             <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
@@ -366,7 +465,7 @@ export default function LandingScreen() {
             <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
               <div>
                 <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">🔄</div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Dual-Route Auto-Numbering</h3>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-public-sans">Dual-Route Auto-Numbering</h3>
                 <p className="text-slate-600 text-sm leading-relaxed">
                   Toggle between the traditional **Serpentine Path** and the official **Census U-Loop winding**. The algorithm detects the Northwest corner and automatically numbers houses block-by-block.
                 </p>
@@ -378,7 +477,7 @@ export default function LandingScreen() {
             <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
               <div>
                 <div className="w-12 h-12 bg-teal-100 text-teal-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">✍️</div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Manual Click-Numbering</h3>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-public-sans">Manual Click-Numbering</h3>
                 <p className="text-slate-600 text-sm leading-relaxed">
                   Want custom numbering? Switch to manual click mode. Set the sequence pointer, and assign numbers simply by clicking. Built-in collision avoidance automatically skips pre-allocated house numbers.
                 </p>
@@ -390,7 +489,7 @@ export default function LandingScreen() {
             <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
               <div>
                 <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">📐</div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Aligned House Placement</h3>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-public-sans">Aligned House Placement</h3>
                 <p className="text-slate-600 text-sm leading-relaxed">
                   When adding houses to a block, NakshaBot aligns them along the sides of its boundary. This eliminates empty spaces and places houses close to side roads, mimicking natural layouts.
                 </p>
@@ -402,7 +501,7 @@ export default function LandingScreen() {
             <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
               <div>
                 <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">🔍</div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Adaptive Symbol Scaling</h3>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-public-sans">Adaptive Symbol Scaling</h3>
                 <p className="text-slate-600 text-sm leading-relaxed">
                   No overlapping symbols. The editor analyzes building density inside each block and automatically adjusts the house symbol sizes. Sizes remain above a readable threshold for legibility.
                 </p>
@@ -414,7 +513,7 @@ export default function LandingScreen() {
             <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
               <div>
                 <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">🏢</div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Apartment Flat Customization</h3>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-public-sans">Apartment Flat Customization</h3>
                 <p className="text-slate-600 text-sm leading-relaxed">
                   For multi-story structures, add flat/unit counts directly to apartment symbols. Displays as `BuildingNum(FlatCount)` (e.g., `4(3)`) and expands into individual rows in the exported register sheet.
                 </p>
@@ -426,7 +525,7 @@ export default function LandingScreen() {
             <div className="bg-white p-8 rounded-3xl border border-slate-200/60 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
               <div>
                 <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center text-2xl mb-6 shadow-inner">💾</div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3 font-[Baloo_2]">Drafts & Block Clear Tools</h3>
+                <h3 className="text-xl font-bold text-slate-800 mb-3 font-public-sans">Drafts & Block Clear Tools</h3>
                 <p className="text-slate-600 text-sm leading-relaxed">
                   Make mistakes? Use the **Erase Block Numbers** or **Erase All Numbers** buttons. Save your custom map and numbering drafts at any time, allowing you to resume work without losing progress.
                 </p>
@@ -446,7 +545,7 @@ export default function LandingScreen() {
           <div className="grid lg:grid-cols-2 gap-16 items-center mb-24">
             <div>
               <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">The Idea</h2>
-              <h2 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-6">
+              <h2 className="text-3xl lg:text-4xl font-bold font-public-sans text-slate-900 mb-6">
                 Nazri Naksha क्या होता है?
               </h2>
               <p className="text-slate-600 text-lg mb-6 leading-relaxed">
@@ -474,7 +573,7 @@ export default function LandingScreen() {
                 <img src="/logo.png" alt="Map Demo" className="w-full h-auto rounded-2xl opacity-90 mix-blend-multiply" style={{ minHeight: '300px', objectFit: 'cover' }} />
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="bg-white/90 backdrop-blur px-6 py-4 rounded-2xl shadow-lg border border-slate-100 text-center">
-                    <div className="font-bold text-slate-800 font-[Baloo_2] text-xl mb-1">HLB 0042 Generated</div>
+                    <div className="font-bold text-slate-800 font-public-sans text-xl mb-1">HLB 0042 Generated</div>
                     <div className="text-sm text-green-600 font-semibold">✓ Ready for printing</div>
                   </div>
                 </div>
@@ -486,7 +585,7 @@ export default function LandingScreen() {
           <div className="grid md:grid-cols-2 gap-8">
             <div className="bg-white border-2 border-emerald-100 rounded-3xl p-8 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-bl-full -z-10"></div>
-              <h4 className="text-2xl font-bold font-[Baloo_2] text-slate-900 mb-6 flex items-center gap-3">
+              <h4 className="text-2xl font-bold font-public-sans text-slate-900 mb-6 flex items-center gap-3">
                 <span className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-lg">👍</span>
                 Pros of NakshaBot
               </h4>
@@ -512,7 +611,7 @@ export default function LandingScreen() {
             
             <div className="bg-white border-2 border-rose-100 rounded-3xl p-8 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-rose-50 rounded-bl-full -z-10"></div>
-              <h4 className="text-2xl font-bold font-[Baloo_2] text-slate-900 mb-6 flex items-center gap-3">
+              <h4 className="text-2xl font-bold font-public-sans text-slate-900 mb-6 flex items-center gap-3">
                 <span className="w-10 h-10 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center text-lg">👎</span>
                 Limitations
               </h4>
@@ -541,7 +640,7 @@ export default function LandingScreen() {
         <div className="max-w-6xl mx-auto px-6 relative z-10">
           <div className="text-center mb-16">
             <h2 className="text-teal-400 font-bold tracking-wide uppercase text-sm mb-3">The Process</h2>
-            <h2 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] mb-4">HLB Map Kaise Banaye? — 4 आसान Steps</h2>
+            <h2 className="text-3xl lg:text-4xl font-bold font-public-sans mb-4">HLB Map Kaise Banaye? — 4 आसान Steps</h2>
             <p className="text-slate-400 max-w-2xl mx-auto text-lg">We've broken down the complex task of map-making into an intuitive, guided workflow.</p>
           </div>
 
@@ -594,7 +693,7 @@ export default function LandingScreen() {
         <div className="max-w-5xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">Video Tutorial (वीडियो ट्यूटोरियल)</h2>
-            <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-4">
+            <h3 className="text-3xl lg:text-4xl font-bold font-public-sans text-slate-900 mb-4">
               Nazri Naksha Census 2027 Tutorial Video
             </h3>
             <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
@@ -621,7 +720,7 @@ export default function LandingScreen() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">Key Features</h2>
-            <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-4">Everything you need, built in.</h3>
+            <h3 className="text-3xl lg:text-4xl font-bold font-public-sans text-slate-900 mb-4">Everything you need, built in.</h3>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -669,7 +768,7 @@ export default function LandingScreen() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-12">
             <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">State Census Map Makers</h2>
-            <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900 mb-4">Select Your State / UT</h3>
+            <h3 className="text-3xl lg:text-4xl font-bold font-public-sans text-slate-900 mb-4">Select Your State / UT</h3>
             <p className="text-slate-600 max-w-2xl mx-auto text-base">
               Generate perfectly compliant HLO and HLB Nazari Naksha layout maps tailored to local guidelines across all Indian states.
             </p>
@@ -723,7 +822,7 @@ export default function LandingScreen() {
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-12">
             <h2 className="text-orange-500 font-bold tracking-wide uppercase text-sm mb-3">Frequently Asked Questions</h2>
-            <h3 className="text-3xl lg:text-4xl font-bold font-[Baloo_2] text-slate-900">Got Questions? We have Answers</h3>
+            <h3 className="text-3xl lg:text-4xl font-bold font-public-sans text-slate-900">Got Questions? We have Answers</h3>
           </div>
 
           <div className="space-y-4">
@@ -758,7 +857,7 @@ export default function LandingScreen() {
       <section className="py-24 bg-white relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-orange-50/50 pointer-events-none"></div>
         <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
-          <h2 className="text-4xl lg:text-5xl font-extrabold font-[Baloo_2] text-slate-900 mb-6">
+          <h2 className="text-4xl lg:text-5xl font-extrabold font-public-sans text-slate-900 mb-6">
             Ready to upgrade your workflow?
           </h2>
           <p className="text-xl text-slate-600 mb-10">
@@ -776,7 +875,7 @@ export default function LandingScreen() {
           <div className="col-span-2">
             <div className="flex items-center gap-2 mb-4">
               <img src="/logo.png" alt="Logo" className="w-8 h-8 grayscale opacity-70" />
-              <span className="font-bold text-xl font-[Baloo_2] text-white tracking-tight">NakshaBot</span>
+              <span className="font-bold text-xl font-public-sans text-white tracking-tight">NakshaBot</span>
             </div>
             <p className="text-sm leading-relaxed max-w-sm mb-6">
               Empowering Census Enumerators in India with modern, automated, and highly accurate digital mapping tools. Built for efficiency and compliance.

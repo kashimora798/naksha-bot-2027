@@ -695,7 +695,7 @@ export default function SessionDetailScreen() {
               <div className="max-w-md mx-auto bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden text-gray-800 mt-4 mx-4">
                 <div className="bg-gradient-to-br from-orange-500 to-rose-500 px-6 py-8 text-white text-center">
                   <div className="text-4xl mb-2">✨</div>
-                  <h3 className="text-2xl font-black font-[Baloo_2] tracking-tight">Unlock Official PDF Exports</h3>
+                  <h3 className="text-2xl font-black font-public-sans tracking-tight">Unlock Official PDF Exports</h3>
                   <p className="text-xs text-white/80 mt-1">Get high-fidelity downloads and full AI mapping access</p>
                   <div className="mt-5 flex items-end justify-center gap-2">
                     <span className="text-white/60 line-through text-lg">₹10</span>
@@ -849,7 +849,7 @@ export default function SessionDetailScreen() {
           <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden text-slate-800">
             <div className="bg-gradient-to-br from-orange-500 to-rose-500 px-6 py-6 text-white text-center">
               <div className="text-4xl mb-1">✨</div>
-              <h3 className="text-xl font-black font-[Baloo_2]">Need More AI Generations?</h3>
+              <h3 className="text-xl font-black font-public-sans">Need More AI Generations?</h3>
               {isPaid ? (
                 <p className="text-xs text-white/80 mt-1">Get 6 extra generations for this session</p>
               ) : (

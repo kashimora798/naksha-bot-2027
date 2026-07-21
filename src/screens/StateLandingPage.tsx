@@ -302,15 +302,15 @@ export default function StateLandingPage({ stateKey }: { stateKey: string }) {
       </Helmet>
 
       {/* ─── NAVIGATION ─── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200/50">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-[var(--color-surface)]/80 backdrop-blur-md border-b border-[var(--color-hairline)]">
+        <div className="max-w-[1120px] mx-auto px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
             <img src="/logo.png" alt="NakshaBot Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-xl font-[Baloo_2] text-slate-800 tracking-tight">NakshaBot</span>
+            <span className="font-bold text-xl font-public-sans text-[var(--color-ink)] tracking-tight">NakshaBot</span>
           </Link>
           <div className="flex items-center gap-4">
-            <Link to="/sign-in" className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:block">Log in</Link>
-            <Link to="/sign-up" className="text-sm font-bold bg-slate-900 text-white px-6 py-2.5 rounded-full hover:bg-slate-800 transition-all transform shadow-md inline-block">
+            <Link to="/sign-in" className="text-sm font-semibold text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors hidden sm:block">Log in</Link>
+            <Link to="/sign-up" className="text-sm font-bold bg-[var(--color-accent)] text-white px-6 py-2.5 rounded-[var(--radius-full)] hover:bg-[var(--color-accent-hover)] transition-all shadow-[var(--shadow-sm)] inline-block">
               Get Started
             </Link>
           </div>
@@ -318,29 +318,29 @@ export default function StateLandingPage({ stateKey }: { stateKey: string }) {
       </nav>
 
       {/* ─── HERO SECTION ─── */}
-      <section className="relative pt-32 pb-20 px-6 max-w-4xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs border border-orange-200 shadow-sm mb-6">
-          <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+      <section className="relative pt-32 pb-20 px-6 max-w-[1120px] mx-auto text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[var(--radius-full)] bg-[var(--color-accent-tint)] text-[var(--color-accent)] font-semibold text-xs border border-indigo-200 shadow-sm mb-6">
+          <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] animate-pulse"></span>
           {data.name} Enumeration Phase Active
         </div>
         
-        <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-slate-900 mb-6 font-[Baloo_2]">
-          Create your {data.name} <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-rose-500">HLB Map</span> for Census 2027.
+        <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-[var(--color-ink)] mb-6 font-public-sans">
+          Create your {data.name} <span className="text-[var(--color-accent)]">HLB Map</span> for Census 2027.
         </h1>
         
-        <p className="text-lg md:text-xl text-slate-600 mb-10 leading-relaxed">
+        <p className="text-lg md:text-xl text-[var(--color-ink-secondary)] mb-10 max-w-2xl mx-auto leading-relaxed">
           Attention enumerators in {data.name}: Don't waste hours drawing the {data.localTerm} by hand. 
           NakshaBot uses satellite imagery to generate official enumeration block maps for {data.cities} and all districts instantly.
         </p>
 
-        <Link to="/sign-up" className="inline-flex items-center justify-center px-8 py-4 bg-slate-900 text-white font-bold rounded-2xl shadow-lg hover:-translate-y-1 transition-all text-lg gap-2">
+        <Link to="/sign-up" className="inline-flex items-center justify-center px-8 py-4 bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-bold rounded-[var(--radius-xl)] shadow-[var(--shadow-md)] transition-all text-base gap-2">
           Make Your Map Now →
         </Link>
       </section>
 
       {/* ─── HOW IT WORKS ─── */}
-      <section className="py-16 bg-white border-y border-slate-200">
-        <div className="max-w-5xl mx-auto px-6">
+      <section className="py-16 bg-[var(--color-surface)] border-y border-[var(--color-hairline)]">
+        <div className="max-w-[1120px] mx-auto px-6">
           <h2 className="text-3xl font-bold text-center mb-12">How it works for {data.name} Enumerators</h2>
           <div className="grid md:grid-cols-3 gap-8">
             <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">

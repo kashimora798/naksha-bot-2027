@@ -44,7 +44,7 @@ export default function SignUpScreen() {
         <div className="flex justify-center">
           <img src="/logo.png" alt="NakshaBot Logo" className="w-12 h-12 object-contain" />
         </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 font-[Baloo_2]">
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 font-public-sans">
           Create an account
         </h2>
         <p className="mt-2 text-center text-sm text-slate-600">

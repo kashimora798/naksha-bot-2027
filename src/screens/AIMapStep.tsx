@@ -150,7 +150,7 @@ export default function AIMapStep({ mapData, onStepComplete, onBack, onUpdateMap
             ← Back to Numbering
           </button>
           <div>
-            <h1 className="text-base font-black font-[Baloo_2] text-white">✨ Step 7: AI Topographic Survey Map</h1>
+            <h1 className="text-base font-black font-public-sans text-white">✨ Step 7: AI Topographic Survey Map</h1>
             <p className="text-[10px] text-slate-400">Generate high-contrast Census layout sheets using Generative AI</p>
           </div>
         </div>

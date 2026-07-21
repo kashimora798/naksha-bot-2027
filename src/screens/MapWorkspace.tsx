@@ -351,7 +351,7 @@ export default function MapWorkspace(props: Props) {
       g.addLayer(L.polygon(pts.map(p => [p.lat, p.lng]), { color: col, weight: 2.5, dashArray: '8,4', fillColor: col, fillOpacity: 0.12 }));
       if (b.label) {
         g.addLayer(L.marker([c.lat, c.lng], {
-          icon: L.divIcon({ html: `<div style="font:bold 14px 'Baloo 2',sans-serif;color:${col};text-shadow:1px 1px 3px white,-1px -1px 3px white;text-align:center;pointer-events:none">Block ${b.label}</div>`, className: '', iconSize: [80, 22], iconAnchor: [40, 11] }), interactive: false,
+          icon: L.divIcon({ html: `<div style="font:bold 14px 'Public Sans',sans-serif;color:${col};text-shadow:1px 1px 3px white,-1px -1px 3px white;text-align:center;pointer-events:none">Block ${b.label}</div>`, className: '', iconSize: [80, 22], iconAnchor: [40, 11] }), interactive: false,
         }));
       }
     });
@@ -365,7 +365,7 @@ export default function MapWorkspace(props: Props) {
       g.addLayer(L.polygon(fb.points.map(p => [p.lat, p.lng]), { color: '#2E7D32', weight: 3, dashArray: '10,5', fillColor: '#66BB6A', fillOpacity: 0.15 }));
       const c = polyCenter(fb.points);
       g.addLayer(L.marker([c.lat, c.lng], {
-        icon: L.divIcon({ html: `<div style="font:bold 13px 'Baloo 2',sans-serif;color:#2E7D32;text-shadow:1px 1px 3px white,-1px -1px 3px white;text-align:center;pointer-events:none">🌾 Farm ${fb.label}</div>`, className: '', iconSize: [90, 22], iconAnchor: [45, 11] }), interactive: false,
+        icon: L.divIcon({ html: `<div style="font:bold 13px 'Public Sans',sans-serif;color:#2E7D32;text-shadow:1px 1px 3px white,-1px -1px 3px white;text-align:center;pointer-events:none">🌾 Farm ${fb.label}</div>`, className: '', iconSize: [90, 22], iconAnchor: [45, 11] }), interactive: false,
       }));
     });
   }, [farmlandBlocks, showSnakeView]);

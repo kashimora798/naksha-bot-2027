@@ -6,6 +6,7 @@ import { SYMBOL_DEFS, isPakkaRoad, getUnitCount, polyCenter, isHouseType, isNumb
 import { getBbox, polygonArea, generateSerpentinePath, distanceBetween, pointInPolygon, clusterByProximity, gridBlockOffsets, centroidXY, getSerpentineOrder } from './geo';
 import { drawSymbolOnCanvas } from './symbols';
 import { declutterSymbols } from './declutter';
+import { medianNNDist } from './clusterOrdering';
 import type { RenderEnv, CanvasLike, ImageLike } from './render-env';
 import { browserEnv } from './render-env.browser';
 
@@ -539,6 +540,14 @@ export function renderMapToCanvas(
       const membership = serp.map(c => blockOf(c));
       const projPts = serp.map(c => proj(c));
 
+      // Calculate local median nearest-neighbor distance and density thresholding
+      const houseSyms = data.symbols.filter(s => isNumberableSymbol(s.symbol_type));
+      const localMed = medianNNDist(houseSyms);
+      const totalAreaM2 = polygonArea(data.boundaryPins || []);
+      const houseCount = houseSyms.length;
+      const densityPerHectare = totalAreaM2 > 0 ? (houseCount / (totalAreaM2 / 10000)) : 0;
+      const autoReducedArrows = densityPerHectare > 60 || houseCount > 60;
+
       // ── HELPER: draw a clean filled arrowhead at (tx, ty) pointing in direction `ang` ──
       const arrowHead = (tx: number, ty: number, ang: number, size: number) => {
         const hw = size * 0.42; // half-width of arrowhead
@@ -634,12 +643,14 @@ export function renderMapToCanvas(
 
       // ── PROCESS each consecutive pair in the path ──
       let prevAng: number | null = null;
+      let isClusterStart = true;
 
       for (let i = 0; i < projPts.length - 1; i++) {
         const [x1, y1] = projPts[i];
         const [x2, y2] = projPts[i + 1];
         const thisBlock = membership[i + 1];
-        const isJump = membership[i] !== thisBlock;
+        const hopDistM = distanceBetween(serp[i], serp[i + 1]);
+        const isJump = membership[i] !== thisBlock || hopDistM > localMed * 2.2;
 
         // Detect turn: heading change > ~38° within the same block
         const ang = Math.atan2(y2 - y1, x2 - x1);
@@ -650,7 +661,12 @@ export function renderMapToCanvas(
           isTurn = d > 0.66;
         }
 
-        drawMidArrow(x1, y1, x2, y2, isJump, isTurn);
+        const shouldDraw = !autoReducedArrows || isJump || isTurn || isClusterStart;
+        if (shouldDraw) {
+          drawMidArrow(x1, y1, x2, y2, isJump, isTurn);
+        }
+
+        isClusterStart = isJump;
         prevAng = isJump ? null : ang;
       }
 
@@ -712,6 +728,22 @@ export function renderMapToCanvas(
       // Limit angle to [-PI/2, PI/2] to ensure the building number is always upright and readable
       if (angle > Math.PI / 2) angle -= Math.PI;
       if (angle < -Math.PI / 2) angle += Math.PI;
+      if (sym.leaderFrom) {
+        const [origX, origY] = proj(sym.leaderFrom);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(100,100,100,0.5)';
+        ctx.lineWidth = 0.8;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(origX, origY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(100,100,100,0.7)';
+        ctx.beginPath();
+        ctx.arc(origX, origY, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
       const symToDraw = options?.hideHouseNumbers
         ? { ...sym, number: undefined, census_house_count: 0 }
         : sym;

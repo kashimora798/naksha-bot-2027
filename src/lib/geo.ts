@@ -1,6 +1,7 @@
 import type { Coordinate, SymbolType, Block, PlacedSymbol, FarmlandBlock, WaterBody, ForestArea, LanduseArea, Landmark, AreaStats } from '../types';
 import { isHouseType, isNumberableSymbol } from '../types';
 import * as turf from '@turf/turf';
+import { clusterAwareOrder } from './clusterOrdering';
 
 export function getBbox(coords: Coordinate[]): { south: number; west: number; north: number; east: number } {
   let south = Infinity, west = Infinity, north = -Infinity, east = -Infinity;
@@ -17,7 +18,7 @@ export function pointInPolygon(point: Coordinate, polygon: Coordinate[]): boolea
   return inside;
 }
 
-function segIntersect(a: Coordinate, b: Coordinate, c: Coordinate, d: Coordinate): boolean {
+export function segIntersect(a: Coordinate, b: Coordinate, c: Coordinate, d: Coordinate): boolean {
   const det = (b.lng - a.lng) * (d.lat - c.lat) - (b.lat - a.lat) * (d.lng - c.lng);
   if (Math.abs(det) < 1e-12) return false;
   const t = ((c.lng - a.lng) * (d.lat - c.lat) - (c.lat - a.lat) * (d.lng - c.lng)) / det;
@@ -268,7 +269,7 @@ function longestEdgeAngle(blk: Block): number {
  * aligned to the block's longest edge so arrows run parallel to the road frontage.
  * Returns coordinates in numbering order (NW corner first, NW→SE direction).
  */
-function serpentineInBlock(houses: PlacedSymbol[], blk: Block): Coordinate[] {
+function serpentineInBlockRaw(houses: PlacedSymbol[], blk: Block): Coordinate[] {
   if (!houses.length) return [];
   const c = blockCentroid(blk);
   const theta = longestEdgeAngle(blk); // bearing of longest edge (radians)
@@ -337,6 +338,10 @@ function serpentineInBlock(houses: PlacedSymbol[], blk: Block): Coordinate[] {
     for (const lp of row) path.push({ lat: lp.h.lat, lng: lp.h.lng });
   }
   return path;
+}
+
+function serpentineInBlock(houses: PlacedSymbol[], blk: Block): Coordinate[] {
+  return clusterAwareOrder(houses, serpentineInBlockRaw, blk);
 }
 
 function localToGlobal(u: number, v: number, center: Coordinate, theta: number, mLat: number, mLng: number): Coordinate {

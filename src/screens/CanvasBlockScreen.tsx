@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, RoadFeature, PlacedSymbol, Block, MapData, SymbolType } from '../types';
 import { isHouseType, isNumberableSymbol, SYMBOL_DEFS, getUnitCount } from '../types';
-import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween, fetchOverpass, generateSerpentinePath, bearingBetween } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween, fetchOverpass, generateSerpentinePath, bearingBetween, buildComprehensiveQuery, processOverpassData } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { detectBlocks, mergeBlocks, splitBlock, relabelBlocks, blockPoints, labelFor } from '../lib/blocks';
 import { placeGroupsInBlock, blockGrid, minEdgeDistM, type LayoutMode, type SymGroup } from '../lib/placement-blocks';
@@ -198,6 +198,14 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   const [showLayers, setShowLayers] = useState(false);
   const [isCropped, setIsCropped] = useState(false);
   const [cropZoom, setCropZoom] = useState<number | null>(null);
+
+  // ── AI & OSM Auto-Detection States for Canvas Mode ──
+  const [detectLoading, setDetectLoading] = useState(false);
+  const [detectMsg, setDetectMsg] = useState('');
+  const [showDetectModal, setShowDetectModal] = useState(false);
+  const [detectTarget, setDetectTarget] = useState<'all' | 'selected'>('all');
+  const [mergeMode, setMergeMode] = useState<'append' | 'replace'>('append');
+  const [useGoogleBuildings, setUseGoogleBuildings] = useState(false);
 
 
   // Convenience accessors into mapData
@@ -1207,6 +1215,227 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       : roads.length ? 'No blocks — try a smaller road width, or add roads.' : 'Fetch or draw roads first.');
   }
 
+  // ── Partition symbols to blocks summary ──
+  function partitionSymbolsToBlocks(syms: PlacedSymbol[], currentBlocks: Block[]) {
+    const summary = new Map<string, number>();
+    for (const b of currentBlocks) summary.set(b.id, 0);
+
+    for (const s of syms) {
+      if (!isNumberableSymbol(s.symbol_type)) continue;
+      for (const b of currentBlocks) {
+        const ring = blockPoints(b);
+        if (pointInPolygon({ lat: s.lat, lng: s.lng }, ring)) {
+          summary.set(b.id, (summary.get(b.id) || 0) + 1);
+          break;
+        }
+      }
+    }
+    return summary;
+  }
+
+  // ── Fetch Buildings (Google + OSM Open Buildings) ──
+  async function fetchBuildingsForCanvas(targetBlockId?: string, useGoogle: boolean = false, mode: 'append' | 'replace' = 'append') {
+    if (boundaryPins.length < 3) {
+      alert('Please define a valid boundary with at least 3 pins first.');
+      return;
+    }
+
+    setDetectLoading(true);
+    setDetectMsg(useGoogle ? '📡 Fetching buildings from Google & Open Buildings...' : '🏠 Detecting buildings from Open Buildings...');
+
+    try {
+      // 1. Ensure blocks exist; auto-generate if none
+      let activeBlocks = blocks;
+      if (activeBlocks.length === 0) {
+        activeBlocks = detectBlocks(roads, boundaryPins, { roadWidthMeters: roadWidth });
+        if (activeBlocks.length > 0) {
+          onUpdateMapData({ blocks: activeBlocks });
+        }
+      }
+
+      // Determine bounding box / target boundary
+      let targetBoundary = boundaryPins;
+      if (targetBlockId) {
+        const targetBlk = activeBlocks.find(b => b.id === targetBlockId);
+        if (targetBlk) {
+          targetBoundary = blockPoints(targetBlk);
+        }
+      }
+
+      const bb = getBbox(targetBoundary);
+      const res = await supabase.functions.invoke('fetch-open-buildings', {
+        body: {
+          north: bb.north,
+          south: bb.south,
+          east: bb.east,
+          west: bb.west,
+          boundary: targetBoundary.map(p => ({ lat: p.lat, lng: p.lng })),
+          useGoogle,
+        }
+      });
+
+      if (res.error) {
+        setDetectMsg('⚠️ Building detection network error. Please try again.');
+        setDetectLoading(false);
+        return;
+      }
+
+      const all = res.data?.buildings || [];
+      const valid = all.filter((b: any) => b.area_sqm == null || b.area_sqm > 5);
+
+      const fetchedSymbols: PlacedSymbol[] = valid.map((b: any) => ({
+        id: `building-${crypto.randomUUID()}`,
+        symbol_type: (b.buildingType || 'pucca_house') as SymbolType,
+        lat: b.lat,
+        lng: b.lng,
+        number: null,
+        placed_at: new Date().toISOString(),
+        auto_detected: true,
+      }));
+
+      if (fetchedSymbols.length === 0) {
+        setDetectMsg('No buildings detected in the target area. Try turning on Google Buildings or adding manually.');
+        setDetectLoading(false);
+        return;
+      }
+
+      // Merge or replace
+      let updatedSymbols: PlacedSymbol[] = [];
+      if (mode === 'replace') {
+        if (targetBlockId) {
+          const targetBlk = activeBlocks.find(b => b.id === targetBlockId);
+          const ring = targetBlk ? blockPoints(targetBlk) : [];
+          updatedSymbols = symbols.filter(s => !isNumberableSymbol(s.symbol_type) || !pointInPolygon({ lat: s.lat, lng: s.lng }, ring));
+          updatedSymbols.push(...fetchedSymbols);
+        } else {
+          updatedSymbols = [...symbols.filter(s => !isNumberableSymbol(s.symbol_type)), ...fetchedSymbols];
+        }
+      } else {
+        const existing = [...symbols];
+        const toAdd: PlacedSymbol[] = [];
+        for (const fs of fetchedSymbols) {
+          const isDup = existing.some(ex => distanceBetween({ lat: fs.lat, lng: fs.lng }, { lat: ex.lat, lng: ex.lng }) < 5);
+          if (!isDup) toAdd.push(fs);
+        }
+        updatedSymbols = [...existing, ...toAdd];
+      }
+
+      const renumbered = renumber(updatedSymbols);
+      onUpdateMapData({ symbols: renumbered });
+
+      // Calculate summary per block
+      const summary = partitionSymbolsToBlocks(renumbered, activeBlocks);
+      const summaryTxt = Array.from(summary.entries())
+        .map(([id, count]) => {
+          const blk = activeBlocks.find(b => b.id === id);
+          return `Block ${blk?.label || id}: ${count}`;
+        })
+        .join(', ');
+
+      // Check ORGI limit (150-180 houses per block)
+      let overCapMsg = '';
+      for (const [id, count] of summary.entries()) {
+        if (count > 180) {
+          const blk = activeBlocks.find(b => b.id === id);
+          overCapMsg += ` ⚠️ Block ${blk?.label} has ${count} houses (>180 max limit). Consider splitting it.`;
+        }
+      }
+
+      setDetectMsg(`✅ Fetched ${fetchedSymbols.length} buildings! ${summaryTxt ? `(${summaryTxt})` : ''}${overCapMsg}`);
+    } catch (err) {
+      console.error('Failed to fetch buildings:', err);
+      setDetectMsg('⚠️ Failed to fetch buildings. Check network connection.');
+    } finally {
+      setDetectLoading(false);
+    }
+  }
+
+  // ── Auto-Detect Full Area (OSM Scan: Buildings, Farmlands, Water, Forests, Landmarks) ──
+  async function autoDetectAreaForCanvas(targetBlockId?: string, mode: 'append' | 'replace' = 'append') {
+    if (boundaryPins.length < 3) {
+      alert('Please define a valid boundary with at least 3 pins first.');
+      return;
+    }
+
+    setDetectLoading(true);
+    setDetectMsg('🗺️ Scanning full area via OSM (buildings, water, farmlands, forests, POIs)...');
+
+    try {
+      // 1. Ensure blocks exist; auto-generate if none
+      let activeBlocks = blocks;
+      if (activeBlocks.length === 0) {
+        activeBlocks = detectBlocks(roads, boundaryPins, { roadWidthMeters: roadWidth });
+        if (activeBlocks.length > 0) {
+          onUpdateMapData({ blocks: activeBlocks });
+        }
+      }
+
+      let targetBoundary = boundaryPins;
+      if (targetBlockId) {
+        const targetBlk = activeBlocks.find(b => b.id === targetBlockId);
+        if (targetBlk) targetBoundary = blockPoints(targetBlk);
+      }
+
+      const bb = getBbox(targetBoundary);
+      const q = buildComprehensiveQuery(bb, 0.002);
+      const area = polygonArea(targetBoundary);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const r = await fetchOverpass(q, controller.signal);
+      clearTimeout(timeoutId);
+
+      if (!r.ok) {
+        setDetectMsg('⚠️ OSM Overpass API returned non-OK status. Try again shortly.');
+        setDetectLoading(false);
+        return;
+      }
+
+      const d = await r.json();
+      const res = processOverpassData(d.elements || [], targetBoundary, area);
+
+      // Combine symbols
+      let updatedSymbols: PlacedSymbol[] = [];
+      if (mode === 'replace') {
+        updatedSymbols = res.symbols;
+      } else {
+        const existing = [...symbols];
+        const toAdd: PlacedSymbol[] = [];
+        for (const s of res.symbols) {
+          const isDup = existing.some(ex => distanceBetween({ lat: s.lat, lng: s.lng }, { lat: ex.lat, lng: ex.lng }) < 4);
+          if (!isDup) toAdd.push(s);
+        }
+        updatedSymbols = [...existing, ...toAdd];
+      }
+
+      const renumbered = renumber(updatedSymbols);
+
+      onUpdateMapData({
+        symbols: renumbered,
+        farmlandBlocks: mode === 'replace' ? res.farmlands : [...(mapData.farmlandBlocks || []), ...res.farmlands],
+        waterBodies: mode === 'replace' ? res.waterBodies : [...(mapData.waterBodies || []), ...res.waterBodies],
+        forests: mode === 'replace' ? res.forests : [...(mapData.forests || []), ...res.forests],
+        landmarks: mode === 'replace' ? res.landmarks : [...(mapData.landmarks || []), ...res.landmarks],
+        landuseAreas: mode === 'replace' ? res.landuseAreas : [...(mapData.landuseAreas || []), ...res.landuseAreas],
+      });
+
+      const summary = partitionSymbolsToBlocks(renumbered, activeBlocks);
+      const summaryTxt = Array.from(summary.entries())
+        .map(([id, count]) => {
+          const blk = activeBlocks.find(b => b.id === id);
+          return `Block ${blk?.label || id}: ${count}`;
+        })
+        .join(', ');
+
+      setDetectMsg(`✅ Area Scan complete! Found ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farmlands, ${res.waterBodies.length} water bodies. (${summaryTxt})`);
+    } catch (err) {
+      console.error('Auto-detect failed:', err);
+      setDetectMsg('⚠️ Area scan timed out or failed. You can add features manually.');
+    } finally {
+      setDetectLoading(false);
+    }
+  }
+
   function populateBlock() {
     if (selIds.length !== 1) return;
     const blk = blocks.find(b => b.id === selIds[0]); if (!blk) return;
@@ -1687,6 +1916,17 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
               <div className="flex flex-col gap-2.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <button onClick={detectBlocksAction} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors" style={{ minHeight: '40px' }}>🔍 Detect blocks</button>
+                  <button
+                    onClick={() => setShowDetectModal(p => !p)}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                      showDetectModal
+                        ? 'bg-blue-700 text-white shadow-inner'
+                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white'
+                    }`}
+                    style={{ minHeight: '40px' }}
+                  >
+                    🤖 AI &amp; Area Detect
+                  </button>
                   <label className="flex items-center gap-1.5 text-xs text-gray-600 font-semibold bg-gray-50 px-2.5 py-1 rounded-lg border" title="Assumed road width carved between blocks">
                     Road buffer
                     <input type="range" min={3} max={20} step={1} value={roadWidth} onChange={e => setRoadWidth(parseInt(e.target.value))} className="w-16 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
@@ -1743,6 +1983,82 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                 </div>
 
                 {blkMsg && <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg font-medium">{blkMsg}</p>}
+
+                {/* AI & OSM Area Detection Panel */}
+                {showDetectModal && (
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-3.5 flex flex-col gap-3 animate-in fade-in duration-200 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                        🤖 AI &amp; OSM Area Feature Detection (Block-Divided)
+                      </h4>
+                      <button onClick={() => setShowDetectModal(false)} className="text-xs font-bold text-gray-500 hover:text-gray-700 px-2 py-0.5 cursor-pointer">✕ Close</button>
+                    </div>
+
+                    <div className="flex items-center gap-3 flex-wrap text-xs">
+                      <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-blue-200">
+                        <span className="font-bold text-gray-700">Target Area:</span>
+                        <select
+                          value={detectTarget}
+                          onChange={e => setDetectTarget(e.target.value as any)}
+                          className="font-semibold text-blue-900 bg-transparent focus:outline-none cursor-pointer"
+                        >
+                          <option value="all">🗺️ Entire HLB (All Blocks)</option>
+                          {selIds.length === 1 && (
+                            <option value="selected">📂 Selected Block ({blocks.find(b => b.id === selIds[0])?.label || 'Block'})</option>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-blue-200">
+                        <span className="font-bold text-gray-700">Mode:</span>
+                        <select
+                          value={mergeMode}
+                          onChange={e => setMergeMode(e.target.value as any)}
+                          className="font-semibold text-blue-900 bg-transparent focus:outline-none cursor-pointer"
+                        >
+                          <option value="append">➕ Merge / Append (Keep existing)</option>
+                          <option value="replace">🔄 Replace (Overwrite block symbols)</option>
+                        </select>
+                      </div>
+
+                      <label className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-lg border border-blue-200 font-semibold text-gray-800 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={useGoogleBuildings}
+                          onChange={e => setUseGoogleBuildings(e.target.checked)}
+                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                        />
+                        📡 Include Google Open Buildings
+                      </label>
+                    </div>
+
+    <div className="flex items-center gap-2 flex-wrap">
+      <button
+        onClick={() => fetchBuildingsForCanvas(detectTarget === 'selected' ? selIds[0] : undefined, useGoogleBuildings, mergeMode)}
+        disabled={detectLoading}
+        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+        style={{ minHeight: '38px' }}
+      >
+        {detectLoading ? '⏳ Fetching Buildings...' : '🏠 Fetch Buildings (Google/OSM)'}
+      </button>
+
+      <button
+        onClick={() => autoDetectAreaForCanvas(detectTarget === 'selected' ? selIds[0] : undefined, mergeMode)}
+        disabled={detectLoading}
+        className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+        style={{ minHeight: '38px' }}
+      >
+        {detectLoading ? '⏳ Scanning Area...' : '🗺️ Full Area Feature Scan (Water, Farms, POIs)'}
+      </button>
+    </div>
+
+                    {detectMsg && (
+                      <div className="text-xs font-medium bg-white/80 border border-blue-200 rounded-lg p-2 text-blue-950">
+                        {detectMsg}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Manual Numbering Panel */}
                 {manualNumMode && (
@@ -1852,6 +2168,16 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
                       <>
                         <button onClick={renameBlock} className="px-3 py-1.5 bg-white border border-blue-300 text-blue-900 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors shadow-xs" style={{ minHeight: '36px' }}>✏️ Rename</button>
                         <button onClick={() => { setCutting(true); setCutPts([]); }} className="px-3 py-1.5 bg-white border border-blue-300 text-blue-900 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors shadow-xs" style={{ minHeight: '36px' }}>✂️ Split Block</button>
+                        <button
+                          onClick={() => {
+                            setShowDetectModal(true);
+                            setDetectTarget('selected');
+                          }}
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer"
+                          style={{ minHeight: '36px' }}
+                        >
+                          🤖 Detect for Block {blocks.find(b => b.id === selIds[0])?.label || ''}
+                        </button>
                         <div className="flex items-center gap-1.5 bg-white border border-blue-300 px-3 py-1.5 rounded-lg text-xs font-bold text-blue-900" style={{ minHeight: '36px' }}>
                           <span>Size: {Math.round((blocks.find(b => b.id === selIds[0])?.symbolSizeMultiplier ?? 1.0) * 100)}%</span>
                           <button onClick={() => adjustBlockSizeMultiplier(0.1)} className="px-1.5 py-0.5 hover:bg-blue-100 rounded text-blue-800 font-black border border-blue-250 ml-1">+</button>

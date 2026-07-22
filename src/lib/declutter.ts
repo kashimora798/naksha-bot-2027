@@ -200,6 +200,13 @@ export function buildRotationMap(
   return map;
 }
 
+export function localCellSize(sym: PlacedSymbol, all: PlacedSymbol[], k = 5): number {
+  const dists = all.filter(s => s.id !== sym.id)
+    .map(s => distMeters(sym, s)).sort((a, b) => a - b).slice(0, k);
+  const avgKnn = dists.reduce((a, b) => a + b, 0) / (dists.length || 1);
+  return Math.max(14, Math.min(28, avgKnn * 0.9));
+}
+
 // ═══════════════════════════════════════════════════════════
 // MASTER DECLUTTER — Grid snap → Collision push → Done
 // ═══════════════════════════════════════════════════════════
@@ -211,6 +218,8 @@ export function declutterSymbols(
   options?: { gridSize?: number; minDist?: number }
 ): PlacedSymbol[] {
   if (symbols.length < 2) return symbols;
+
+  const origMap = new Map(symbols.map(s => [s.id, { lat: s.lat, lng: s.lng }]));
 
   // Adaptive grid size based on density — MUCH more aggressive now
   const area = boundary.length >= 3 ? approxArea(boundary) : 10000;
@@ -227,6 +236,15 @@ export function declutterSymbols(
 
   // Step 2: Collision resolution (handles any remaining overlaps)
   result = resolveCollisions(result, minDist, 15);
+
+  // Step 3: Flag displacement with leaderFrom if pushed > 1.5x icon size (~18m)
+  result = result.map(s => {
+    const orig = origMap.get(s.id);
+    if (orig && distMeters({ lat: s.lat, lng: s.lng }, orig) > 18) {
+      return { ...s, leaderFrom: { lat: orig.lat, lng: orig.lng } };
+    }
+    return s;
+  });
 
   return result;
 }

@@ -391,6 +391,37 @@ export default function DashboardScreen({
 
   return (
     <AppShell activeTab={activeTab} onNavigate={handleAppShellNavigate} userEmail={user?.email}>
+      {/* ── Contact Marquee Banner ── */}
+      <div className="w-full bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 text-white overflow-hidden py-2 shadow-md" style={{ position: 'sticky', top: 0, zIndex: 60 }}>
+        <div className="marquee-container" style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            animation: 'marqueeScroll 28s linear infinite',
+            gap: '3rem',
+            paddingRight: '3rem'
+          }}>
+            {[0, 1].map(i => (
+              <span key={i} className="text-[13px] font-semibold flex items-center gap-6">
+                <span>📞 किसी भी सहायता के लिए संपर्क करें — Any Help &amp; Assistance:</span>
+                <a href="tel:9696240590" className="font-black text-yellow-300 hover:text-yellow-100 underline underline-offset-2">📱 9696240590</a>
+                <span className="text-white/60">|</span>
+                <a href="tel:8318810984" className="font-black text-yellow-300 hover:text-yellow-100 underline underline-offset-2">📱 8318810984</a>
+                <span className="text-white/80 font-bold italic">~ Kratagya SINGH (HLB NakshaBot Creator)</span>
+                <span className="text-white/50 mx-2">✦</span>
+                <span>🕐 We are ready to answer your problems anytime!</span>
+                <span className="text-white/50 mx-4">✦✦✦</span>
+              </span>
+            ))}
+          </div>
+        </div>
+        <style>{`
+          @keyframes marqueeScroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+          }
+        `}</style>
+      </div>
       <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         {/* Header Bar */}
         <header className="flex items-center justify-between pb-4 border-b border-[var(--color-hairline)]">
@@ -681,6 +712,15 @@ export default function DashboardScreen({
           <p className="text-xs text-[var(--color-ink-secondary)] leading-relaxed">
             Upload an official GeoPDF map file and enter your 4-digit HLB code to auto-extract boundary coordinates.
           </p>
+          <a
+            href="https://youtube.com/shorts/xr5ordg1r-k?feature=share"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-xs text-indigo-600 font-bold bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-xl hover:bg-indigo-100 transition-colors w-full justify-center"
+          >
+            <span>🎬 What is GeoPDF & How to Download? (Watch Video)</span>
+            <span className="text-xs">↗</span>
+          </a>
           <Input
             label="HLB Code (4 digits)"
             placeholder="e.g. 0042"

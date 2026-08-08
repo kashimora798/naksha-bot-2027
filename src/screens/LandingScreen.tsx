@@ -105,7 +105,7 @@ export default function LandingScreen() {
       </Helmet>
       
       {/* ─── NAVIGATION ─── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-[var(--color-surface)]/80 backdrop-blur-md border-b border-[var(--color-hairline)]">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-[var(--color-surface)]/80 backdrop-blur-md border-b border-[var(--color-hairline)]" style={{ top: '36px' }}>
         <div className="max-w-[1120px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/logo.png" alt="NakshaBot Logo" className="w-8 h-8 object-contain" />
@@ -126,8 +126,40 @@ export default function LandingScreen() {
         </div>
       </nav>
 
+      {/* ─── CONTACT MARQUEE ─── */}
+      <div className="fixed top-0 left-0 right-0 z-[51] bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 text-white overflow-hidden py-1.5 shadow-md" style={{ height: '36px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap', height: '100%' }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            animation: 'marqueeScrollLanding 30s linear infinite',
+            gap: '3rem',
+            paddingRight: '3rem'
+          }}>
+            {[0, 1].map(i => (
+              <span key={i} className="text-[12px] font-semibold flex items-center gap-5">
+                <span>📞 किसी भी समस्या के लिए — Any Help &amp; Assistance:</span>
+                <a href="tel:9696240590" className="font-black text-yellow-300 hover:text-yellow-100">📱 9696240590</a>
+                <span className="text-white/50">|</span>
+                <a href="tel:8318810984" className="font-black text-yellow-300 hover:text-yellow-100">📱 8318810984</a>
+                <span className="text-white/80 font-bold italic">~ Kratagya SINGH (HLB NakshaBot Creator)</span>
+                <span className="text-white/40 mx-3">✦✦✦</span>
+                <span>🕐 हम हर समस्या का जवाब देने के लिए तैयार हैं!</span>
+                <span className="text-white/40 mx-4">✦✦✦</span>
+              </span>
+            ))}
+          </div>
+        </div>
+        <style>{`
+          @keyframes marqueeScrollLanding {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+          }
+        `}</style>
+      </div>
+
       {/* ─── HERO SECTION ─── */}
-      <section className="relative pt-32 pb-20 lg:pt-44 lg:pb-28 overflow-hidden">
+      <section className="relative pt-40 pb-20 lg:pt-52 lg:pb-28 overflow-hidden">
         <div className="max-w-[1120px] mx-auto px-6 relative z-10 text-center">
           <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-[var(--radius-full)] bg-[var(--color-accent-tint)] text-[var(--color-accent)] font-semibold text-xs border border-indigo-200">

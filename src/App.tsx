@@ -51,7 +51,6 @@ export default function App() {
   // Donation popup states
   const [showDonationPopup, setShowDonationPopup] = useState(false);
   const [popupSource, setPopupSource] = useState<'login' | 'print' | null>(null);
-  const hasShownOnLogin = useRef(false);
 
   const update = useCallback((u: Partial<MapData>) => setMapData(p => ({ ...p, ...u })), []);
   // inMap: true for all map-workspace steps (3–6). MapWorkspace is ALWAYS mounted
@@ -305,16 +304,7 @@ export default function App() {
 
   useEffect(() => {
     if (isSignedIn) {
-      if (step === 0 && !hasShownOnLogin.current) {
-        // Check if muted for 24h
-        const mutedUntil = localStorage.getItem('donation_popup_muted_until');
-        const isMuted = mutedUntil && Number(mutedUntil) > Date.now();
-        if (!isMuted) {
-          setPopupSource('login');
-          setShowDonationPopup(true);
-        }
-        hasShownOnLogin.current = true;
-      } else if (step === 8) {
+      if (step === 8) {
         setPopupSource('print');
         setShowDonationPopup(true);
       }

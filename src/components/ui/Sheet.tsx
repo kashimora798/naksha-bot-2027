@@ -3,7 +3,7 @@ import { useMediaQuery } from '../../lib/useMediaQuery';
 
 export interface SheetProps {
   open: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   title?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
@@ -28,7 +28,7 @@ export const Sheet: React.FC<SheetProps> = ({
 
   // Close on ESC key
   useEffect(() => {
-    if (!open) return;
+    if (!open || !onClose) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -71,7 +71,7 @@ export const Sheet: React.FC<SheetProps> = ({
     if (!isDragging || isDesktop) return;
     setIsDragging(false);
     const sheetHeight = sheetRef.current?.offsetHeight || 300;
-    if (dragY > sheetHeight * 0.3) {
+    if (dragY > sheetHeight * 0.3 && onClose) {
       onClose();
     }
     setDragY(0);
@@ -96,7 +96,7 @@ export const Sheet: React.FC<SheetProps> = ({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-md transition-opacity"
-        onClick={onClose}
+        onClick={onClose ? onClose : undefined}
       />
 
       {/* Sheet Content Panel */}
@@ -118,7 +118,7 @@ export const Sheet: React.FC<SheetProps> = ({
               ) : (
                 title
               )}
-              {showCloseButton && (
+              {showCloseButton && onClose && (
                 <button
                   onClick={onClose}
                   aria-label="Close"
@@ -166,7 +166,7 @@ export const Sheet: React.FC<SheetProps> = ({
               ) : (
                 title
               )}
-              {showCloseButton && (
+              {showCloseButton && onClose && (
                 <button
                   onClick={onClose}
                   aria-label="Close"

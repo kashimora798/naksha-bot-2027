@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { MapData, Block, Coordinate } from '../types';
 import { supabase } from '../lib/supabase';
+import DonationPopup from '../components/DonationPopup';
 import { renderMapToCanvas, exportBlockPDF } from '../lib/pdf-export';
 import { captureSatelliteForBoundary, captureFullSatellite, generateSurveyMapFromBoundary, fetchImageAsBase64, API_BASE, generateChunkedSurveyMaps } from '../lib/survey-api';
 import { getBbox } from '../lib/geo';
@@ -60,7 +61,7 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
   const [sheetSize, setSheetSize] = useState<'a4' | 'a3'>(mapData.sheetSize || 'a4');
   const [showSidebar, setShowSidebar] = useState(false);
   const [tourOpen, setTourOpen] = useState(true);
-  const [includeBlocks, setIncludeBlocks] = useState(true);
+  const [includeBlocks, setIncludeBlocks] = useState(false);
   const [inkMode, setInkMode] = useState<'color' | 'black' | 'blue'>('color');
   const [hideSerpentineArrows, setHideSerpentineArrows] = useState(false);
   const [hideHouseNumbers, setHideHouseNumbers] = useState(false);
@@ -512,332 +513,83 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
 
   // ─── SUCCESS ─────────────────────────────────────────────
   if (exported) {
+    const waShareMsg = `मैंने एक साथी छात्र की मदद की 🙏\n\nNakshaBot से HLB-${mapData.hlbNumber || '?'} का नक्शा मिनटों में तैयार हो गया — बिल्कुल मुफ्त और Census 2027 के लिए ready!\n\nआप भी try करें 👉 https://examsetu.dev\n\n(Kratagya SINGH के अकेले बनाए इस tool ने घंटों का काम बचाया)`;
+
     return (
-      <div className="min-h-screen bg-gradient-to-b from-green-50 to-white flex flex-col items-center justify-start px-4 py-8 overflow-auto">
-        <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mb-4 shadow-lg"><span className="text-white text-3xl">✓</span></div>
-        <h2 className="text-xl font-bold text-gray-800 font-public-sans mb-1">नक्शा तैयार है!</h2>
-        <p className="text-sm text-gray-500 mb-4">PDF downloaded — {totalPages} pages</p>
-        <div className="w-full max-w-xs bg-white rounded-2xl shadow-lg p-5 text-center space-y-3">
-          <p className="text-sm text-gray-600">HLB_{mapData.hlbNumber}_Naksha_2027.pdf</p>
-          {hasBlocks && (
-            includeBlocks ? (
-              <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-2">{blocks.length} blocks × 2 pages + overview = {totalPages} pages</p>
-            ) : (
-              <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-2">Overview only = {totalPages} pages</p>
-            )
-          )}
-          {selectedAiCount > 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ {selectedAiCount} AI Survey Map{selectedAiCount > 1 ? 's' : ''} included</p>}
-          {aiImg && selectedAiCount === 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ AI Survey Map included</p>}
-          <div className="bg-amber-50 rounded-lg p-2"><p className="text-xs text-amber-700">💡 Print at cyber café — A4 {orient}</p></div>
-          <button onClick={() => { setDonationStage('ask'); setShowDonation(true); }} className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold font-public-sans shadow" style={{ height: 52 }}>Return to Dashboard</button>
-          <button onClick={() => handleExport()} className="w-full py-2 border-2 border-orange-300 text-orange-600 rounded-xl text-sm font-semibold">📥 Download Again</button>
+      <div className="min-h-screen bg-gradient-to-b from-green-50 via-white to-amber-50 flex flex-col items-center justify-start px-4 py-8 overflow-auto">
+        {/* Animated Check */}
+        <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center mb-4 shadow-xl" style={{ animation: 'bounceIn 0.5s ease-out' }}>
+          <span className="text-white text-4xl">✓</span>
         </div>
-
-        {/* Donation flow — 3 stages, Hindi-first with English toggle */}
-        {showDonation && (
-          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-
-            {/* Stage 1: Donate ask */}
-            {donationStage === 'ask' && (
-              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-                <div className="bg-gradient-to-br from-orange-500 to-amber-500 px-6 py-6 text-white text-center">
-                  <div className="text-4xl mb-2">🙏</div>
-                  {donationHindi ? (
-                    <>
-                      <h3 className="text-xl font-black font-public-sans">NakshaBot बिल्कुल मुफ्त है</h3>
-                      <p className="text-sm text-white/85 mt-1">एक छात्र ने अकेले बनाया है</p>
-                    </>
-                  ) : (
-                    <>
-                      <h3 className="text-xl font-black font-public-sans">NakshaBot is 100% Free</h3>
-                      <p className="text-sm text-white/85 mt-1">Built solo by a student</p>
-                    </>
-                  )}
-                </div>
-                <div className="px-6 py-5 space-y-3 text-sm text-slate-700">
-                  {donationHindi ? (
-                    <>
-                      <p className="leading-relaxed">
-                        मैं एक <strong>अकेला विद्यार्थी</strong> हूँ — कोई टीम नहीं, कोई फंडिंग नहीं। यह पूरा ऐप मैंने खुद बनाया है।
-                      </p>
-                      <p className="leading-relaxed">
-                        जो नक्शा आपने अभी बनाया, उसे हाथ से बनाने में <strong>3–4 घंटे</strong> लगते और cyber café में <strong>₹50–100</strong> का खर्च होता। NakshaBot ने यह मिनटों में किया।
-                      </p>
-                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-orange-500 rounded-r-xl p-3.5 my-2.5 text-left">
-                        <p className="text-orange-950 text-xs font-bold leading-relaxed">
-                          📢 "आपकी छोटी-छोटी मदद से किसी की बहुत बड़ी मदद हो सकती है, थोड़ा सा दिल बड़ा करके एक छात्र के सपनों को सहारा दें।"
-                        </p>
-                      </div>
-                      <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
-                        <p className="text-xs text-orange-800 font-semibold">सर्वर का खर्च असली है। ₹10 भी बहुत मदद करता है।</p>
-                        <p className="text-[11px] text-orange-600 mt-0.5">हर रुपया इसे सबके लिए मुफ्त रखने में जाता है।</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="leading-relaxed">
-                        I'm a <strong>student who built this entire app solo</strong> — no team, no funding, no company behind it.
-                      </p>
-                      <p className="leading-relaxed">
-                        The map you just downloaded would take <strong>3–4 hours by hand</strong> and cost ₹50–100 at a cyber café. NakshaBot did it in minutes, free, for every enumerator in India.
-                      </p>
-                      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-orange-500 rounded-r-xl p-3.5 my-2.5 text-left">
-                        <p className="text-orange-950 text-xs font-bold leading-relaxed">
-                          📢 "Your small contributions can provide huge support to someone in need. Open your heart a little to help a student's dreams come true."
-                        </p>
-                      </div>
-                      <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-center">
-                        <p className="text-xs text-orange-800 font-semibold">Server costs are real. Even ₹10 helps a lot.</p>
-                        <p className="text-[11px] text-orange-600 mt-0.5">Every rupee goes toward keeping NakshaBot free.</p>
-                      </div>
-                    </>
-                  )}
-
-                  {/* QR Code Section */}
-                  <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-2xl border border-slate-100/80 my-1">
-                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      {donationHindi ? 'QR कोड स्कैन करके पे करें' : 'Scan QR Code to Pay'}
-                    </p>
-                    <img 
-                      src="/images/donation_qr.jpg" 
-                      alt="UPI QR Code" 
-                      className="w-40 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
-                    />
-                  </div>
-
-                  <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
-                    {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
-                  </button>
-
-                  {/* Backup Manual Payment Methods (inside scroll area) */}
-                  <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-left">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
-                      {donationHindi ? '⚠️ QR काम न करने पर बैकअप भुगतान विकल्प' : '⚠️ Manual Pay Option (If QR Fails)'}
-                    </p>
-                    <div className="flex flex-col gap-1.5 text-xs font-mono">
-                      <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
-                        <span className="text-[10px] font-bold text-slate-400">UPI ID</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-700 font-bold select-all text-[11px]">8318810984-1@nyes</span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopy('8318810984-1@nyes', 'upi')}
-                            className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
-                          >
-                            {copiedText === 'upi' ? 'Copied!' : 'Copy'}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
-                        <span className="text-[10px] font-bold text-slate-400">PHONE</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-700 font-bold select-all text-[11px]">8318810984</span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopy('8318810984', 'phone')}
-                            className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
-                          >
-                            {copiedText === 'phone' ? 'Copied!' : 'Copy'}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="px-6 pb-6 space-y-2">
-                  {isMobile ? (
-                    <a
-                      href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
-                      onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
-                      className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
-                    >
-                      {donationHindi ? 'UPI से Donate करें' : 'Donate via UPI'}
-                    </a>
-                  ) : (
-                    <div className="w-full p-3.5 bg-rose-50 border border-rose-100 rounded-2xl text-[11px] text-rose-800 font-semibold leading-relaxed text-center">
-                      ⚠️ {donationHindi 
-                        ? 'डेस्कटॉप पर कोई UPI ऐप नहीं मिला (No UPI App Available)। कृपया अपने मोबाइल से ऊपर दिए गए QR कोड को स्कैन करके भुगतान करें।' 
-                        : 'No UPI apps available on desktop. Please scan the QR code above using any UPI app on your phone.'}
-                    </div>
-                  )}
-                  <p className="text-center text-[10px] text-slate-400">UPI: 8318810984-1@nyes</p>
-                  <button onClick={() => setDonationStage('appreciate')} className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors">
-                    {donationHindi ? 'बाद में' : 'Maybe later'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Stage 2: Appreciate — heartfelt, zero guilt */}
-            {donationStage === 'appreciate' && (
-              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-                <div className="bg-gradient-to-br from-slate-700 to-slate-800 px-6 py-7 text-white text-center">
-                  <div className="text-5xl mb-3">✨</div>
-                  {donationHindi ? (
-                    <>
-                      <h3 className="text-xl font-black font-public-sans leading-snug">आपने आज कुछ असली किया।</h3>
-                      <p className="text-sm text-white/80 mt-2 leading-relaxed">घंटों का काम मिनटों में — यही इस ऐप का मकसद है।</p>
-                    </>
-                  ) : (
-                    <>
-                      <h3 className="text-xl font-black font-public-sans leading-snug">You built something real today.</h3>
-                      <p className="text-sm text-white/80 mt-2 leading-relaxed">Hours of work done in minutes — that's what this is for.</p>
-                    </>
-                  )}
-                </div>
-                <div className="px-6 py-5 text-sm text-slate-600 space-y-3">
-                  {donationHindi ? (
-                    <>
-                      <p className="leading-relaxed">
-                        मैंने महीनों इस ऐप को बनाने में लगाए — Class 12 की पढ़ाई के साथ-साथ। ताकि India के Census 2027 के ground workers के लिए काम आसान हो।
-                      </p>
-                      <p className="leading-relaxed text-slate-500">
-                        कोई दबाव नहीं। बस इतना जानिए — आपका हर डाउनलोड बताता है कि यह काम मायने रखता है। धन्यवाद।
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="leading-relaxed">
-                        I spent months building this alongside Class 12 studies — so India's Census 2027 ground workers have tools that actually work.
-                      </p>
-                      <p className="leading-relaxed text-slate-500">
-                        No pressure at all. Just know — every download tells me this work matters. Thank you for using it.
-                      </p>
-                    </>
-                  )}
-
-                  {/* QR Code Section */}
-                  <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-2xl border border-slate-100/80 my-1">
-                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      {donationHindi ? 'QR कोड स्कैन करके पे करें' : 'Scan QR Code to Pay'}
-                    </p>
-                    <img 
-                      src="/images/donation_qr.jpg" 
-                      alt="UPI QR Code" 
-                      className="w-40 h-auto rounded-2xl border border-slate-200/80 shadow-sm hover:scale-[1.02] transition-transform duration-200" 
-                    />
-                  </div>
-
-                  <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
-                    {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
-                  </button>
-
-                  {/* Backup Manual Payment Methods (inside scroll area) */}
-                  <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-left">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">
-                      {donationHindi ? '⚠️ QR काम न करने पर बैकअप भुगतान विकल्प' : '⚠️ Manual Pay Option (If QR Fails)'}
-                    </p>
-                    <div className="flex flex-col gap-1.5 text-xs font-mono">
-                      <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
-                        <span className="text-[10px] font-bold text-slate-400">UPI ID</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-700 font-bold select-all text-[11px]">8318810984-1@nyes</span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopy('8318810984-1@nyes', 'upi')}
-                            className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
-                          >
-                            {copiedText === 'upi' ? 'Copied!' : 'Copy'}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-center bg-white px-3 py-1.5 rounded-xl border border-slate-100/60 shadow-sm">
-                        <span className="text-[10px] font-bold text-slate-400">PHONE</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-700 font-bold select-all text-[11px]">8318810984</span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopy('8318810984', 'phone')}
-                            className="text-[9px] bg-orange-500 hover:bg-orange-600 text-white font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer active:scale-95"
-                          >
-                            {copiedText === 'phone' ? 'Copied!' : 'Copy'}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="px-6 pb-6 space-y-2">
-                  {isMobile ? (
-                    <a
-                      href="upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&cu=INR"
-                      onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
-                      className="block w-full py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
-                    >
-                      {donationHindi ? 'ठीक है, contribute करूँगा — UPI' : 'Okay, I\'ll contribute — UPI'}
-                    </a>
-                  ) : (
-                    <div className="w-full p-3.5 bg-rose-50 border border-rose-100 rounded-2xl text-[11px] text-rose-800 font-semibold leading-relaxed text-center">
-                      ⚠️ {donationHindi 
-                        ? 'डेस्कटॉप पर कोई UPI ऐप नहीं मिला (No UPI App Available)। कृपया अपने मोबाइल से ऊपर दिए गए QR कोड को स्कैन करके भुगतान करें।' 
-                        : 'No UPI apps available on desktop. Please scan the QR code above using any UPI app on your phone.'}
-                    </div>
-                  )}
-                  <p className="text-center text-[10px] text-slate-400 mt-1">UPI: 8318810984-1@nyes</p>
-                  <button onClick={() => setDonationStage('share')} className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors">
-                    {donationHindi ? 'बाद में' : 'Maybe later'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Stage 3: Share on WhatsApp */}
-            {donationStage === 'share' && (
-              <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-                <div className="bg-gradient-to-br from-green-600 to-emerald-600 px-6 py-7 text-white text-center">
-                  <div className="text-5xl mb-3">📲</div>
-                  {donationHindi ? (
-                    <>
-                      <h3 className="text-xl font-black font-public-sans leading-snug">एक छोटी सी मदद?</h3>
-                      <p className="text-sm text-white/85 mt-2 leading-relaxed">जो अभी भी हाथ से नक्शा बना रहे हैं — उन्हें बता दीजिए।</p>
-                    </>
-                  ) : (
-                    <>
-                      <h3 className="text-xl font-black font-public-sans leading-snug">One small favour?</h3>
-                      <p className="text-sm text-white/85 mt-2 leading-relaxed">Know someone still drawing maps by hand? Send them this.</p>
-                    </>
-                  )}
-                </div>
-                <div className="px-6 py-5 text-sm text-slate-600 space-y-3">
-                  {donationHindi ? (
-                    <p className="leading-relaxed">
-                      NakshaBot सबके लिए मुफ्त है। जितने ज़्यादा field workers इसे जानेंगे, Census 2027 का काम उतना बेहतर होगा।
-                    </p>
-                  ) : (
-                    <p className="leading-relaxed">
-                      NakshaBot is free for everyone. The more field workers who use it, the better India's Census 2027 data gets.
-                    </p>
-                  )}
-                  <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 text-xs text-green-900 font-medium leading-relaxed">
-                    "NakshaBot बना देता है HLB नक्शा मिनटों में — Census 2027 के लिए, बिल्कुल मुफ्त।<br/>
-                    👉 examsetu.dev"
-                  </div>
-                  <button onClick={() => setDonationHindi(h => !h)} className="w-full py-1.5 text-[11px] text-slate-400 border border-slate-100 rounded-lg hover:bg-slate-50 transition-colors">
-                    {donationHindi ? 'Read in English →' : 'हिंदी में पढ़ें →'}
-                  </button>
-                </div>
-                <div className="px-6 pb-6 space-y-2">
-                  <a
-                    href={`https://wa.me/?text=${encodeURIComponent('NakshaBot बना देता है HLB नक्शा मिनटों में — Census 2027 के लिए, बिल्कुल मुफ्त।\n👉 https://examsetu.dev')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
-                    className="block w-full py-3.5 bg-[#25D366] text-white text-center font-black text-sm rounded-2xl shadow-lg active:scale-[0.98] transition-all"
-                  >
-                    {donationHindi ? 'WhatsApp पर Share करें' : 'Share on WhatsApp'}
-                  </a>
-                  <button
-                    onClick={() => { setShowDonation(false); onExitToDashboard?.(); }}
-                    className="w-full py-2 text-slate-400 text-xs font-medium rounded-xl hover:bg-slate-50 transition-colors"
-                  >
-                    {donationHindi ? 'Dashboard पर जाएँ' : 'Go to Dashboard'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-          </div>
+        <h2 className="text-2xl font-black text-gray-800 font-public-sans mb-1">
+          वाह! नक्शा तैयार है! 🎉
+        </h2>
+        <p className="text-sm text-gray-500 mb-1 font-medium">HLB-{mapData.hlbNumber || 'Draft'} — {totalPages} pages downloaded</p>
+        {mapData.enumeratorName && (
+          <p className="text-xs text-indigo-600 font-semibold mb-4 bg-indigo-50 px-3 py-1 rounded-full">
+            🙋 बनाया: {mapData.enumeratorName}
+          </p>
         )}
+
+        <div className="w-full max-w-sm space-y-3">
+          {/* File card */}
+          <div className="bg-white rounded-2xl shadow-md p-4 text-center space-y-2 border border-green-100">
+            <p className="text-sm font-bold text-gray-700 font-jetbrains-mono">HLB_{mapData.hlbNumber}_Naksha_2027.pdf</p>
+            {hasBlocks && (
+              includeBlocks ? (
+                <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-2">{blocks.length} blocks × 2 pages + overview = {totalPages} pages</p>
+              ) : (
+                <p className="text-xs text-blue-600 bg-blue-50 rounded-lg p-2">Overview only = {totalPages} pages</p>
+              )
+            )}
+            {selectedAiCount > 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ {selectedAiCount} AI Survey Map{selectedAiCount > 1 ? 's' : ''} included</p>}
+            {aiImg && selectedAiCount === 0 && <p className="text-xs text-purple-600 bg-purple-50 rounded-lg p-2">✨ AI Survey Map included</p>}
+            <div className="bg-amber-50 rounded-lg p-2"><p className="text-xs text-amber-700">💡 Print at cyber café — A4 {orient}</p></div>
+          </div>
+
+          {/* WhatsApp Share Card */}
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-4 space-y-2.5 shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">📲</span>
+              <p className="text-sm font-black text-green-800">साथियों को बताएं — Share करें!</p>
+            </div>
+            <div className="bg-white border border-green-100 rounded-xl p-3 text-xs text-slate-600 leading-relaxed italic shadow-inner">
+              "मैंने एक साथी छात्र की मदद की 🙏 — NakshaBot से HLB नक्शा मिनटों में!<br/>
+              Try it free: <span className="text-green-600 font-bold not-italic">examsetu.dev</span>"
+            </div>
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(waShareMsg)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 bg-[#25D366] hover:bg-[#1EBE5E] text-white text-center font-black text-sm rounded-xl shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.999 0C5.373 0 0 5.373 0 12c0 2.117.551 4.102 1.514 5.831L.054 23.617a.75.75 0 00.917.921l5.91-1.476A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 11.999 0zm.001 21.75a9.693 9.693 0 01-4.932-1.35l-.353-.21-3.658.915.961-3.55-.229-.364A9.694 9.694 0 012.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/></svg>
+              WhatsApp पर Share करें
+            </a>
+            <p className="text-center text-[10px] text-green-600 font-medium">🔄 WhatsApp forwarding = free acquisition for NakshaBot</p>
+          </div>
+
+          {/* Impact line */}
+          <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 text-center space-y-1">
+            <p className="text-xs font-black text-orange-900">💡 आपका ₹100 = Kratagya की एक हफ्ते की स्टेशनरी ✏️📒</p>
+            <p className="text-[11px] text-orange-700">₹50 = एक दिन का लंच | ₹500 = एक महीने का इंटरनेट | ₹1000 = परीक्षा फॉर्म की फीस</p>
+          </div>
+
+          {/* CTAs */}
+          <button onClick={() => { setDonationStage('ask'); setShowDonation(true); }} className="w-full py-3.5 bg-orange-500 text-white rounded-xl font-black font-public-sans shadow-lg hover:bg-orange-600 active:scale-[0.98] transition-all" style={{ height: 52 }}>
+            🙏 Support Kratagya (Donate)
+          </button>
+          <button onClick={() => handleExport()} className="w-full py-2 border-2 border-orange-300 text-orange-600 rounded-xl text-sm font-semibold hover:bg-orange-50 transition-colors">📥 Download Again</button>
+        </div>
+        <style>{`@keyframes bounceIn { 0% { transform: scale(0.3); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }`}</style>
+
+        {/* Unified Donation Popup */}
+        <DonationPopup
+          isOpen={showDonation}
+          onClose={() => setShowDonation(false)}
+          onMute24h={() => setShowDonation(false)}
+          isPrintArea={true}
+        />
 
         {showFeedback && (
           <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">

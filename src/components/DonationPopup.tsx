@@ -180,6 +180,19 @@ const STATE_LANG_MAP: Record<string, LangKey> = {
   'Tamil Nadu': 'ta', 'TN': 'ta',
   'Assam': 'as', 'AS': 'as',
   'Manipur': 'mni', 'MN': 'mni',
+  'Uttar Pradesh': 'hi', 'UP': 'hi',
+  'Bihar': 'hi', 'BR': 'hi',
+  'Madhya Pradesh': 'hi', 'MP': 'hi',
+  'Rajasthan': 'hi', 'RJ': 'hi',
+  'Haryana': 'hi', 'HR': 'hi',
+  'Delhi': 'hi', 'DL': 'hi',
+  'Jharkhand': 'hi', 'JH': 'hi',
+  'Chhattisgarh': 'hi', 'CG': 'hi',
+  'Himachal Pradesh': 'hi', 'HP': 'hi',
+  'Uttarakhand': 'hi', 'UK': 'hi',
+  'Punjab': 'hi', 'PB': 'hi',
+  'Gujarat': 'hi', 'GJ': 'hi',
+  'Maharashtra': 'hi', 'MH': 'hi',
 };
 
 const fixedAmounts = [50, 100, 500, 1000];
@@ -187,7 +200,7 @@ const WA_SHARE_TEXT = `मैंने एक साथी छात्र क�
 const VIDEO_URL = "https://ybrtqteoagkptglqedsw.supabase.co/storage/v1/object/sign/t/Video%20Project%201%20(1)%20(1)%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lM2I3OGM3OC1lNTFlLTQ1MzEtOTViMC1iY2VkMTMwZGE2ZjAiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ0L1ZpZGVvIFByb2plY3QgMSAoMSkgKDEpICgxKS5tcDQiLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzg2MTk2OTQ3LCJleHAiOjE4MTc3MzI5NDd9.GcUdabBxHfEFMqu9Z8WNIIwcqHzmEH_dx8On46weUZc";
 
 export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea }: Props) {
-  const [lang, setLang] = useState<LangKey>('hi');
+  const [lang, setLang] = useState<LangKey>('en');
   const [customAmount, setCustomAmount] = useState('100');
   const [customNote, setCustomNote] = useState('');
   const [copiedText, setCopiedText] = useState<'upi' | null>(null);
@@ -210,10 +223,10 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
         .then(r => r.json())
         .then((d: any) => {
           const region: string = d?.region || d?.region_name || '';
-          const detectedLang = STATE_LANG_MAP[region] ?? 'hi';
+          const detectedLang = STATE_LANG_MAP[region] ?? 'en';
           setLang(detectedLang);
         })
-        .catch(() => { /* keep hi default */ })
+        .catch(() => { setLang('en'); })
         .finally(() => { clearTimeout(timer); setGeoLoading(false); });
 
       // Lazy load video after popup opens completely

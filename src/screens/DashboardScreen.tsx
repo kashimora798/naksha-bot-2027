@@ -221,19 +221,7 @@ export default function DashboardScreen({
     }
   };
 
-  if (showProfile) {
-    return (
-      <ProfileScreen
-        user={user}
-        userProfile={userProfile}
-        onClose={() => setShowProfile(false)}
-        onSaved={(p: any) => {
-          if (onProfileUpdated) onProfileUpdated(p);
-          setShowProfile(false);
-        }}
-      />
-    );
-  }
+
 
   // Derive counts
   const pendingSessions = liveSessions.filter(s => s.state === 'paused');
@@ -822,6 +810,19 @@ export default function DashboardScreen({
         onMute24h={() => setShowDonate(false)}
         isPrintArea={false}
       />
+
+      {/* Profile Modal */}
+      {showProfile && (
+        <ProfileScreen
+          user={user}
+          userProfile={userProfile}
+          onClose={() => setShowProfile(false)}
+          onSaved={(p: any) => {
+            if (onProfileUpdated) onProfileUpdated(p);
+            setShowProfile(false);
+          }}
+        />
+      )}
     </AppShell>
   );
 }

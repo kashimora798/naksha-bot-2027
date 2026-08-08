@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { supabase } from '../lib/supabase';
 import { saveBoundaryToDb } from '../lib/survey-api';
 import type { Coordinate, MapData, SymbolType, RoadFeature, WaterBody, ForestArea, Landmark } from '../types';
-import { getBbox, getOSMName } from '../lib/geo';
+import { getBbox, getOSMName, fetchOverpass } from '../lib/geo';
 import { exportPDF } from '../lib/pdf-export';
 import { browserEnv } from '../lib/render-env.browser';
 
@@ -496,11 +496,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     `;
 
     try {
-      const r = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: overpassQuery
-      });
-
+      const r = await fetchOverpass(overpassQuery, undefined, 3);
       if (!r.ok) throw new Error(`Overpass returned status ${r.status}`);
       const data = await r.json();
       const elements = data.elements || [];

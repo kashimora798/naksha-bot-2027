@@ -6,7 +6,7 @@ import { LiveSurveyEngine, SurveyState } from '../lib/LiveSurveyEngine';
 import { idbStore, SurveySymbol, RoadSegment, SurveyPoint } from '../lib/idb';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { supabase } from '../lib/supabase';
-import { buildComprehensiveQuery, processOverpassData, getBbox } from '../lib/geo';
+import { buildComprehensiveQuery, processOverpassData, getBbox, fetchOverpass, fetchMapFeatures } from '../lib/geo';
 import { beautifyPath } from '../lib/PathBeautifier';
 import { generateLiveExportPdf } from '../lib/pdf-export';
 import { HouseDataSidebar } from '../components/forms/HouseDataSidebar';
@@ -354,7 +354,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
     const smap = L.map(setupContainerRef.current, { zoomControl: false, attributionControl: false })
       .setView([center.lat, center.lng], enteredCenter ? 17 : 5);
     // Google Satellite Hybrid with place names
-    L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 21 }).addTo(smap);
+    L.tileLayer('https://mt1.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: 'Google Satellite' }).addTo(smap);
     setupPinsGrp.current.addTo(smap);
     setupMapRef.current = smap;
 
@@ -394,7 +394,7 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
     if (mapRef.current) return;
 
     const map = L.map(containerRef.current, { zoomControl: false, attributionControl: false }).setView([20, 78], 18);
-    const satLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 21 });
+    const satLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: 'Google Satellite' });
     satLayer.addTo(map);
     satTileLayerRef.current = satLayer;
     
@@ -755,24 +755,19 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
       // Fetch only within the exact boundary drawn (reduces load)
       const query = buildComprehensiveQuery(bbox, 0);
 
-      const resp = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: 'data=' + encodeURIComponent(query),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        signal: AbortSignal.timeout(20000),
-      });
+      const controller = new AbortController();
+      let detectedData: any;
+      try {
+        detectedData = await fetchMapFeatures(boundary, 1, controller.signal);
+        if (detectedData.dataSource) {
+          alert(`Map Features Auto-Detected using: ${detectedData.dataSource}`);
+        }
+      } catch (err) {
+        throw new Error('Failed to fetch map data from APIs');
+      }
       if (cancelled) return;
 
-      if (!resp.ok) {
-        throw new Error(`Server returned status ${resp.status}`);
-      }
-      const contentType = resp.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error('Server did not return JSON data');
-      }
-
-      const json = await resp.json();
-      const elements: any[] = json.elements || [];
+      const elements: any[] = detectedData.rawElements || [];
 
       // All highway ways for the area
       const allRoads = elements
@@ -791,15 +786,13 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
         return true;
       });
 
-      const detectedData = processOverpassData(elements, boundary, 1);
-
       if (!cancelled) {
         setOsmRoads(roads);
         setOsmLandmarks(detectedData.landmarks);
         setOsmWater(detectedData.waterBodies || []);
         setOsmForests(detectedData.forests || []);
         setOsmFarmland(detectedData.farmlands || []);
-        setOsmBuildings(detectedData.symbols.filter(s => s.symbol_type === 'pucca_house' || s.symbol_type === 'kutcha_house' || s.symbol_type === 'apartment' || s.symbol_type === 'non_residential'));
+        setOsmBuildings(detectedData.symbols.filter((s: any) => s.symbol_type === 'pucca_house' || s.symbol_type === 'kutcha_house' || s.symbol_type === 'apartment' || s.symbol_type === 'non_residential'));
         // Feed OSM roads to engine for auto-snap and cache
         if (engineRef.current) {
           engineRef.current.setOsmRoads(roads);
@@ -862,38 +855,32 @@ export default function LiveSurveyScreen({ blockPolygon, resumeSessionId: propRe
         // Fetch only within the exact boundary drawn (reduces load)
         const query = buildComprehensiveQuery(bbox, 0);
         setDlProgress(p => ({ ...p, roads: 20 }));
-        const resp = await fetch('https://overpass-api.de/api/interpreter', {
-          method: 'POST',
-          body: 'data=' + encodeURIComponent(query),
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          signal: AbortSignal.timeout(20000),
-        });
+        const controller = new AbortController();
+        let detectedData: any;
+        try {
+          detectedData = await fetchMapFeatures(boundary, 1, controller.signal);
+          if (detectedData.dataSource) {
+            alert(`Map Features Auto-Detected using: ${detectedData.dataSource}`);
+          }
+        } catch (err) {
+          throw new Error('Failed to fetch map data');
+        }
         if (cancelled) return;
 
-        if (!resp.ok) {
-          throw new Error(`Server returned status ${resp.status}`);
-        }
-        const contentType = resp.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-          throw new Error('Server did not return JSON data');
-        }
-
         if (!cancelled) setDlProgress(p => ({ ...p, roads: 80, features: 50 }));
-        const json = await resp.json();
-        const elements: any[] = json.elements || [];
+        const elements: any[] = detectedData.rawElements || [];
         const seen = new Set<number>();
         const roads = elements
           .filter(el => el.type === 'way' && el.tags?.highway && el.geometry?.length >= 2)
           .map(el => ({ coords: el.geometry.map((n: any) => ({ lat: n.lat, lng: n.lon })), highway: el.tags.highway, name: el.tags.name }))
           .filter(rd => { const k = rd.coords[0]?.lat; if (seen.has(k)) return false; seen.add(k); return true; });
-        const detectedData = processOverpassData(elements, boundary, 1);
         if (!cancelled) {
           setOsmRoads(roads);
           setOsmLandmarks(detectedData.landmarks);
           setOsmWater(detectedData.waterBodies || []);
           setOsmForests(detectedData.forests || []);
           setOsmFarmland(detectedData.farmlands || []);
-          setOsmBuildings(detectedData.symbols.filter(s => s.symbol_type === 'pucca_house' || s.symbol_type === 'kutcha_house' || s.symbol_type === 'apartment' || s.symbol_type === 'non_residential'));
+          setOsmBuildings(detectedData.symbols.filter((s: any) => s.symbol_type === 'pucca_house' || s.symbol_type === 'kutcha_house' || s.symbol_type === 'apartment' || s.symbol_type === 'non_residential'));
           // Feed OSM roads to engine for auto-snap and cache
           if (engineRef.current) {
             engineRef.current.setOsmRoads(roads);

@@ -406,7 +406,7 @@ export default function App() {
         <DashboardScreen
           user={session?.user}
           userProfile={userProfile}
-          onLoadProject={(id, d) => { setProjectId(id); setMapData(prev => ({...prev, ...d, projectId: id, paymentStatus: (d as any).payment_status})); setStep((d as any).mode === 'sat-extractor' ? 15 : 3); }}
+          onLoadProject={(id, d) => { setProjectId(id); setMapData(prev => ({...prev, ...d, projectId: id, paymentStatus: (d as any).payment_status})); const m = (d as any)?.mode; setStep(m === 'sat-extractor' || m === 'satellite' ? 15 : m === 'canvas' ? 11 : 3); }}
           onNewProject={(initialData) => { setMapData({ ...DEFAULT_MAP_DATA, ...initialData }); setProjectId(null); setStep(initialData?.mode === 'sat-extractor' ? 15 : (initialData?.hlbNumber ? 3 : 1)); }}
           onLiveSurvey={(initialData) => {
             if (initialData) {
@@ -456,14 +456,15 @@ export default function App() {
           setIsDemoMode(false);
           setMapData({ ...DEFAULT_MAP_DATA, ...profileMapDefaults(), ...data, projectId: id, enumeratorName: user?.user_metadata?.full_name || user?.email || 'Surveyor' });
           isInitialLoad.current = true;
-          // Canvas-mode projects always go to the canvas screen
-          if ((data as any).mode === 'canvas') {
+          const pMode = (data as any)?.mode;
+          if (pMode === 'canvas') {
             setPreviewSource(11);
             setStep(11);
-          } else if ((data as any).mode === 'sat-extractor') {
+          } else if (pMode === 'sat-extractor' || pMode === 'satellite') {
             setStep(15);
+          } else if (pMode === 'live-survey') {
+            setStep(10);
           } else {
-            // Determine where to resume based on data
             if (data.blocks && data.blocks.length > 0) setStep(8);
             else if (data.symbols && data.symbols.length > 0) setStep(5);
             else if (data.roads && data.roads.length > 0) setStep(4);

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, PlacedSymbol, RoadFeature, SymbolType, Block, FarmlandBlock, WaterBody, ForestArea, Landmark, AreaStats, MapData } from '../types';
 import { SYMBOL_DEFS, isHouseType, isPakkaRoad, getUnitCount, polyCenter } from '../types';
-import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, buildComprehensiveQuery, processOverpassData, isPolygonSelfIntersecting, fetchOverpass } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, buildComprehensiveQuery, processOverpassData, isPolygonSelfIntersecting, fetchOverpass, fetchMapFeatures } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { declutterSymbols, buildRotationMap } from '../lib/declutter';
 import SymbolDrawer from '../components/SymbolDrawer';
@@ -255,10 +255,9 @@ export default function MapWorkspace(props: Props) {
     }
 
     const map = L.map(containerRef.current, { center: [center.lat, center.lng], zoom: 17, zoomControl: false, attributionControl: false });
-    tileRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
-    // Add Hybrid labels overlay for Places and Roads
-    tileLabelsRef.current = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
-    tileTransRef.current = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
+    tileRef.current = L.tileLayer('https://mt1.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: 'Google Satellite' }).addTo(map);
+    tileLabelsRef.current = null;
+    tileTransRef.current = null;
     [bndGrp, blkGrp, rdGrp, drwGrp, srpGrp, watGrp, forGrp, lmkGrp, frmGrp, hlGrp, luGrp].forEach(g => {
       if (!map.hasLayer(g.current)) {
         g.current.addTo(map);
@@ -544,8 +543,8 @@ export default function MapWorkspace(props: Props) {
             );
             out geom;`;
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-          const r = await fetchOverpass(q, controller.signal);
+          const timeoutId = setTimeout(() => controller.abort(), 25000);
+          const r = await fetchOverpass(q, controller.signal, 3);
           clearTimeout(timeoutId);
           if (!r.ok) return [];
           const d = await r.json();
@@ -597,17 +596,12 @@ export default function MapWorkspace(props: Props) {
 
       // Promise 3: Fetch Landcover & POIs
       const landcoverPromise = (async () => {
-        const q = buildComprehensiveQuery(bb, 0.002);
-        let res = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } };
+        let res: any = { symbols: [], farmlands: [], waterBodies: [], forests: [], landmarks: [], landuseAreas: [], stats: { farmlandArea: 0 } };
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-          const r = await fetchOverpass(q, controller.signal);
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
+          res = await fetchMapFeatures(boundaryPins, area, controller.signal);
           clearTimeout(timeoutId);
-          if (r.ok) {
-            const d = await r.json();
-            res = processOverpassData(d.elements || [], boundaryPins, area);
-          }
         } catch (e) {
           console.warn("Auto landcover OSM fetch failed:", e);
         }
@@ -775,21 +769,15 @@ export default function MapWorkspace(props: Props) {
     if (boundaryPins.length < 3) return;
     try {
       const bb = getBbox(boundaryPins);
-      const q = buildComprehensiveQuery(bb, 0.002);
       const area = polygonArea(boundaryPins);
-      let res = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } };
+      let res: any = { symbols: [], farmlands: [], waterBodies: [], forests: [], landmarks: [], landuseAreas: [], stats: { farmlandArea: 0 } };
       
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-        const r = await fetchOverpass(q, controller.signal);
-        clearTimeout(timeoutId);
-        if (r.ok) {
-          const d = await r.json();
-          res = processOverpassData(d.elements || [], boundaryPins, area);
-          console.log(`🗺️ [OSM] Auto-Detect found: ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farms, ${res.waterBodies.length} water bodies, ${res.forests.length} forests, ${res.landmarks.length} landmarks. Total landuse coverage: ${(res.stats.farmlandArea / area * 100).toFixed(1)}%`);
-        } else {
-          console.warn("Overpass API returned non-OK status.");
+        res = await fetchMapFeatures(boundaryPins, area, controller.signal);
+        console.log(`🌍 [MapFeatures] Auto-Detect found: ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farms, ${res.waterBodies.length} water bodies, ${res.forests.length} forests, ${res.landmarks.length} landmarks.`);
+        if (res.dataSource) {
+          alert(`Map Features Auto-Detected using: ${res.dataSource}`);
         }
       } catch (err) {
         console.warn("Overpass API failed or timed out. Continuing with empty OSM data.", err);

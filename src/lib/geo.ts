@@ -548,6 +548,8 @@ export interface DetectedData {
   landuseAreas: LanduseArea[];
   landmarks: Landmark[];
   stats: AreaStats;
+  rawElements: any[];
+  dataSource?: string;
 }
 
 export function processOverpassData(
@@ -705,7 +707,7 @@ export function processOverpassData(
   }
 
   return {
-    symbols, farmlands, waterBodies, forests, landuseAreas, landmarks,
+    symbols, farmlands, waterBodies, forests, landuseAreas, landmarks, rawElements: elements,
     stats: {
       buildings: symbols.length, houses: houseCount, apartments: aptCount, nonResidential: nonRes,
       roads: 0, farmlandCount: farmlands.length, farmlandArea: Math.round(farmArea),
@@ -720,6 +722,122 @@ export function processOverpassData(
 // ─── SATELLITE TILE CAPTURE ───────────────────────────────
 function lng2tile(lng: number, z: number): number { return Math.floor((lng + 180) / 360 * Math.pow(2, z)); }
 function lat2tile(lat: number, z: number): number { return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z)); }
+
+// --- GOOGLE MAPS API INTEGRATION ---
+const GOOGLE_MAPS_API_KEY = 'AIzaSyAizQ1DVMhbpUqnSztH9MbQOJUY7oW7j80';
+
+export async function fetchGooglePlacesAndRoads(bbox: { south: number, west: number, north: number, east: number }, signal?: AbortSignal) {
+  const centerLat = (bbox.south + bbox.north) / 2;
+  const centerLng = (bbox.east + bbox.west) / 2;
+  // rough radius in meters for the bounding box
+  const radius = Math.min(50000, Math.ceil(distanceBetween({ lat: bbox.south, lng: bbox.west }, { lat: bbox.north, lng: bbox.east }) / 2));
+  
+  let results: any[] = [];
+  
+  try {
+    // Use corsproxy.io to bypass CORS issues for browser requests to Google REST APIs
+    const targetUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${centerLat},${centerLng}&radius=${radius}&key=${GOOGLE_MAPS_API_KEY}`;
+    const url = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+    const response = await fetch(url, { signal });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.results) {
+        results = data.results;
+      }
+    }
+  } catch (err) {
+    console.warn("Google Places API failed", err);
+    throw err;
+  }
+  return results;
+}
+
+export async function fetchMapFeatures(
+  boundary: Coordinate[],
+  totalArea: number,
+  signal?: AbortSignal
+): Promise<DetectedData> {
+  const bbox = getBbox(boundary);
+  let overpassData: any = null;
+  let detectedData: DetectedData | null = null;
+  
+  // 1. Fetch Overpass for the base geometries (buildings, farmlands, roads)
+  // We need this because Google Places API does not provide polygon geometries or all roads.
+  try {
+    const query = buildComprehensiveQuery(bbox);
+    const resp = await fetchOverpass(query, signal, 3);
+    overpassData = await resp.json();
+    detectedData = processOverpassData(overpassData.elements, boundary, totalArea);
+  } catch (err) {
+    console.warn("Overpass API failed completely", err);
+    throw err; // Both APIs might fail, or we can handle it upstream
+  }
+  
+  // 2. Try to augment with Google API if it succeeds
+  try {
+    const googlePlaces = await fetchGooglePlacesAndRoads(bbox, signal);
+    if (googlePlaces && googlePlaces.length > 0) {
+      googlePlaces.forEach(place => {
+        if (!place.geometry || !place.geometry.location) return;
+        const lat = place.geometry.location.lat;
+        const lng = place.geometry.location.lng;
+        // Check if point is in boundary
+        if (boundary.length >= 3 && !pointInPolygon({lat, lng}, boundary)) return;
+        
+        const name = place.name;
+        const types = place.types || [];
+        let st: any = 'point_of_interest';
+        if (types.includes('school')) st = 'school';
+        else if (types.includes('hospital')) st = 'hospital';
+        else if (types.includes('hindu_temple')) st = 'temple';
+        else if (types.includes('mosque')) st = 'mosque';
+        else if (types.includes('church')) st = 'church';
+        else if (types.includes('post_office')) st = 'post_office';
+        else if (types.includes('police')) st = 'police_station';
+        
+        // Add to symbols if it maps to a specific symbol type
+        if (st !== 'point_of_interest') {
+          // Check if we already have a symbol very close to avoid duplicates
+          const exists = detectedData!.symbols.some(s => distanceBetween({lat: s.lat, lng: s.lng}, {lat, lng}) < 25);
+          if (!exists) {
+            detectedData!.symbols.push({
+              id: crypto.randomUUID(),
+              symbol_type: st,
+              lat,
+              lng,
+              number: null,
+              placed_at: new Date().toISOString(),
+              auto_detected: true,
+              label: name
+            });
+          }
+        }
+        
+        // Add to landmarks
+        const landmarkExists = detectedData!.landmarks.some(l => distanceBetween({lat: l.lat, lng: l.lng}, {lat, lng}) < 25);
+        if (!landmarkExists) {
+          detectedData!.landmarks.push({
+            id: crypto.randomUUID(),
+            name,
+            type: st,
+            lat,
+            lng
+          });
+        }
+      });
+      // Update stats
+      detectedData!.stats.landmarks = detectedData!.landmarks.length;
+      detectedData!.dataSource = 'Google Places API & OpenStreetMap (Overpass API)';
+    } else {
+      detectedData!.dataSource = 'OpenStreetMap (Overpass API)';
+    }
+  } catch (err) {
+    console.warn("Google Maps augmentation failed, using Overpass base data", err);
+    detectedData!.dataSource = 'OpenStreetMap (Overpass API)';
+  }
+  
+  return detectedData as DetectedData;
+}
 
 export async function captureSatelliteView(south: number, west: number, north: number, east: number): Promise<string> {
   const latDiff = north - south, lngDiff = east - west;
@@ -910,40 +1028,57 @@ const OVERPASS_ENDPOINTS = [
   'https://lz4.overpass-api.de/api/interpreter',
   'https://z.overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.openstreetmap.ru/api/interpreter'
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-export async function fetchOverpass(query: string, signal?: AbortSignal): Promise<Response> {
+export async function fetchOverpass(query: string, signal?: AbortSignal, maxRetries = 2): Promise<Response> {
   let lastError: any = null;
-  
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      console.log(`[Overpass] Trying endpoint: ${endpoint}`);
-      // Send query in application/x-www-form-urlencoded body (required by Overpass POST)
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: 'data=' + encodeURIComponent(query),
-        signal
-      });
 
-      if (response.ok) {
-        console.log(`[Overpass] Successfully fetched from: ${endpoint}`);
-        return response;
-      }
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      if (signal?.aborted) throw new Error('Aborted');
+      try {
+        console.log(`[Overpass] Attempt ${attempt + 1}: Trying ${endpoint}`);
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: 'data=' + encodeURIComponent(query),
+          signal
+        });
 
-      console.warn(`[Overpass] Endpoint ${endpoint} returned status ${response.status}`);
-      lastError = new Error(`Overpass returned status ${response.status}`);
-      if (response.status === 429) {
-        continue; // Try next endpoint immediately
+        if (response.ok) {
+          // Overpass sometimes returns 200 OK but the body is an HTML error page or 'Error: runtime error'
+          const text = await response.text();
+          if (text.trim().startsWith('<') || text.trim().startsWith('Error:')) {
+            throw new Error(`Overpass pseudo-200 error: ${text.substring(0, 100)}`);
+          }
+          
+          console.log(`[Overpass] Successfully fetched from: ${endpoint}`);
+          // Return a new Response with the text so `.json()` can be called on it by the caller
+          return new Response(text, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers
+          });
+        }
+
+        console.warn(`[Overpass] Endpoint ${endpoint} returned status ${response.status}`);
+        lastError = new Error(`Overpass returned status ${response.status}`);
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          throw err;
+        }
+        console.warn(`[Overpass] Failed to connect to ${endpoint}:`, err.message);
+        lastError = err;
       }
-    } catch (err) {
-      console.warn(`[Overpass] Failed to connect to ${endpoint}:`, err);
-      lastError = err;
+    }
+    if (attempt < maxRetries && !signal?.aborted) {
+      await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
     }
   }
-  
-  throw lastError || new Error('All Overpass endpoints failed');
+
+  throw lastError || new Error('All Overpass endpoints failed after retries');
 }

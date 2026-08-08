@@ -287,6 +287,10 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
           {L.subtitle}
           {geoLoading && <span className="ml-1 opacity-50 text-[9px]">· detecting location…</span>}
         </p>
+        <p className="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded-md mt-1 inline-flex items-center gap-1">
+          <span>👇</span>
+          <span>{lang === 'hi' ? 'बंद करने के लिए नीचे तक स्क्रॉल करें' : 'Scroll to bottom to close popup'}</span>
+        </p>
       </div>
     </div>
   );
@@ -492,15 +496,21 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
             )}
           </div>
 
-          {/* ── DISMISS BUTTON — always "can't help", never a ✕ ── */}
-          <button
-            type="button"
-            onClick={isPrintArea ? onClose : onMute24h}
-            disabled={loadingPayment}
-            className="w-full py-2 text-[var(--color-ink-tertiary)] text-[11px] font-medium rounded-lg hover:bg-rose-50 hover:text-rose-500 border border-transparent hover:border-rose-200 transition-colors cursor-pointer disabled:opacity-50"
-          >
-            😞 {isPrintArea ? L.cantHelp : L.mute}
-          </button>
+          {/* ── DISMISS BUTTON — Highlighted & Clear ── */}
+          <div className="pt-1 border-t border-[var(--color-hairline)] space-y-1">
+            <p className="text-[10px] text-center text-slate-400 font-semibold">
+              {lang === 'hi' ? 'पॉपअप बंद करने के लिए नीचे दिए गए बटन पर क्लिक करें:' : 'Click below to close this dialog:'}
+            </p>
+            <button
+              type="button"
+              onClick={isPrintArea ? onClose : onMute24h}
+              disabled={loadingPayment}
+              className="w-full py-2.5 px-3 bg-gradient-to-r from-rose-50 to-pink-50 hover:from-rose-100 hover:to-pink-100 text-rose-700 hover:text-rose-900 border-2 border-rose-300 font-black text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
+            >
+              <span>😞 {isPrintArea ? L.cantHelp : L.mute}</span>
+              <span className="text-[10px] bg-rose-200/80 text-rose-900 px-1.5 py-0.5 rounded font-bold">✕ Close</span>
+            </button>
+          </div>
         </div>
       </Sheet>
 

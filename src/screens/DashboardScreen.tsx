@@ -424,46 +424,39 @@ export default function DashboardScreen({
       </div>
       <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         {/* Header Bar */}
-        <header className="flex items-center justify-between pb-4 border-b border-[var(--color-hairline)]">
-          <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="NakshaBot Logo" className="w-10 h-10 object-contain shrink-0" />
-            <div>
-              <h1 className="text-xl font-bold font-public-sans text-[var(--color-ink)] leading-tight">{t('brand')}</h1>
-              <p className="text-xs text-[var(--color-ink-secondary)]">{t('subBrand')}</p>
+        <header className="flex items-center justify-between pb-4 border-b border-[var(--color-hairline)] max-w-full overflow-hidden">
+          <div className="flex items-center gap-2.5 min-w-0 shrink">
+            <img src="/logo.png" alt="NakshaBot Logo" className="w-9 h-9 object-contain shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold font-public-sans text-[var(--color-ink)] leading-tight truncate">{t('brand')}</h1>
+              <p className="text-[11px] text-[var(--color-ink-secondary)] truncate">{t('subBrand')}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {announcements.length > 0 && (
-              <IconButton
-                onClick={() => setShowAnnouncementsModal(true)}
-                aria-label="View Announcements"
-                variant="surface"
-              >
-                🔔
-              </IconButton>
-            )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <IconButton
+              onClick={() => setShowAnnouncementsModal(true)}
+              aria-label="View Announcements"
+              variant="surface"
+              title="Updates & Announcements"
+            >
+              🔔
+            </IconButton>
             <Button
               onClick={() => setShowWhatsApp(true)}
               variant="tinted"
               size="sm"
             >
               <span className="hidden sm:inline">{t('helpGroup')}</span>
-              <span className="sm:hidden">WhatsApp</span>
+              <span className="sm:hidden text-xs">WhatsApp</span>
             </Button>
             <IconButton
               onClick={() => setShowDonate(true)}
               aria-label="Support"
               variant="surface"
+              title="Support Developer"
             >
               🙏
-            </IconButton>
-            <IconButton
-              onClick={() => setShowProfile(true)}
-              aria-label="Profile"
-              variant="surface"
-            >
-              👤
             </IconButton>
           </div>
         </header>
@@ -471,9 +464,18 @@ export default function DashboardScreen({
         {/* Greeting Banner */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-bold font-public-sans tracking-tight text-[var(--color-ink)]">
-              {`Namaste, ${(userProfile?.full_name || user?.user_metadata?.full_name || user?.email || 'Surveyor').split(' ')[0]} 👋`}
-            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-2xl sm:text-3xl font-bold font-public-sans tracking-tight text-[var(--color-ink)]">
+                {`Namaste, ${(userProfile?.full_name || user?.user_metadata?.full_name || user?.email || 'Surveyor').split(' ')[0]} 👋`}
+              </h2>
+              <button
+                onClick={() => setShowProfile(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full hover:bg-indigo-100 transition-colors cursor-pointer"
+                title="View Profile Settings"
+              >
+                <span>👤 Profile</span>
+              </button>
+            </div>
             <p className="text-sm text-[var(--color-ink-secondary)] mt-0.5">Pick up where you left off, or start something new.</p>
           </div>
           {/* Surfaced "New this week" pill on mobile */}
@@ -757,6 +759,58 @@ export default function DashboardScreen({
             size="lg"
           >
             Open WhatsApp Group
+          </Button>
+        </div>
+      </Sheet>
+
+      {/* Announcements / Updates Modal */}
+      <Sheet open={showAnnouncementsModal} onClose={() => setShowAnnouncementsModal(false)} title="📢 Latest Updates & Features" maxWidth="md">
+        <div className="space-y-4">
+          {announcements && announcements.length > 0 ? (
+            announcements.map((item: any, idx: number) => (
+              <div key={idx} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-sm text-slate-800">{item.title}</h4>
+                  <span className="text-[10px] text-slate-400 font-mono">{item.created_at ? new Date(item.created_at).toLocaleDateString() : ''}</span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">{item.content || item.description}</p>
+              </div>
+            ))
+          ) : (
+            <div className="space-y-3">
+              <div className="p-3.5 bg-indigo-50 border border-indigo-100 rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-indigo-900">✨ Census 2027 GeoPDF & AI Auto-Map</span>
+                  <span className="text-[10px] bg-indigo-200 text-indigo-800 font-bold px-1.5 py-0.5 rounded">New</span>
+                </div>
+                <p className="text-xs text-indigo-950 leading-relaxed">
+                  Upload official Census GeoPDF maps or paste HLO assignment SMS to auto-extract boundaries & build nazri naksha in minutes!
+                </p>
+              </div>
+
+              <div className="p-3.5 bg-emerald-50 border border-emerald-100 rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-emerald-900">📄 Register PDF (A3) & Excel Export</span>
+                  <span className="text-[10px] bg-emerald-200 text-emerald-800 font-bold px-1.5 py-0.5 rounded">Feature</span>
+                </div>
+                <p className="text-xs text-emerald-950 leading-relaxed">
+                  Generate HLO register files in A3 PDF format or Excel (.xlsx) sheets ready for submission.
+                </p>
+              </div>
+
+              <div className="p-3.5 bg-amber-50 border border-amber-100 rounded-xl space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-amber-900">🌐 Multi-Language & Offline Mode</span>
+                  <span className="text-[10px] bg-amber-200 text-amber-800 font-bold px-1.5 py-0.5 rounded">Supported</span>
+                </div>
+                <p className="text-xs text-amber-950 leading-relaxed">
+                  Works in Hindi, English, Bengali, Tamil, Assamese & Meitei. Maps can be created even in weak network areas.
+                </p>
+              </div>
+            </div>
+          )}
+          <Button onClick={() => setShowAnnouncementsModal(false)} variant="filled" fullWidth size="md">
+            Close Updates
           </Button>
         </div>
       </Sheet>

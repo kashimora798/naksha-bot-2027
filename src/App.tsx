@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
+import { trackEvent, getVisitorId } from './lib/fingerprint';
 import type { MapData, RoadFeature, PlacedSymbol, Coordinate } from './types';
 import { isHouseType } from './types';
 import AppHeader from './components/AppHeader';
@@ -153,20 +154,23 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setIsLoaded(true);
+      // Fire-and-forget page_view tracking (fingerprint + IP resolved server-side)
+      trackEvent('page_view', window.location.pathname, session?.user?.id ?? undefined);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      // Only update session state when the user identity changes (sign in/out).
-      // Silent token refreshes keep the same user.id — updating state for those
-      // would trigger a full App re-render and cause MapWorkspace to re-mount
-      // (destroying the Leaflet map) every time the browser refreshes the JWT
-      // on tab focus. We compare user IDs to skip no-op updates.
       setSession((prev: any) => {
         const prevId = (prev as any)?.user?.id ?? null;
         const nextId = newSession?.user?.id ?? null;
-        if (prevId === nextId) return prev; // same user — skip re-render
+        if (prevId === nextId) return prev;
+        // Track login event when a new user signs in
+        if (nextId && prevId !== nextId) {
+          getVisitorId().then(fid => {
+            trackEvent('login', window.location.pathname, nextId, { method: 'supabase' });
+          });
+        }
         return newSession;
       });
     });

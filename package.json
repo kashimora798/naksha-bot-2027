@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@cashfreepayments/cashfree-js": "^1.0.7",
+    "@fingerprintjs/fingerprintjs": "^5.2.0",
     "@supabase/supabase-js": "^2.106.1",
     "@tolgee/react": "^7.1.2",
     "@turf/turf": "^7.3.5",

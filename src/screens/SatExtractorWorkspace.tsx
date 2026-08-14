@@ -7,6 +7,7 @@ import type { Coordinate, MapData, SymbolType, RoadFeature, WaterBody, ForestAre
 import { getBbox, getOSMName, fetchOverpass } from '../lib/geo';
 import { exportPDF } from '../lib/pdf-export';
 import { browserEnv } from '../lib/render-env.browser';
+import DonationPopup from '../components/DonationPopup';
 
 interface Props {
   user: any;
@@ -922,11 +923,14 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     touchStartAngle.current = null;
   };
 
+  const [showDonationPopup, setShowDonationPopup] = useState(false);
+
   // PDF Export Trigger
   const handleDownloadPDF = () => {
     const previewMap = previewMapRef.current;
     if (!previewMap) return;
 
+    setShowDonationPopup(true);
     setExtractStatus('Generating high-resolution A4 map PDF...');
     
     setTimeout(() => {
@@ -1645,6 +1649,13 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
         </div>
       )}
 
+      {/* Donation Popup on Print / Export */}
+      <DonationPopup
+        isOpen={showDonationPopup}
+        onClose={() => setShowDonationPopup(false)}
+        onMute24h={() => setShowDonationPopup(false)}
+        isPrintArea={true}
+      />
     </div>
   );
 }

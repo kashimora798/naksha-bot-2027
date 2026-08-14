@@ -11,8 +11,8 @@ interface Props {
   isPrintArea: boolean;
 }
 
-// ─── LANGUAGE CONTENT ─────────────────────────────────────────
-type LangKey = 'hi' | 'en' | 'bn' | 'ta' | 'as' | 'mni';
+// ─── REGIONAL LANGUAGES SUPPORTED ─────────────────────────────
+type LangKey = 'hi' | 'en' | 'bn' | 'as' | 'ta' | 'te' | 'kn' | 'ml' | 'gu' | 'mr' | 'pa';
 
 interface LangContent {
   label: string;
@@ -35,37 +35,14 @@ interface LangContent {
 }
 
 const LANG_CONTENT: Record<LangKey, LangContent> = {
-  hi: {
-    label: 'हिंदी',
-    title: 'NakshaBot बनाने वाले छात्र की मदद करें',
-    subtitle: 'साइबर कैफे से, बिना laptop के बनाया',
-    pitch: 'नमस्ते! मैं NakshaBot का अकेला छात्र-डेवलपर हूँ। मेरे पास laptop नहीं है — मैंने यह पूरा ऐप cyber café में, घंटे-दर-घंटे पैसे देकर बनाया है। आज NakshaBot हजारों लोगों की मदद कर रहा है — बिल्कुल मुफ्त, कोई विज्ञापन नहीं। Server और tools का खर्च मेरी जेब से जाता है। अगर इस ऐप ने आपका थोड़ा भी काम आसान किया, तो ₹50 या ₹100 की मदद मेरे लिए बहुत मायने रखेगी। इससे मेरी पढ़ाई और NakshaBot दोनों चलते रहेंगे। 🙏',
-    scanLabel: 'स्कैन / Click for QR',
-    chooseAmt: 'राशि चुनें',
-    orCustom: 'या खुद लिखें',
-    namePlaceholder: 'आपका नाम (वैकल्पिक)',
-    upiPay: 'UPI से Pay करें',
-    cashfree: 'Cashfree से Pay करें',
-    upiBackup: 'UPI ID: 8318810984-1@nyes',
-    waShare: 'WhatsApp पर Share करें',
-    cantHelp: 'माफ़ करें, मैं अभी मदद नहीं कर सकता',
-    mute: '24 घंटे के लिए बंद करें',
-    impactMap: { 50: 'एक दिन का school lunch', 100: 'एक हफ्ते की पढ़ाई मदद', 500: 'एक महीने का internet', 1000: 'परीक्षा फॉर्म की फीस' },
-    otherWaysTitle: 'पुराना Laptop / Computer donate कर सकते हैं',
-    otherWays: [
-      '💻 पुराना Laptop, Computer या कोई उपकरण donate कर सकते हैं',
-      '📱 दोस्तों और सहयोगियों को NakshaBot share करें',
-      '📮 डाक का पता: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
-    ],
-  },
   en: {
     label: 'English',
-    title: 'Help the student who built NakshaBot',
-    subtitle: 'Built from a cyber café, without a laptop',
-    pitch: "Hi! I'm the solo student developer behind NakshaBot. Because I don't own a laptop, I built this entire app from a cyber café, paying for computer time by the hour. Today, NakshaBot helps thousands of people — completely free, no ads. Server & tool costs come out of my pocket. If this app made your work even a little easier, a small donation of ₹50 or ₹100 would mean the world to me. It'll support my education and keep NakshaBot free for everyone. 🙏",
-    scanLabel: 'Scan / Click for QR',
-    chooseAmt: 'Choose Amount',
-    orCustom: 'Or enter custom',
+    title: 'Support a Growing Talent — Be an Angel Backer 🚀',
+    subtitle: 'Empowering independent student innovation for Census & GIS tools',
+    pitch: "Hi! I'm Kratagya, a student developer building NakshaBot to keep professional Census mapping 100% free & accessible for thousands of enumerators and surveyors across India. Server & high-res mapping infrastructure is independently funded. Be an angel backer for a growing student talent! A small contribution of ₹50 or ₹100 empowers independent innovation and keeps NakshaBot 100% free for everyone. 🙏",
+    scanLabel: 'Scan QR Code with any UPI App',
+    chooseAmt: 'Select Donation Amount',
+    orCustom: 'Custom amount',
     namePlaceholder: 'Your name (optional)',
     upiPay: 'Pay via UPI',
     cashfree: 'Pay via Cashfree',
@@ -73,7 +50,7 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
     waShare: 'Share on WhatsApp',
     cantHelp: "Sorry, I can't help right now",
     mute: 'Remind me later',
-    impactMap: { 50: "= his daily school lunch 🍱", 100: "= a week of study support ✏️", 500: "= one month's internet 💻", 1000: "= exam form fees 🎓" },
+    impactMap: { 50: "= daily school lunch 🍱", 100: "= a week of study support ✏️", 500: "= one month's internet 💻", 1000: "= exam form fees 🎓" },
     otherWaysTitle: 'Donate an old Laptop or Computer',
     otherWays: [
       '💻 Donate an old Laptop, Computer, or working device',
@@ -81,12 +58,35 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
       '📮 Postal Address: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
     ],
   },
+  hi: {
+    label: 'हिंदी',
+    title: 'युवा प्रतिभा का समर्थन करें — NakshaBot के एंजेल बैकर बनें 🚀',
+    subtitle: 'स्वतंत्र छात्र इनोवेशन और मैपिंग टेक्नोलॉजी को आगे बढ़ाएं',
+    pitch: 'नमस्ते! मैं कृतज्ञ हूँ, NakshaBot का छात्र-डेवलपर। मैंने NakshaBot इसलिए बनाया ताकि भारत भर के हजारों एन्यूमरेटर और सर्वेयर बिना किसी शुल्क के प्रोफेशनल HLB नक्शे बना सकें। सर्वर और मैपिंग इंफ्रास्ट्रक्चर का खर्च स्वतंत्र रूप से वहन किया जाता है। एक उभरती युवा प्रतिभा के एंजेल बैकर बनें! आपका ₹50 या ₹100 का योगदान इस स्वतंत्र इनोवेशन को सशक्त बनाएगा और NakshaBot को सभी के लिए 100% मुफ्त रखेगा। 🙏',
+    scanLabel: 'किसी भी UPI ऐप से QR कोड स्कैन करें',
+    chooseAmt: 'सहायता राशि चुनें',
+    orCustom: 'खुद राशि लिखें',
+    namePlaceholder: 'आपका नाम (वैकल्पिक)',
+    upiPay: 'UPI से Pay करें',
+    cashfree: 'Cashfree से Pay करें',
+    upiBackup: 'UPI ID: 8318810984-1@nyes',
+    waShare: 'WhatsApp पर Share करें',
+    cantHelp: 'माफ़ करें, मैं अभी मदद नहीं कर सकता',
+    mute: '24 घंटे के लिए बंद करें',
+    impactMap: { 50: 'एक दिन का school lunch 🍱', 100: 'एक हफ्ते की पढ़ाई मदद ✏️', 500: 'एक महीने का internet 💻', 1000: 'परीक्षा फॉर्म की फीस 🎓' },
+    otherWaysTitle: 'पुराना Laptop / Computer donate कर सकते हैं',
+    otherWays: [
+      '💻 पुराना Laptop, Computer या कोई उपकरण donate कर सकते हैं',
+      '📱 दोस्तों और सहयोगियों को NakshaBot share करें',
+      '📮 डाक का पता: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
+    ],
+  },
   bn: {
     label: 'বাংলা',
-    title: 'NakshaBot-এর ছাত্রকে সাহায্য করুন',
-    subtitle: 'ল্যাপটপ ছাড়া, সাইবার ক্যাফে থেকে বানানো',
-    pitch: 'নমস্কার! আমি NakshaBot-এর একমাত্র ছাত্র-ডেভেলপার। আমার নিজের ল্যাপটপ নেই — পুরো অ্যাপটা সাইবার ক্যাফেতে ঘণ্টার পর ঘণ্টা পয়সা দিয়ে বানিয়েছি। আজ NakshaBot হাজারো মানুষের কাজ সহজ করছে — সম্পূর্ণ বিনামূল্যে। Server ও tool-এর খরচ আমার নিজের পকেট থেকে যায়। যদি এই অ্যাপ আপনার একটুও কাজে লেগে থাকে, তাহলে ₹৫০ বা ₹১০০ দিলে আমার অনেক উপকার হবে। এতে আমার পড়াশোনা ও NakshaBot দুটোই চলবে। 🙏',
-    scanLabel: 'স্ক্যান / QR দেখতে ক্লিক করুন',
+    title: 'উদীয়মান প্রতিভাকে সমর্থন করুন — এঞ্জেল ব্যাকার হন 🚀',
+    subtitle: 'স্বায়ত্তশাসিত ছাত্র ইনোভেশন ও টেকনোলজিকে এগিয়ে নিয়ে যান',
+    pitch: 'নমস্কার! আমি কৃতজ্ঞ, NakshaBot-এর ছাত্র-ডেভেলপার। আমি NakshaBot তৈরি করেছি যাতে ভারত জুড়ে হাজার হাজার সার্ভেয়ার বিনামূল্যে প্রফেশনাল ম্যাপ তৈরি করতে পারেন। সার্ভার এবং ডেটা ইনফ্রাস্ট্রাকচারের খরচ স্বাধীনভাবে বহন করা হয়। একজন উদীয়মান ছাত্র প্রতিভার এঞ্জেল ব্যাকার হন! আপনার ₹৫০ বা ₹ ১০০ সাহায্য স্বাধীন ইনোভেশনকে শক্তিশালী করবে এবং NakshaBot-কে সবার জন্য ১০০% ফ্রি রাখবে। 🙏',
+    scanLabel: 'যেকোনো UPI অ্যাপ দিয়ে QR কোড স্ক্যান করুন',
     chooseAmt: 'পরিমাণ বেছে নিন',
     orCustom: 'অথবা নিজে লিখুন',
     namePlaceholder: 'আপনার নাম (ঐচ্ছিক)',
@@ -96,7 +96,7 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
     waShare: 'WhatsApp-এ শেয়ার করুন',
     cantHelp: 'দুঃখিত, এখন সাহায্য করতে পারছি না',
     mute: 'পরে মনে করিয়ে দিন',
-    impactMap: { 50: '= একদিনের স্কুল লাঞ্চ', 100: '= এক সপ্তাহের পড়াশোনার সাহায্য', 500: '= এক মাসের ইন্টারনেট', 1000: '= পরীক্ষার ফর্মের ফি' },
+    impactMap: { 50: '= একদিনের স্কুল লাঞ্চ 🍱', 100: '= এক সপ্তাহের পড়াশোনার সাহায্য ✏️', 500: '= এক মাসের ইন্টারনেট 💻', 1000: '= পরীক্ষার ফর্মের ফি 🎓' },
     otherWaysTitle: 'পুরনো ল্যাপটপ বা কম্পিউটার দান করুন',
     otherWays: [
       '💻 পুরনো ল্যাপটপ, কম্পিউটার বা অন্য যেকোনো ডিভাইস দান করতে পারেন',
@@ -104,35 +104,12 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
       '📮 ডাক ঠিকানা: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
     ],
   },
-  ta: {
-    label: 'தமிழ்',
-    title: 'NakshaBot உருவாக்கிய மாணவனுக்கு உதவுங்கள்',
-    subtitle: 'லேப்டாப் இல்லாமல், சைபர் கஃபேவில் உருவாக்கியது',
-    pitch: 'வணக்கம்! நான் NakshaBot-ஐ உருவாக்கிய தனி மாணவன். என்னிடம் லேப்டாப் இல்லை — முழு ஆப்பையும் சைபர் கஃபேயில் மணிக்கணக்கில் பணம் செலுத்தி உருவாக்கினேன். இன்று NakshaBot ஆயிரக்கணக்கான மக்களுக்கு இலவசமாக உதவுகிறது. சர்வர் மற்றும் கருவி செலவுகள் என் சொந்த பணத்தில் இருந்து செல்கின்றன. இந்த ஆப் உங்களுக்கு சிறிதும் உதவியிருந்தால், ₹50 அல்லது ₹100 கொடுத்தால் என் கல்வி மற்றும் NakshaBot இரண்டும் தொடரும். 🙏',
-    scanLabel: 'QR ஸ்கேன் செய்ய கிளிக் செய்க',
-    chooseAmt: 'தொகையை தேர்வு செய்யுங்கள்',
-    orCustom: 'அல்லது தொகை உள்ளிடவும்',
-    namePlaceholder: 'உங்கள் பெயர் (விருப்பத்திற்கு)',
-    upiPay: 'UPI மூலம் செலுத்துங்கள்',
-    cashfree: 'Cashfree மூலம் செலுத்துங்கள்',
-    upiBackup: 'UPI ID: 8318810984-1@nyes',
-    waShare: 'WhatsApp-ல் பகிருங்கள்',
-    cantHelp: 'மன்னிக்கவும், இப்போது உதவ முடியவில்லை',
-    mute: 'பிறகு நினைவூட்டுங்கள்',
-    impactMap: { 50: '= ஒரு நாள் பள்ளி மதிய உணவு', 100: '= ஒரு வார கல்வி உதவி', 500: '= ஒரு மாத இணையம்', 1000: '= தேர்வு படிவக் கட்டணம்' },
-    otherWaysTitle: 'பழைய லேப்டாப் அல்லது கணினியை நன்கொடையாக வழங்கலாம்',
-    otherWays: [
-      '💻 பழைய லேப்டாப், கணினி அல்லது சாதனங்களை நன்கொடையாக வழங்கலாம்',
-      '📱 நண்பர்களிடம் NakshaBot பகிருங்கள்',
-      '📮 தபால் முகவரி: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
-    ],
-  },
   as: {
     label: 'অসমীয়া',
-    title: 'NakshaBot বনোৱা ছাত্ৰজনক সহায় কৰক',
-    subtitle: 'লেপটপ নোহোৱাকৈ, চাইবাৰ কেফেত বনোৱা',
-    pitch: 'নমস্কাৰ! মই NakshaBot-ৰ একমাত্ৰ ছাত্ৰ-ডেভেলপাৰ। মোৰ নিজৰ লেপটপ নাই — গোটেই এপটো চাইবাৰ কেফেত ঘণ্টাৰ পিছত ঘণ্টা পইচা দি বনাইছো। আজি NakshaBot হাজাৰ হাজাৰ মানুহক বিনামূলীয়াকৈ সহায় কৰিছে। চাৰ্ভাৰ আৰু টুলৰ খৰচ মোৰ নিজৰ পকেটৰ পৰা যায়। এই এপে আপোনাৰ কামত সামান্য সহায়ো কৰিছে নেকি? তেন্তে ₹৫০ বা ₹১০০ দিলে মোৰ বহুত উপকাৰ হ\'ব। 🙏',
-    scanLabel: 'স্কেন / QR ক্লিক কৰক',
+    title: 'উদীয়মান প্ৰতিভাক সমৰ্থন কৰক — এঞ্জেল বেকাৰ হওক 🚀',
+    subtitle: 'স্বায়ত্তশাসিত ছাত্ৰ ইনোভেচনক উৎসাহিত কৰক',
+    pitch: 'নমস্কাৰ! মই কৃতঘ্ন, NakshaBot-ৰ ছাত্ৰ-ডেভেলপাৰ। মই NakshaBot এইবাবেই বনাইছো যাতে সমগ্ৰ ভাৰতৰ হাজাৰ হাজাৰ মানুহে বিনামূলীয়াকৈ প্ৰফেচনেল মেপ বনাব পাৰে। চাৰ্ভাৰ আৰু ডেটা খৰচ স্বতন্ত্ৰভাৱে দিয়া হয়। এজন উদীয়মান ছাত্ৰ প্ৰতিভাৰ এঞ্জেল বেকাৰ হওক! আপোনাৰ ₹৫০ বা ₹ ১০০ তেনেই সামান্য সহায়েই এই স্বতন্ত্ৰ ইনোভেচনক শক্তিশালী কৰিব। 🙏',
+    scanLabel: 'যিকোনো UPI এপেৰে QR কোড স্কেন কৰক',
     chooseAmt: 'পৰিমাণ বাছক',
     orCustom: 'অথবা নিজে লিখক',
     namePlaceholder: 'আপোনাৰ নাম (ঐচ্ছিক)',
@@ -142,7 +119,7 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
     waShare: 'WhatsApp-ত শ্বেয়াৰ কৰক',
     cantHelp: 'দুঃখিত, এতিয়া সহায় কৰিব নোৱাৰো',
     mute: 'পিছত মনত পেলাওক',
-    impactMap: { 50: '= এদিনৰ স্কুল লাঞ্চ', 100: '= এসপ্তাহৰ পঢ়া-শুনাৰ সহায়', 500: '= এমাহৰ ইণ্টাৰনেট', 1000: '= পৰীক্ষাৰ ফৰ্মৰ মাচুল' },
+    impactMap: { 50: '= এদিনৰ স্কুল লাঞ্চ 🍱', 100: '= এসপ্তাহৰ পঢ়া-শুনাৰ সহায় ✏️', 500: '= এমাহৰ ইণ্টাৰনেট 💻', 1000: '= পৰীক্ষাৰ ফৰ্মৰ মাচুল 🎓' },
     otherWaysTitle: 'পুৰণি লেপটপ বা কম্পিউটাৰ দান কৰিব পাৰে',
     otherWays: [
       '💻 পুৰণি লেপটপ, কম্পিউটাৰ বা যিকোনো ডিভাইচ দান কৰিব পাৰে',
@@ -150,36 +127,172 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
       '📮 ডাকযোগে: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
     ],
   },
-  mni: {
-    label: 'মেইতেই',
-    title: 'NakshaBot তৈরি করা ছাত্রকে সাহায্য করুন',
-    subtitle: 'ল্যাপটপ ছাড়া, সাইবার ক্যাফে থেকে তৈরি',
-    pitch: 'নমস্কার! আমি NakshaBot-এর একা ছাত্র-ডেভেলপার। আমার নিজের ল্যাপটপ নেই — পুরো অ্যাপটা সাইবার ক্যাফেতে ঘণ্টায় ঘণ্টায় পয়সা দিয়ে তৈরি করেছি। আজ NakshaBot হাজারো মানুষকে বিনামূল্যে সাহায্য করছে। Server ও tool-এর খরচ আমার পকেট থেকে যায়। ₹৫০ বা ₹১০০-এর সাহায্য আমার পড়াশুনা ও NakshaBot চালু রাখতে সাহায্য করবে। 🙏',
-    scanLabel: 'স্কান / QR দেখতে ক্লিক করুন',
-    chooseAmt: 'পরিমাণ বেছে নিন',
-    orCustom: 'নিজে লিখুন',
-    namePlaceholder: 'আপনার নাম (ঐচ্ছিক)',
-    upiPay: 'UPI দিয়ে পেমেন্ট',
-    cashfree: 'Cashfree দিয়ে পেমেন্ট',
+  mr: {
+    label: 'मराठी',
+    title: 'NakshaBot बनवणाऱ्या विद्यार्थ्याला मदत करा',
+    subtitle: 'लॅपटॉपशिवाय, सायबर कॅफेतून बनवले',
+    pitch: 'नमस्कार! मी NakshaBot चा एकुलता एक विद्यार्थी-डेव्हलपर आहे. माझ्याकडे लॅपटॉप नाही — मी हे संपूर्ण ॲप सायबर कॅफेमध्ये तासांचे पैसे देऊन बनवले आहे. आज NakshaBot हजारो लोकांना मदत करत आहे — पूर्णपणे मोफत. सर्व्हरचा खर्च माझ्या खिशातून जातो. ₹50 किंवा ₹100 ची छोटीशी मदत माझ्या शिक्षणासाठी खूप महत्त्वाची ठरेल. 🙏',
+    scanLabel: 'कोणत्याही UPI ॲपने QR कोड स्कॅन करा',
+    chooseAmt: 'रक्कम निवडा',
+    orCustom: 'किंवा स्वतः लिहा',
+    namePlaceholder: 'तुमचे नाव (पर्यायी)',
+    upiPay: 'UPI द्वारे Pay करा',
+    cashfree: 'Cashfree द्वारे Pay करा',
     upiBackup: 'UPI ID: 8318810984-1@nyes',
-    waShare: 'WhatsApp-এ শেয়ার করুন',
-    cantHelp: 'দুঃখিত, এখন সাহায্য করতে পারছি না',
-    mute: 'পরে মনে করিয়ে দিন',
-    impactMap: { 50: '= একদিনের স্কুল খাবার', 100: '= এক সপ্তাহের পড়ার সাহায্য', 500: '= এক মাসের ইন্টারনেট', 1000: '= পরীক্ষার ফর্ম ফি' },
-    otherWaysTitle: 'পুরনো ল্যাপটপ বা কম্পিউটার দান করুন',
+    waShare: 'WhatsApp वर Share करा',
+    cantHelp: 'माफ करा, मी आता मदत करू शकत नाही',
+    mute: 'नंतर आठवण करून द्या',
+    impactMap: { 50: '= एका दिवसाचा शाळेचा डबा 🍱', 100: '= एका आठवड्याचा अभ्यासाचा खर्च ✏️', 500: '= एका महिन्याचे इंटरनेट 💻', 1000: '= परीक्षा फॉर्म फी 🎓' },
+    otherWaysTitle: 'जुना Laptop / Computer दान करू शकता',
     otherWays: [
-      '💻 ল্যাপটপ, কম্পিউটার বা যেকোনো ডিভাইস দান করতে পারেন',
-      '📱 বন্ধুদের সাথে NakshaBot শেয়ার করুন',
-      '📮 ডাক ঠিকানা: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
+      '💻 जुना Laptop किंवा Computer दान करू शकता',
+      '📱 मित्रांना NakshaBot शेअर करा',
+      '📮 पत्ता: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
+    ],
+  },
+  ta: {
+    label: 'தமிழ்',
+    title: 'NakshaBot உருவாக்கிய மாணவனுக்கு உதவுங்கள்',
+    subtitle: 'லேப்டாப் இல்லாமல், சைபர் கஃபேவில் உருவாக்கியது',
+    pitch: 'வணக்கம்! நான் NakshaBot-ஐ உருவாக்கிய தனி மாணவன். என்னிடம் லேப்டாப் இல்லை — முழு ஆப்பையும் சைபர் கஃபேயில் மணிக்கணக்கில் பணம் செலுத்தி உருவாக்கினேன். இன்று NakshaBot ஆயிரக்கணக்கான மக்களுக்கு இலவசமாக உதவுகிறது. இந்த ஆப் உங்களுக்கு உதவியிருந்தால், ₹50 அல்லது ₹100 நன்கொடை அளித்து என் கல்வியை ஆதரியுங்கள். 🙏',
+    scanLabel: 'எந்த UPI ஆப் மூலமும் QR ஸ்கேன் செய்யுங்கள்',
+    chooseAmt: 'தொகையை தேர்வு செய்யுங்கள்',
+    orCustom: 'அல்லது தொகை உள்ளிடவும்',
+    namePlaceholder: 'உங்கள் பெயர் (விருப்பத்திற்கு)',
+    upiPay: 'UPI மூலம் செலுத்துங்கள்',
+    cashfree: 'Cashfree மூலம் செலுத்துங்கள்',
+    upiBackup: 'UPI ID: 8318810984-1@nyes',
+    waShare: 'WhatsApp-ல் பகிருங்கள்',
+    cantHelp: 'மன்னிக்கவும், இப்போது உதவ முடியவில்லை',
+    mute: 'பிறகு நினைவூட்டுங்கள்',
+    impactMap: { 50: '= ஒரு நாள் பள்ளி மதிய உணவு 🍱', 100: '= ஒரு வார கல்வி உதவி ✏️', 500: '= ஒரு மாத இணையம் 💻', 1000: '= தேர்வு படிவக் கட்டணம் 🎓' },
+    otherWaysTitle: 'பழைய லேப்டாப் அல்லது கணினியை நன்கொடையாக வழங்கலாம்',
+    otherWays: [
+      '💻 பழைய லேப்டாப், கணினி அல்லது சாதனங்களை நன்கொடையாக வழங்கலாம்',
+      '📱 நண்பர்களிடம் NakshaBot பகிருங்கள்',
+      '📮 தபால் முகவரி: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
+    ],
+  },
+  te: {
+    label: 'తెలుగు',
+    title: 'NakshaBot తయారు చేసిన విద్యార్థికి సాయం చేయండి',
+    subtitle: 'ల్యాప్‌టాప్ లేకుండా, సైబర్ కేఫ్ నుండి తయారు చేశారు',
+    pitch: 'నమస్తే! నేను NakshaBot ని అభివృద్ధి చేసిన విద్యార్థిని. నా దగ్గర ల్యాప్‌టాప్ లేదు — సైబర్ కేఫ్‌లో గంటల వారీగా డబ్బులు చెల్లించి ఈ యాప్ తయారు చేశాను. ఈ యాప్ మీకు ఉపయోగపడితే, ₹50 లేదా ₹100 విరాళం ఇవ్వడం ద్వారా నా చదువుకి సాయం చేయండి. 🙏',
+    scanLabel: 'ఏదైనా UPI యాప్‌తో QR కోడ్‌ని స్కాన్ చేయండి',
+    chooseAmt: 'మొత్తాన్ని ఎంచుకోండి',
+    orCustom: 'లేదా మీరే నమోదు చేయండి',
+    namePlaceholder: 'మీ పేరు (ఐచ్ఛికం)',
+    upiPay: 'UPI ద్వారా చెల్లించండి',
+    cashfree: 'Cashfree ద్వారా చెల్లించండి',
+    upiBackup: 'UPI ID: 8318810984-1@nyes',
+    waShare: 'WhatsApp లో షేర్ చేయండి',
+    cantHelp: 'క్షమించండి, ఇప్పుడు సాయం చేయలేను',
+    mute: 'తర్వాత గుర్తు చేయండి',
+    impactMap: { 50: '= ఒక రోజు స్కూల్ లంచ్ 🍱', 100: '= ఒక వారం చదువు సాయం ✏️', 500: '= ఒక నెల ఇంటర్నెట్ 💻', 1000: '= పరీక్ష ఫారం ఫీజు 🎓' },
+    otherWaysTitle: 'పాత ল్యాప్‌టాప్ లేదా కంప్యూటర్ దానం చేయవచ్చు',
+    otherWays: [
+      '💻 పాత ల్యాప్‌టాప్ లేదా కంప్యూటర్ దానం చేయవచ్చు',
+      '📱 మిత్రులకు NakshaBot షేర్ చేయండి',
+      '📮 చిరునామా: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
+    ],
+  },
+  kn: {
+    label: 'ಕನ್ನಡ',
+    title: 'NakshaBot ತಯಾರಿಸಿದ ವಿದ್ಯಾರ್ಥಿಗೆ ನೆರವಾಗಿ',
+    subtitle: 'ಲ್ಯಾಪ್‌ಟಾಪ್ ಇಲ್ಲದೆ, ಸೈಬರ್ ಕೆಫೆಯಿಂದ ತಯಾರಿಸಲಾಗಿದೆ',
+    pitch: 'ನಮಸ್ಕಾರ! ನಾನು NakshaBot ರೂಪಿಸಿದ ವಿದ್ಯಾರ್ಥಿ. ನನ್ನ ಬಳಿ ಲ್ಯಾಪ್‌ಟಾಪ್ ಇಲ್ಲ — ಸೈಬರ್ ಕೆಫೆಯಲ್ಲಿ ಗಂಟೆಗೆ ಹಣ ನೀಡಿ ಈ ಲ್ಯಾಪ್‌ಟಾಪ್ ಅಪ್ಲಿಕೇಶನ್ ನಿರ್ಮಿಸಿದ್ದೇನೆ. ಈ ಆಪ್ ನಿಮಗೆ ಸಹಾಯ ಮಾಡಿದ್ದರೆ, ₹50 ಅಥವಾ ₹100 ದೇಣಿಗೆ ನೀಡಿ ನನ್ನ ಶಿಕ್ಷಣಕ್ಕೆ ನೆರವಾಗಿ. 🙏',
+    scanLabel: 'ಯಾವುದೇ UPI ಆಪ್‌ನಿಂದ QR ಕೋಡ್ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ',
+    chooseAmt: 'ಮೊತ್ತವನ್ನು ಆಯ್ಕೆಮಾಡಿ',
+    orCustom: 'ಅಥವಾ ಕಸ್ಟಮ್ ಮೊತ್ತ',
+    namePlaceholder: 'ನಿಮ್ಮ ಹೆಸರು (ಐಚ್ಛಿಕ)',
+    upiPay: 'UPI ಮೂಲಕ ಪಾವತಿಸಿ',
+    cashfree: 'Cashfree ಮೂಲಕ ಪಾವತಿಸಿ',
+    upiBackup: 'UPI ID: 8318810984-1@nyes',
+    waShare: 'WhatsApp ನಲ್ಲಿ ಹಂಚಿಕೊಳ್ಳಿ',
+    cantHelp: 'ಕ್ಷಮಿಸಿ, ಈಗ ಸಹಾಯ ಮಾಡಲು ಸಾಧ್ಯವಿಲ್ಲ',
+    mute: 'ನಂತರ ನೆನಪಿಸಿ',
+    impactMap: { 50: '= ಒಂದು ದಿನದ ಶಾಲಾ ಊಟ 🍱', 100: '= ಒಂದು ವಾರದ ಶಿಕ್ಷಣ ನೆರವು ✏️', 500: '= ಒಂದು ತಿಂಗಳ ಇಂಟರ್ನೆಟ್ 💻', 1000: '= ಪರೀಕ್ಷಾ ಶುಲ್ಕ 🎓' },
+    otherWaysTitle: 'ಹಳೆಯ ಲ್ಯಾಪ್‌ಟಾಪ್ ಅಥವಾ ಕಂಪ್ಯೂಟರ್ ಕೊಡುಗೆ ನೀಡಿ',
+    otherWays: [
+      '💻 ಹಳೆಯ ಲ್ಯಾಪ್‌ಟಾಪ್ ಅಥವಾ ಕಂಪ್ಯೂಟರ್ ಕೊಡುಗೆ ನೀಡಬಹುದು',
+      '📱 ಸ್ನೇಹಿತರೊಂದಿಗೆ NakshaBot ಹಂಚಿಕೊಳ್ಳಿ',
+      '📮 ವಿಳಾಸ: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
+    ],
+  },
+  ml: {
+    label: 'മലയാളം',
+    title: 'NakshaBot നിർമ്മിച്ച വിദ്യാർത്ഥിയെ സഹായിക്കൂ',
+    subtitle: 'ലാപ്‌ടോപ്പ് ഇല്ലാതെ, സൈബർ കഫേയിൽ നിന്ന് നിർമ്മിച്ചത്',
+    pitch: 'നമസ്കാരം! ഞാൻ NakshaBot നിർമ്മിച്ച വിദ്യാർത്ഥിയാണ്. സ്വന്തമായി ലാപ്‌ടോപ്പ് ഇല്ലാത്തതിനാൽ സൈബർ കഫേയിൽ മണിക്കൂറുകൾക്ക് പണം നൽകിയാണ് ഞാൻ ഇത് വികസിപ്പിച്ചത്. ₹50 അല്ലെങ്കിൽ ₹100 സംഭാവന നൽകി എന്റെ പഠനത്തെ പിന്തുണയ്ക്കൂ. 🙏',
+    scanLabel: 'ഏതെങ്കിലും UPI ആപ്പ് ഉപയോഗിച്ച് QR സ്കാൻ ചെയ്യൂ',
+    chooseAmt: 'തുക തിരഞ്ഞെടുക്കൂ',
+    orCustom: 'അല്ലെങ്കിൽ തുക നൽകൂ',
+    namePlaceholder: 'നിങ്ങളുടെ പേര് (ഓപ്ഷണൽ)',
+    upiPay: 'UPI വഴി നൽകൂ',
+    cashfree: 'Cashfree വഴി നൽകൂ',
+    upiBackup: 'UPI ID: 8318810984-1@nyes',
+    waShare: 'WhatsApp-ൽ പങ്കുവെക്കൂ',
+    cantHelp: 'ക്ഷമിക്കണം, ഇപ്പോൾ സഹായിക്കാൻ കഴിയില്ല',
+    mute: 'പിന്നീട് ഓർമ്മിപ്പിക്കൂ',
+    impactMap: { 50: '= ഒരു ദിവസത്തെ ഉച്ചഭക്ഷണം 🍱', 100: '= ഒരു ആഴ്ചത്തെ പഠന സഹായം ✏️', 500: '= ഒരു മാസത്തെ ഇന്റർനെറ്റ് 💻', 1000: '= പരീക്ഷ ഫീസ് 🎓' },
+    otherWaysTitle: 'പഴയ ലാപ്ടോപ്പോ കമ്പ്യൂട്ടറോ നൽകാം',
+    otherWays: [
+      '💻 പഴയ ലാപ്ടോപ്പ് അല്ലെങ്കിൽ കമ്പ്യൂട്ടർ നൽകാം',
+      '📱 കൂട്ടുകാർക്ക് NakshaBot പങ്കുവെക്കൂ',
+      '📮 വിലാസം: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
+    ],
+  },
+  gu: {
+    label: 'ગુજરાતી',
+    title: 'NakshaBot બનાવનાર વિદ્યાર્થીને મદદ કરો',
+    subtitle: 'લેપટોપ વગર, સાયબર કેફેમાંથી બનાવ્યું',
+    pitch: 'નમસ્તે! હું NakshaBot નો વિદ્યાર્થી-ડેવલપર છું. મારી પાસે લેપટોપ ન હોવાથી મેં સાયબર કેફેમાં કલાકના હિસાબે પૈસા આપીને આ એપ બનાવી છે. જો આ એપથી તમારું કામ સરળ થયું હોય, તો ₹50 કે ₹100 નું નાનું દાન મારા અભ્યાસ માટે ખૂબ મદદરૂપ થશે. 🙏',
+    scanLabel: 'કોઈપણ UPI એપ વડે QR કોડ સ્કેન કરો',
+    chooseAmt: 'રકમ પસંદ કરો',
+    orCustom: 'અથવા કસ્ટમ રકમ',
+    namePlaceholder: 'તમારું નામ (વૈકલ્પિક)',
+    upiPay: 'UPI દ્વારા પે કરો',
+    cashfree: 'Cashfree દ્વારા પે કરો',
+    upiBackup: 'UPI ID: 8318810984-1@nyes',
+    waShare: 'WhatsApp પર શેર કરો',
+    cantHelp: 'માફ કરશો, હું અત્યારે મદદ કરી શકતો નથી',
+    mute: 'પછી યાદ દેવડાવો',
+    impactMap: { 50: '= એક દિવસનું શાળાનું ભોજન 🍱', 100: '= એક અઠવાડિયાનો અભ્યાસ ખર્ચ ✏️', 500: '= એક મહિનાનું ઇન્ટરનેટ 💻', 1000: '= પરીક્ષા ફોર્મ ફી 🎓' },
+    otherWaysTitle: 'જૂનું Laptop અથવા Computer દાન કરી શકો છો',
+    otherWays: [
+      '💻 જૂનું Laptop અથવા Computer દાન કરી શકો છો',
+      '📱 મિત્રો સાથે NakshaBot શેર કરો',
+      '📮 સરનામું: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
+    ],
+  },
+  pa: {
+    label: 'ਪੰਜਾਬੀ',
+    title: 'NakshaBot ਬਣਾਉਣ ਵਾਲੇ ਵਿਦਿਆਰਥੀ ਦੀ ਮਦਦ ਕਰੋ',
+    subtitle: 'ਬਿਨਾਂ ਲੈਪਟਾਪ ਦੇ, ਸਾਈਬਰ ਕੈਫੇ ਤੋਂ ਬਣਾਇਆ',
+    pitch: 'ਸਤਿ ਸ਼੍ਰੀ ਅਕਾਲ! ਮੈਂ NakshaBot ਦਾ ਵਿਦਿਆਰਥੀ ਡਿਵੈਲਪਰ ਹਾਂ। ਲੈਪਟਾਪ ਨਾ ਹੋਣ ਕਰਕੇ ਮੈਂ ਇਹ ਐਪ ਸਾਈਬਰ ਕੈਫੇ ਤੋਂ ਪੈਸੇ ਦੇ ਕੇ ਬਣਾਇਆ ਹੈ। ਜੇਕਰ ਇਸ ਐਪ ਨੇ ਤੁਹਾਡੀ ਮਦਦ ਕੀਤੀ ਹੈ, ਤਾਂ ₹50 ਜਾਂ ₹100 ਦੀ ਛੋਟੀ ਜਿਹੀ ਮਦਦ ਨਾਲ ਮੇਰੀ ਪੜ੍ਹਾਈ ਵਿੱਚ ਯੋਗਦਾਨ ਪਾਓ। 🙏',
+    scanLabel: 'ਕਿਸੇ ਵੀ UPI ਐਪ ਨਾਲ QR ਸਕੈਨ ਕਰੋ',
+    chooseAmt: 'ਰਕਮ ਚੁਣੋ',
+    orCustom: 'ਜਾਂ ਆਪਣੀ ਰਕਮ ਲਿਖੋ',
+    namePlaceholder: 'ਤੁਹਾਡਾ ਨਾਮ (ਵਿਕਲਪਿਕ)',
+    upiPay: 'UPI ਰਾਹੀਂ ਪੇਅ ਕਰੋ',
+    cashfree: 'Cashfree ਰਾਹੀਂ ਪੇਅ ਕਰੋ',
+    upiBackup: 'UPI ID: 8318810984-1@nyes',
+    waShare: 'WhatsApp ਤੇ ਸ਼ੇਅਰ ਕਰੋ',
+    cantHelp: 'ਮਾਫ ਕਰਨਾ, ਮੈਂ ਹੁਣੇ ਮਦਦ ਨਹੀਂ ਕਰ ਸਕਦਾ',
+    mute: 'ਬਾਅਦ ਵਿੱਚ ਯਾਦ ਕਰਵਾਓ',
+    impactMap: { 50: '= ਇੱਕ ਦਿਨ ਦਾ ਸਕੂਲ ਲੰਚ 🍱', 100: '= ਇੱਕ ਹਫਤੇ ਦੀ ਪੜ੍ਹਾਈ ਮਦਦ ✏️', 500: '= ਇੱਕ ਮਹੀਨੇ ਦਾ ਇੰਟਰਨੈਟ 💻', 1000: '= ਪ੍ਰੀਖਿਆ ਫਾਰਮ ਫੀਸ 🎓' },
+    otherWaysTitle: 'ਪੁਰਾਣਾ ਲੈਪਟਾਪ ਜਾਂ ਕੰਪਿਊਟਰ ਦਾਨ ਕਰ ਸਕਦੇ ਹੋ',
+    otherWays: [
+      '💻 ਪੁਰਾਣਾ ਲੈਪਟਾਪ ਜਾਂ ਕੰਪਿਊਟਰ ਦਾਨ ਕਰ ਸਕਦੇ ਹੋ',
+      '📱 ਦੋਸਤਾਂ ਨਾਲ NakshaBot ਸ਼ੇਅਰ ਕਰੋ',
+      '📮 ਪਤਾ: Kratagya Singh, L89 Lachhaniya Purwa Rooma, Kanpur Nagar, UP - 208020'
     ],
   },
 };
 
 const STATE_LANG_MAP: Record<string, LangKey> = {
   'West Bengal': 'bn', 'WB': 'bn',
-  'Tamil Nadu': 'ta', 'TN': 'ta',
   'Assam': 'as', 'AS': 'as',
-  'Manipur': 'mni', 'MN': 'mni',
   'Uttar Pradesh': 'hi', 'UP': 'hi',
   'Bihar': 'hi', 'BR': 'hi',
   'Madhya Pradesh': 'hi', 'MP': 'hi',
@@ -190,9 +303,14 @@ const STATE_LANG_MAP: Record<string, LangKey> = {
   'Chhattisgarh': 'hi', 'CG': 'hi',
   'Himachal Pradesh': 'hi', 'HP': 'hi',
   'Uttarakhand': 'hi', 'UK': 'hi',
-  'Punjab': 'hi', 'PB': 'hi',
-  'Gujarat': 'hi', 'GJ': 'hi',
-  'Maharashtra': 'hi', 'MH': 'hi',
+  'Maharashtra': 'mr', 'MH': 'mr',
+  'Tamil Nadu': 'ta', 'TN': 'ta',
+  'Andhra Pradesh': 'te', 'AP': 'te',
+  'Telangana': 'te', 'TG': 'te', 'TS': 'te',
+  'Karnataka': 'kn', 'KA': 'kn',
+  'Kerala': 'ml', 'KL': 'ml',
+  'Gujarat': 'gu', 'GJ': 'gu',
+  'Punjab': 'pa', 'PB': 'pa',
 };
 
 const fixedAmounts = [50, 100, 500, 1000];
@@ -200,7 +318,7 @@ const WA_SHARE_TEXT = `मैंने एक साथी छात्र क�
 const VIDEO_URL = "https://ybrtqteoagkptglqedsw.supabase.co/storage/v1/object/sign/t/Video%20Project%201%20(1)%20(1)%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lM2I3OGM3OC1lNTFlLTQ1MzEtOTViMC1iY2VkMTMwZGE2ZjAiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ0L1ZpZGVvIFByb2plY3QgMSAoMSkgKDEpICgxKS5tcDQiLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzg2MTk2OTQ3LCJleHAiOjE4MTc3MzI5NDd9.GcUdabBxHfEFMqu9Z8WNIIwcqHzmEH_dx8On46weUZc";
 
 export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea }: Props) {
-  const [lang, setLang] = useState<LangKey>('en');
+  const [lang, setLang] = useState<LangKey>('en'); // Default to English
   const [customAmount, setCustomAmount] = useState('100');
   const [customNote, setCustomNote] = useState('');
   const [copiedText, setCopiedText] = useState<'upi' | null>(null);
@@ -208,46 +326,41 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
   const [showOtherWays, setShowOtherWays] = useState(false);
   const [geoLoading, setGeoLoading] = useState(true);
 
-  // Lightbox modal for QR code
-  const [showQrShowbox, setShowQrShowbox] = useState(false);
-
-  // Lazy loaded video URL (loaded only after popup fully opens)
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-
+  // Automatic Location Detection on Mount
   useEffect(() => {
     if (isOpen) {
       setGeoLoading(true);
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 4000);
+      const timer = setTimeout(() => controller.abort(), 3500);
+
       fetch('https://ipapi.co/json/', { signal: controller.signal })
         .then(r => r.json())
         .then((d: any) => {
-          const region: string = d?.region || d?.region_name || '';
+          const region: string = d?.region || d?.region_name || d?.city || '';
           const detectedLang = STATE_LANG_MAP[region] ?? 'en';
           setLang(detectedLang);
         })
-        .catch(() => { setLang('en'); })
+        .catch(() => {
+          // Browser locale fallback if location API fails
+          const userLang = navigator.language || '';
+          if (userLang.startsWith('hi')) setLang('hi');
+          else if (userLang.startsWith('bn')) setLang('bn');
+          else if (userLang.startsWith('ta')) setLang('ta');
+          else if (userLang.startsWith('as')) setLang('as');
+          else setLang('en');
+        })
         .finally(() => { clearTimeout(timer); setGeoLoading(false); });
-
-      // Lazy load video after popup opens completely
-      const vTimer = setTimeout(() => {
-        setVideoSrc(VIDEO_URL);
-      }, 350);
 
       return () => {
         clearTimeout(timer);
-        clearTimeout(vTimer);
         controller.abort();
       };
-    } else {
-      setVideoSrc(null);
-      setShowQrShowbox(false);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const L = LANG_CONTENT[lang];
+  const L = LANG_CONTENT[lang] || LANG_CONTENT.en;
   const selectedAmt = Number(customAmount) || 0;
   const impactText = L.impactMap[selectedAmt];
   const upiLink = `upi://pay?pa=8318810984-1@nyes&pn=NakshaBot&am=${customAmount || '100'}&cu=INR&tn=${encodeURIComponent('NakshaBot Donation')}`;
@@ -284,11 +397,7 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
     }
   };
 
-  const LANG_CYCLE: LangKey[] = ['hi', 'en', 'bn', 'ta', 'as', 'mni'];
-  const cycleLang = () => {
-    const idx = LANG_CYCLE.indexOf(lang);
-    setLang(LANG_CYCLE[(idx + 1) % LANG_CYCLE.length]);
-  };
+  const LANG_CYCLE: LangKey[] = ['en', 'hi', 'bn', 'as', 'mr', 'ta', 'te', 'kn', 'ml', 'gu', 'pa'];
 
   const headerTitle = (
     <div className="flex items-center gap-2.5 min-w-0">
@@ -300,276 +409,211 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
           {L.subtitle}
           {geoLoading && <span className="ml-1 opacity-50 text-[9px]">· detecting location…</span>}
         </p>
-        <p className="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded-md mt-1 inline-flex items-center gap-1">
-          <span>👇</span>
-          <span>{lang === 'hi' ? 'बंद करने के लिए नीचे तक स्क्रॉल करें' : 'Scroll to bottom to close popup'}</span>
-        </p>
       </div>
     </div>
   );
 
   return (
-    <>
-      <Sheet open={isOpen} onClose={undefined} title={headerTitle} maxWidth="sm">
-        <div className="space-y-3 text-sm text-[var(--color-ink)]">
+    <Sheet open={isOpen} onClose={undefined} title={headerTitle} maxWidth="sm">
+      <div className="space-y-4 text-sm text-[var(--color-ink)] pb-2">
 
-          {/* ── PITCH ── */}
-          <div className="bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-3.5 space-y-2">
-            <p className="text-xs leading-relaxed text-slate-700">{L.pitch}</p>
+        {/* ── PITCH CARD WITH HIGHLIGHTED VIDEO LINK ── */}
+        <div className="bg-gradient-to-br from-orange-50 via-amber-50 to-orange-50 border border-orange-200/90 rounded-2xl p-4 shadow-sm space-y-3">
+          <p className="text-xs leading-relaxed text-slate-700 font-medium">{L.pitch}</p>
 
-            {/* ── TRUST VIDEO (Lazy loaded, 9:16 Portrait Ratio) ── */}
-            {videoSrc && (
-              <div className="mt-2 pt-2 border-t border-orange-200/60 flex flex-col items-center">
-                <div className="flex items-center justify-between w-full mb-1">
-                  <span className="text-[10px] font-bold text-orange-800 flex items-center gap-1">
-                    🎥 Watch: Kratagya Singh , Who built NakshaBot
-                  </span>
-                  <span className="text-[9px] bg-orange-200 text-orange-900 font-bold px-1.5 py-0.5 rounded">9:16 Story</span>
-                </div>
-                <div className="relative w-full max-w-[210px] aspect-[9/16] bg-black rounded-xl overflow-hidden shadow-md border border-orange-300">
-                  <video
-                    src={videoSrc}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ── LANG + QR ROW ── */}
-          <div className="flex items-center gap-3 bg-[var(--color-surface-2)] p-2.5 rounded-xl border border-[var(--color-hairline)]">
-            {/* Clickable QR code to open Showbox */}
-            <div
-              onClick={() => setShowQrShowbox(true)}
-              className="relative group cursor-pointer shrink-0"
-              title="Click to view big QR image & download"
-            >
-              <img
-                src="/images/donation_qr.jpg"
-                alt="UPI QR Code"
-                className="w-20 h-20 rounded-lg border border-[var(--color-hairline)] shadow-sm object-contain bg-white group-hover:scale-105 transition-transform"
-                onError={(e) => { (e.target as any).style.display = 'none'; }}
-              />
-              <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors rounded-lg flex items-center justify-center">
-                <span className="text-[9px] text-white font-bold bg-black/60 px-1.5 py-0.5 rounded backdrop-blur">🔍 Expand</span>
-              </div>
-            </div>
-
-            <div className="flex-1 min-w-0 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-black text-[var(--color-ink-secondary)] uppercase tracking-wider">{L.scanLabel}</p>
-                <button
-                  type="button"
-                  onClick={() => setShowQrShowbox(true)}
-                  className="text-[9px] text-orange-600 font-bold hover:underline cursor-pointer"
-                >
-                  🔍 Big QR
-                </button>
-              </div>
-
-              {/* UPI ID copy row */}
-              <div className="flex items-center gap-1.5 bg-[var(--color-surface)] border border-[var(--color-hairline)] rounded-lg px-2 py-1">
-                <span className="text-[10px] font-mono font-bold text-[var(--color-ink)] flex-1 truncate">8318810984-1@nyes</span>
-                <button
-                  type="button"
-                  onClick={() => handleCopy('8318810984-1@nyes')}
-                  className="text-[9px] bg-[var(--color-accent)] text-white font-bold px-2 py-0.5 rounded cursor-pointer shrink-0"
-                >
-                  {copiedText === 'upi' ? '✓ Copied' : 'Copy'}
-                </button>
-              </div>
-
-              {/* Language cycler */}
-              <button
-                type="button"
-                onClick={cycleLang}
-                className="w-full text-[10px] text-[var(--color-accent)] font-bold border border-[var(--color-hairline)] rounded-lg py-1 hover:bg-[var(--color-surface)] transition-colors cursor-pointer"
-              >
-                🌐 {L.label} → Switch Language
-              </button>
-            </div>
-          </div>
-
-          {/* ── AMOUNT SELECTION ── */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-black text-[var(--color-ink-secondary)] uppercase tracking-wider">{L.chooseAmt}</p>
-            <div className="grid grid-cols-4 gap-1.5">
-              {fixedAmounts.map(amt => {
-                const isSelected = customAmount === String(amt);
-                const isBest = amt === 100;
-                return (
-                  <div key={amt} className="relative">
-                    {isBest && (
-                      <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-amber-400 text-amber-900 text-[7px] font-black px-1 py-px rounded-full whitespace-nowrap z-10 shadow">
-                        ⭐ Best
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setCustomAmount(String(amt))}
-                      className={`w-full mt-1 py-2 text-center text-xs font-black rounded-lg transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-[var(--color-accent)] text-white shadow ring-2 ring-[var(--color-accent)]/30'
-                          : isBest
-                          ? 'bg-amber-50 border-2 border-amber-300 text-amber-900 hover:bg-amber-100'
-                          : 'bg-[var(--color-surface-2)] border border-[var(--color-hairline)] text-[var(--color-ink)] hover:bg-indigo-50'
-                      }`}
-                    >
-                      ₹{amt}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Custom amount input */}
-            <div className="flex gap-2 items-center">
-              <span className="text-[10px] font-bold text-[var(--color-ink-secondary)] shrink-0">{L.orCustom}</span>
-              <input
-                type="number"
-                value={customAmount}
-                onChange={e => setCustomAmount(e.target.value)}
-                placeholder="₹"
-                min="1"
-                className="flex-1 px-2.5 py-1.5 text-xs border border-[var(--color-hairline)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] font-bold text-[var(--color-ink)]"
-              />
-              <input
-                type="text"
-                value={customNote}
-                onChange={e => setCustomNote(e.target.value)}
-                placeholder={L.namePlaceholder}
-                className="flex-1 px-2.5 py-1.5 text-xs border border-[var(--color-hairline)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] text-[var(--color-ink)]"
-              />
-            </div>
-
-            {/* Impact line */}
-            {impactText && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg">
-                <span className="text-green-700 text-[11px] font-bold">₹{selectedAmt}</span>
-                <span className="text-green-600 text-[11px]">{impactText}</span>
-              </div>
-            )}
-          </div>
-
-          {/* ── PAY BUTTONS ── */}
-          <div className="flex gap-2">
+          {/* Highlighted Small Video Link */}
+          <div className="pt-2 border-t border-orange-200/70 flex items-center justify-between gap-2">
             <a
-              href={upiLink}
-              className="flex-1 py-3 bg-[var(--color-success)] hover:opacity-90 text-white text-center font-black text-xs rounded-xl shadow transition-all flex items-center justify-center gap-1"
+              href={VIDEO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex items-center gap-1.5 text-xs font-bold text-orange-800 bg-orange-100/90 hover:bg-orange-200/90 border border-orange-300 px-3 py-1.5 rounded-xl transition-all shadow-xs"
             >
-              📱 {L.upiPay}
+              <span>🎥 Watch Video: Story of building NakshaBot</span>
+              <span className="text-[10px] text-orange-600 group-hover:translate-x-0.5 transition-transform">↗</span>
             </a>
-            <Button
-              type="button"
-              variant="filled"
-              disabled={loadingPayment}
-              className="flex-1 text-xs font-black"
-              onClick={handleGeneratePayment}
-            >
-              {loadingPayment
-                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
-                : <>💳 {L.cashfree}</>
-              }
-            </Button>
-          </div>
-
-          {/* ── WHATSAPP SHARE ── */}
-          <a
-            href={`https://wa.me/?text=${encodeURIComponent(WA_SHARE_TEXT)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-2.5 bg-[#25D366] hover:bg-[#1EBE5E] text-white text-center font-bold text-xs rounded-xl shadow transition-all flex items-center justify-center gap-1.5"
-          >
-            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-              <path d="M11.999 0C5.373 0 0 5.373 0 12c0 2.117.551 4.102 1.514 5.831L.054 23.617a.75.75 0 00.917.921l5.91-1.476A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 11.999 0zm.001 21.75a9.693 9.693 0 01-4.932-1.35l-.353-.21-3.658.915.961-3.55-.229-.364A9.694 9.694 0 012.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/>
-            </svg>
-            {L.waShare}
-          </a>
-
-          {/* ── OTHER WAYS TO HELP (collapsible: Laptop/Computer donation) ── */}
-          <div className="border border-[var(--color-hairline)] rounded-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowOtherWays(v => !v)}
-              className="w-full flex items-center justify-between px-3 py-2 bg-[var(--color-surface-2)] text-[11px] font-bold text-[var(--color-ink-secondary)] hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <span>💻 {L.otherWaysTitle}</span>
-              <span className="text-[var(--color-ink-tertiary)]">{showOtherWays ? '▲' : '▼'}</span>
-            </button>
-            {showOtherWays && (
-              <div className="px-3 py-2 space-y-1.5 bg-[var(--color-surface)]">
-                {L.otherWays.map((way, i) => (
-                  <p key={i} className="text-[11px] text-[var(--color-ink-secondary)] leading-relaxed font-medium">{way}</p>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ── DISMISS BUTTON — Highlighted & Clear ── */}
-          <div className="pt-1 border-t border-[var(--color-hairline)] space-y-1">
-            <p className="text-[10px] text-center text-slate-400 font-semibold">
-              {lang === 'hi' ? 'पॉपअप बंद करने के लिए नीचे दिए गए बटन पर क्लिक करें:' : 'Click below to close this dialog:'}
-            </p>
-            <button
-              type="button"
-              onClick={isPrintArea ? onClose : onMute24h}
-              disabled={loadingPayment}
-              className="w-full py-2.5 px-3 bg-gradient-to-r from-rose-50 to-pink-50 hover:from-rose-100 hover:to-pink-100 text-rose-700 hover:text-rose-900 border-2 border-rose-300 font-black text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
-            >
-              <span>😞 {isPrintArea ? L.cantHelp : L.mute}</span>
-              <span className="text-[10px] bg-rose-200/80 text-rose-900 px-1.5 py-0.5 rounded font-bold">✕ Close</span>
-            </button>
+            <span className="text-[10px] text-orange-600 font-bold bg-orange-100 px-2 py-0.5 rounded-md">100% Free App</span>
           </div>
         </div>
-      </Sheet>
 
-      {/* ── QR CODE SHOWBOX / LIGHTBOX MODAL ── */}
-      {showQrShowbox && (
-        <div
-          className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
-          onClick={() => setShowQrShowbox(false)}
-        >
-          <div
-            className="bg-white rounded-2xl p-5 max-w-xs w-full shadow-2xl flex flex-col items-center gap-3 text-center animate-in fade-in zoom-in-95 duration-200"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center w-full pb-2 border-b border-slate-100">
-              <h4 className="font-bold text-slate-800 text-xs">Donation QR Code</h4>
-              <button
-                onClick={() => setShowQrShowbox(false)}
-                className="text-slate-400 hover:text-slate-700 text-sm font-bold px-2 py-0.5 rounded hover:bg-slate-100"
-              >
-                ✕
-              </button>
-            </div>
+        {/* ── ENLARGED & CLEAN QR CODE SECTION ── */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-md p-4 flex flex-col items-center text-center space-y-3">
+          <p className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+            <span>📷</span>
+            <span>{L.scanLabel}</span>
+          </p>
+
+          {/* Huge Unobstructed QR Code Image */}
+          <div className="w-full max-w-[260px] sm:max-w-[280px] bg-white rounded-2xl border-2 border-orange-200 shadow-xl overflow-hidden p-1">
             <img
               src="/images/donation_qr.jpg"
-              alt="NakshaBot Donation QR Code"
-              className="w-56 h-56 object-contain rounded-xl border border-slate-200 shadow-md bg-white"
+              alt="UPI QR Code for Donation"
+              className="w-full h-auto object-contain rounded-xl bg-white"
+              onError={(e) => { (e.target as any).style.display = 'none'; }}
             />
-            <p className="text-[11px] text-slate-500 font-medium">Scan using GPay, PhonePe, Paytm or BHIM</p>
-            <div className="flex gap-2 w-full pt-1">
-              <a
-                href="/images/donation_qr.jpg"
-                download="NakshaBot_Donation_QR.jpg"
-                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl shadow transition-colors flex items-center justify-center gap-1.5"
-              >
-                📥 Download QR
-              </a>
-              <button
-                onClick={() => setShowQrShowbox(false)}
-                className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
-              >
-                Close
-              </button>
+          </div>
+
+          {/* Prominent Copyable UPI ID Row */}
+          <div className="w-full max-w-xs flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2">
+            <div className="flex-1 text-left px-1">
+              <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider">Direct UPI ID</span>
+              <span className="text-xs font-mono font-bold text-slate-800">8318810984-1@nyes</span>
             </div>
+            <button
+              type="button"
+              onClick={() => handleCopy('8318810984-1@nyes')}
+              className="py-1.5 px-3 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer shrink-0 active:scale-95"
+            >
+              {copiedText === 'upi' ? '✓ Copied' : 'Copy ID'}
+            </button>
           </div>
         </div>
-      )}
-    </>
+
+        {/* ── AMOUNT SELECTION ── */}
+        <div className="space-y-2 bg-slate-50/70 p-3 rounded-2xl border border-slate-200/80">
+          <div className="flex justify-between items-center">
+            <p className="text-xs font-black text-slate-600 uppercase tracking-wider">{L.chooseAmt}</p>
+            {impactText && (
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                ₹{selectedAmt} {impactText}
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-4 gap-2">
+            {fixedAmounts.map(amt => {
+              const isSelected = customAmount === String(amt);
+              const isBest = amt === 100;
+              return (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => setCustomAmount(String(amt))}
+                  className={`relative py-2.5 text-center text-xs font-black rounded-xl transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-orange-500 text-white shadow-md ring-2 ring-orange-300'
+                      : isBest
+                      ? 'bg-amber-50 border-2 border-amber-300 text-amber-900 hover:bg-amber-100'
+                      : 'bg-white border border-slate-200 text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  {isBest && (
+                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-amber-400 text-amber-950 text-[7.5px] font-black px-1.5 py-px rounded-full shadow-xs">
+                      ⭐ Recommended
+                    </span>
+                  )}
+                  ₹{amt}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Custom amount & name */}
+          <div className="flex gap-2 items-center pt-1">
+            <input
+              type="number"
+              value={customAmount}
+              onChange={e => setCustomAmount(e.target.value)}
+              placeholder="Custom ₹"
+              min="1"
+              className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-orange-400 outline-none"
+            />
+            <input
+              type="text"
+              value={customNote}
+              onChange={e => setCustomNote(e.target.value)}
+              placeholder={L.namePlaceholder}
+              className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-800 focus:ring-2 focus:ring-orange-400 outline-none"
+            />
+          </div>
+        </div>
+
+        {/* ── PAY BUTTONS ── */}
+        <div className="flex gap-2">
+          <a
+            href={upiLink}
+            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-center font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-98"
+          >
+            📱 {L.upiPay}
+          </a>
+          <Button
+            type="button"
+            variant="filled"
+            disabled={loadingPayment}
+            className="flex-1 py-3 text-xs font-black rounded-xl shadow-md"
+            onClick={handleGeneratePayment}
+          >
+            {loadingPayment
+              ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+              : <>💳 {L.cashfree}</>
+            }
+          </Button>
+        </div>
+
+        {/* ── WHATSAPP SHARE ── */}
+        <a
+          href={`https://wa.me/?text=${encodeURIComponent(WA_SHARE_TEXT)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full py-2.5 bg-[#25D366] hover:bg-[#1EBE5E] text-white text-center font-bold text-xs rounded-xl shadow transition-all flex items-center justify-center gap-1.5"
+        >
+          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+            <path d="M11.999 0C5.373 0 0 5.373 0 12c0 2.117.551 4.102 1.514 5.831L.054 23.617a.75.75 0 00.917.921l5.91-1.476A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 11.999 0zm.001 21.75a9.693 9.693 0 01-4.932-1.35l-.353-.21-3.658.915.961-3.55-.229-.364A9.694 9.694 0 012.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/>
+          </svg>
+          {L.waShare}
+        </a>
+
+        {/* ── OTHER WAYS TO HELP ── */}
+        <div className="border border-slate-200 rounded-xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowOtherWays(v => !v)}
+            className="w-full flex items-center justify-between px-3.5 py-2 bg-slate-50 text-[11px] font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <span>💻 {L.otherWaysTitle}</span>
+            <span className="text-slate-400">{showOtherWays ? '▲' : '▼'}</span>
+          </button>
+          {showOtherWays && (
+            <div className="px-3.5 py-2.5 space-y-1.5 bg-white border-t border-slate-100">
+              {L.otherWays.map((way, i) => (
+                <p key={i} className="text-[11px] text-slate-600 leading-relaxed font-medium">{way}</p>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── LANGUAGE SWITCHER & DISMISS BUTTON ── */}
+        <div className="pt-2 border-t border-slate-200/80 space-y-2">
+          {/* Language Selector Selector */}
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="text-[10px] font-bold text-slate-400">Language:</span>
+            <select
+              value={lang}
+              onChange={e => setLang(e.target.value as LangKey)}
+              className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 outline-none cursor-pointer"
+            >
+              {LANG_CYCLE.map(k => (
+                <option key={k} value={k}>
+                  🌐 {LANG_CONTENT[k].label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Dismiss Button */}
+          <button
+            type="button"
+            onClick={isPrintArea ? onClose : onMute24h}
+            disabled={loadingPayment}
+            className="w-full py-2.5 px-3 bg-gradient-to-r from-rose-50 to-pink-50 hover:from-rose-100 hover:to-pink-100 text-rose-700 hover:text-rose-900 border border-rose-300/80 font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
+          >
+            <span>😞 {isPrintArea ? L.cantHelp : L.mute}</span>
+            <span className="text-[10px] bg-rose-200/80 text-rose-900 px-1.5 py-0.5 rounded font-bold">✕ Close</span>
+          </button>
+        </div>
+
+      </div>
+    </Sheet>
   );
 }

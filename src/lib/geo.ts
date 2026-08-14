@@ -2,6 +2,7 @@ import type { Coordinate, SymbolType, Block, PlacedSymbol, FarmlandBlock, WaterB
 import { isHouseType, isNumberableSymbol } from '../types';
 import * as turf from '@turf/turf';
 import { clusterAwareOrder } from './clusterOrdering';
+import { supabase } from './supabase';
 
 export function getBbox(coords: Coordinate[]): { south: number; west: number; north: number; east: number } {
   let south = Infinity, west = Infinity, north = -Infinity, east = -Infinity;
@@ -946,4 +947,61 @@ export async function fetchOverpass(query: string, signal?: AbortSignal): Promis
   }
   
   throw lastError || new Error('All Overpass endpoints failed');
+}
+
+// ═══════════════════════════════════════════════════════════
+// UNIFIED GEODATA CLIENT — one call for roads/features/buildings/landcover
+// ═══════════════════════════════════════════════════════════
+// Previously each screen made 2-3 separate network calls to fetch a block's
+// physical features: a direct-from-browser Overpass call for roads (its query
+// string copy-pasted independently in MapWorkspace.tsx and
+// CanvasBlockScreen.tsx), a call to the fetch-open-buildings edge function,
+// and — conditionally — a call to fetch-landcover. This wraps the new
+// fetch-geodata gateway so every screen makes ONE call instead, with each
+// layer's success/failure reported independently so a slow landcover fetch
+// (or a down Overpass mirror) never blanks out roads/buildings that arrived
+// fine. Screens keep using clipRoadsToPolygon() / processOverpassData() on
+// the returned raw elements exactly as before — only the transport changed.
+export type GeoDataLayer = 'roads' | 'features' | 'buildings' | 'landcover';
+
+export interface GeoDataResponse {
+  roads?: { elements: any[] };
+  features?: { elements: any[] };
+  buildings?: { buildings: any[]; count: number; sources: Record<string, any> };
+  landcover?: { features: any[]; source: string };
+  errors: Record<string, string>;
+}
+
+export async function fetchGeoData(
+  bbox: { south: number; west: number; north: number; east: number },
+  boundary: Coordinate[],
+  layers: GeoDataLayer[],
+  opts?: { useGoogle?: boolean; minConfidence?: number },
+): Promise<GeoDataResponse> {
+  try {
+    const { data, error } = await supabase.functions.invoke('fetch-geodata', {
+      body: {
+        north: bbox.north, south: bbox.south, east: bbox.east, west: bbox.west,
+        boundary: boundary.map(p => ({ lat: p.lat, lng: p.lng })),
+        layers,
+        // Google is on by default now — previously MapWorkspace hardcoded
+        // true, CanvasBlockScreen defaulted its toggle to false, so the same
+        // "auto-populate" action gave different building coverage depending
+        // on which screen you were in. One default, everywhere; a caller can
+        // still pass useGoogle: false to opt out.
+        useGoogle: opts?.useGoogle ?? true,
+        minConfidence: opts?.minConfidence,
+      },
+    });
+    if (error) {
+      const errors: Record<string, string> = {};
+      for (const l of layers) errors[l] = error.message || 'Request failed';
+      return { errors };
+    }
+    return (data as GeoDataResponse) ?? { errors: {} };
+  } catch (err) {
+    const errors: Record<string, string> = {};
+    for (const l of layers) errors[l] = String(err);
+    return { errors };
+  }
 }

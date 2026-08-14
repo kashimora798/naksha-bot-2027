@@ -31,12 +31,12 @@ directly on this particular image.
 
 Usage policy notes (read before deploying at scale)
 ------------------------------------------------------
-* Overpass public instance (overpass-api.de): fair-use only, no guaranteed
-  rate limit but heavy concurrent load gets throttled/blocked. Fine for
-  prototyping and low-volume use; for a national rollout with many
-  enumerators submitting maps in parallel, either queue/rate-limit your own
-  requests, use a different public mirror (e.g. overpass.kumi.systems) as
-  fallback, or self-host Overpass against an India OSM extract.
+* Overpass: this module retries across 5 public mirrors (OVERPASS_ENDPOINTS
+  below) before giving up, so a single throttled instance no longer stops
+  extraction outright. That said, all 5 are still public, best-effort
+  instances — for a national rollout with many enumerators submitting maps
+  in parallel, either queue/rate-limit your own requests or self-host
+  Overpass against an India OSM extract for real resilience.
 * Nominatim public instance: hard cap of 1 request/second, requires a
   descriptive User-Agent (enforced below) — do not remove the sleep().
   Same scaling advice applies: self-host for volume.
@@ -56,7 +56,18 @@ import cv2
 import pytesseract
 from PIL import Image
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Mirror list — MUST stay in sync with OVERPASS_ENDPOINTS in
+# src/lib/geo.ts (client) and supabase/functions/_shared/overpass.ts (server).
+# Previously this pipeline had a single hardcoded endpoint with no fallback
+# at all, even though the TypeScript side already tries 5 mirrors in turn —
+# this was the one Overpass caller in the whole codebase with zero resilience.
+OVERPASS_ENDPOINTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 # Nominatim requires a real identifying User-Agent per their usage policy —
 # replace with your actual app name / contact before deploying.
@@ -77,6 +88,12 @@ def fetch_osm_features(lonlat_ring: list, timeout: int = 60) -> list[dict]:
     Queries Overpass for roads, waterways/water bodies, and named nodes
     clipped to the given polygon ring (list of [lon, lat] pairs, matching
     the GeoJSON coordinate order used elsewhere in this pipeline).
+
+    Tries each endpoint in OVERPASS_ENDPOINTS in turn — this used to be a
+    single hardcoded call to overpass-api.de with no fallback at all, the one
+    Overpass caller in the whole codebase without any resilience even though
+    the TypeScript client/server side both retry across 5 mirrors. Raises the
+    last error only if every mirror fails.
 
     Note on multipolygon water bodies: large lakes/reservoirs mapped as OSM
     relations can have multiple outer/inner rings. This function takes only
@@ -99,14 +116,28 @@ def fetch_osm_features(lonlat_ring: list, timeout: int = 60) -> list[dict]:
     );
     out geom;
     """
-    resp = requests.post(
-        OVERPASS_URL,
-        data={"data": query},
-        headers={"User-Agent": USER_AGENT},
-        timeout=timeout + 15,
-    )
-    resp.raise_for_status()
-    return resp.json().get("elements", [])
+
+    last_error: Exception | None = None
+    for endpoint in OVERPASS_ENDPOINTS:
+        try:
+            resp = requests.post(
+                endpoint,
+                data={"data": query},
+                headers={"User-Agent": USER_AGENT},
+                timeout=timeout + 15,
+            )
+            if resp.status_code == 429:
+                # Rate-limited — move on to the next mirror immediately
+                # rather than waiting out this one's backoff window.
+                last_error = requests.HTTPError(f"{endpoint}: rate-limited (429)")
+                continue
+            resp.raise_for_status()
+            return resp.json().get("elements", [])
+        except requests.RequestException as err:
+            last_error = err
+            continue
+
+    raise last_error or RuntimeError("All Overpass mirrors failed")
 
 
 def osm_elements_to_features(elements: list[dict]) -> list[dict]:

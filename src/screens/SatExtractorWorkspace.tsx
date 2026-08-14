@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { supabase } from '../lib/supabase';
 import { saveBoundaryToDb } from '../lib/survey-api';
 import type { Coordinate, MapData, SymbolType, RoadFeature, WaterBody, ForestArea, Landmark } from '../types';
-import { getBbox, getOSMName } from '../lib/geo';
+import { getBbox, getOSMName, fetchGeoData } from '../lib/geo';
 import { exportPDF } from '../lib/pdf-export';
 import { browserEnv } from '../lib/render-env.browser';
 
@@ -832,21 +831,11 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
 
     const bb = getBbox(mapData.boundaryPins);
     try {
-      const res = await supabase.functions.invoke('fetch-open-buildings', {
-        body: {
-          north: bb.north,
-          south: bb.south,
-          east: bb.east,
-          west: bb.west,
-          boundary: mapData.boundaryPins.map(p => ({ lat: p.lat, lng: p.lng })),
-          useGoogle: true,
-          minConfidence: accuracy
-        }
-      });
+      const geo = await fetchGeoData(bb, mapData.boundaryPins, ['buildings'], { useGoogle: true, minConfidence: accuracy });
 
-      if (res.error) throw res.error;
+      if (geo.errors.buildings) throw new Error(geo.errors.buildings);
 
-      const list = res.data?.buildings || [];
+      const list = geo.buildings?.buildings || [];
       const valid = list.filter((b: any) => b.polygon && Array.isArray(b.polygon.coordinates));
 
       // Remove overlapping duplicate structures returned by GEE

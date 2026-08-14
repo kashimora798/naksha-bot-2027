@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, RoadFeature, PlacedSymbol, Block, MapData, SymbolType } from '../types';
 import { isHouseType, isNumberableSymbol, SYMBOL_DEFS, getUnitCount } from '../types';
-import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween, fetchOverpass, generateSerpentinePath, bearingBetween, buildComprehensiveQuery, processOverpassData } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween, generateSerpentinePath, bearingBetween, processOverpassData, fetchGeoData } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { detectBlocks, mergeBlocks, splitBlock, relabelBlocks, blockPoints, labelFor } from '../lib/blocks';
 import { placeGroupsInBlock, blockGrid, minEdgeDistM, type LayoutMode, type SymGroup } from '../lib/placement-blocks';
@@ -205,7 +205,12 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
   const [showDetectModal, setShowDetectModal] = useState(false);
   const [detectTarget, setDetectTarget] = useState<'all' | 'selected'>('all');
   const [mergeMode, setMergeMode] = useState<'append' | 'replace'>('append');
-  const [useGoogleBuildings, setUseGoogleBuildings] = useState(false);
+  // Default matches MapWorkspace and the fetch-geodata gateway default — every
+  // screen used to default this differently (MapWorkspace: always on;
+  // CanvasBlockScreen: off unless the user toggled it), which meant the same
+  // "detect buildings" action gave different coverage depending on which mode
+  // you were in. Still user-toggleable via the checkbox below.
+  const [useGoogleBuildings, setUseGoogleBuildings] = useState(true);
 
 
   // Convenience accessors into mapData
@@ -916,23 +921,9 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     setRdLoading(true); setRdMsg('');
     try {
       const bb = getBbox(boundaryPins);
-      const pad = 0.003;
-      const q = `[out:json][timeout:30][bbox:${bb.south - pad},${bb.west - pad},${bb.north + pad},${bb.east + pad}];
-        (
-          way["highway"];
-          way["highway"~"footway|path|track|steps|cycleway|pedestrian|living_street"];
-          way["footway"="crossing"];
-          way["path"];
-          way["track"];
-        );
-        out geom;`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const r = await fetchOverpass(q, controller.signal);
-      clearTimeout(timeoutId);
-      if (!r.ok) throw new Error('fetch failed');
-      const d = await r.json();
-      const cl = clipRoadsToPolygon(d.elements || [], boundaryPins);
+      const geo = await fetchGeoData(bb, boundaryPins, ['roads']);
+      if (geo.errors.roads) throw new Error(geo.errors.roads);
+      const cl = clipRoadsToPolygon(geo.roads?.elements || [], boundaryPins);
       const fetched: RoadFeature[] = cl.map((c: any) => ({ id: crypto.randomUUID(), coords: c.coords, highway: c.highway, name: c.name, confirmed: true, source: 'osm' as const, osm_id: c.osm_id }));
       const userRoads = roads.filter(r => r.source === 'user');
       onUpdateMapData({ roads: [...userRoads, ...fetched] });
@@ -1263,24 +1254,15 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       }
 
       const bb = getBbox(targetBoundary);
-      const res = await supabase.functions.invoke('fetch-open-buildings', {
-        body: {
-          north: bb.north,
-          south: bb.south,
-          east: bb.east,
-          west: bb.west,
-          boundary: targetBoundary.map(p => ({ lat: p.lat, lng: p.lng })),
-          useGoogle,
-        }
-      });
+      const geo = await fetchGeoData(bb, targetBoundary, ['buildings'], { useGoogle });
 
-      if (res.error) {
+      if (geo.errors.buildings) {
         setDetectMsg('⚠️ Building detection network error. Please try again.');
         setDetectLoading(false);
         return;
       }
 
-      const all = res.data?.buildings || [];
+      const all = geo.buildings?.buildings || [];
       const valid = all.filter((b: any) => b.area_sqm == null || b.area_sqm > 5);
 
       const fetchedSymbols: PlacedSymbol[] = valid.map((b: any) => ({
@@ -1377,22 +1359,17 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       }
 
       const bb = getBbox(targetBoundary);
-      const q = buildComprehensiveQuery(bb, 0.002);
       const area = polygonArea(targetBoundary);
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
-      const r = await fetchOverpass(q, controller.signal);
-      clearTimeout(timeoutId);
+      const geo = await fetchGeoData(bb, targetBoundary, ['features']);
 
-      if (!r.ok) {
-        setDetectMsg('⚠️ OSM Overpass API returned non-OK status. Try again shortly.');
+      if (!geo.features) {
+        setDetectMsg(`⚠️ OSM fetch failed (${geo.errors.features || 'unknown error'}). Try again shortly.`);
         setDetectLoading(false);
         return;
       }
 
-      const d = await r.json();
-      const res = processOverpassData(d.elements || [], targetBoundary, area);
+      const res = processOverpassData(geo.features.elements, targetBoundary, area);
 
       // Combine symbols
       let updatedSymbols: PlacedSymbol[] = [];

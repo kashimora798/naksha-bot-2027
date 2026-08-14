@@ -2,13 +2,12 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, PlacedSymbol, RoadFeature, SymbolType, Block, FarmlandBlock, WaterBody, ForestArea, Landmark, AreaStats, MapData } from '../types';
 import { SYMBOL_DEFS, isHouseType, isPakkaRoad, getUnitCount, polyCenter } from '../types';
-import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, buildComprehensiveQuery, processOverpassData, isPolygonSelfIntersecting, fetchOverpass } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, processOverpassData, isPolygonSelfIntersecting, fetchGeoData } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { declutterSymbols, buildRotationMap } from '../lib/declutter';
 import SymbolDrawer from '../components/SymbolDrawer';
 import GuidedTour from '../components/GuidedTour';
 import { DEMO_BOUNDARY, DEMO_CENTER } from '../data/demo';
-import { supabase } from '../lib/supabase';
 import { findNearestRoadBearing, getBlockOrientation } from '../lib/pdf-export';
 import { useTranslation } from '../lib/i18n';
 
@@ -525,145 +524,95 @@ export default function MapWorkspace(props: Props) {
   async function runAutoEnrichment() {
     if (boundaryPins.length < 3) return;
     setRdLoad(true);
-    setBldgMsg('⏳ Satellite & OpenStreetMap data fetching...');
+    setBldgMsg('⏳ Fetching roads, buildings & land features...');
     try {
       const bb = getBbox(boundaryPins);
       const area = polygonArea(boundaryPins);
-      const pad = 0.003;
 
-      // Promise 1: Fetch Roads
-      const roadsPromise = (async () => {
-        try {
-          const q = `[out:json][timeout:30][bbox:${bb.south - pad},${bb.west - pad},${bb.north + pad},${bb.east + pad}];
-            (
-              way["highway"];
-              way["highway"~"footway|path|track|steps|cycleway|pedestrian|living_street"];
-              way["footway"="crossing"];
-              way["path"];
-              way["track"];
-            );
-            out geom;`;
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-          const r = await fetchOverpass(q, controller.signal);
-          clearTimeout(timeoutId);
-          if (!r.ok) return [];
-          const d = await r.json();
-          const cl = clipRoadsToPolygon(d.elements || [], boundaryPins);
-          return cl.map(c => ({
+      // One gateway call instead of three independent network paths (roads
+      // via direct Overpass, buildings via fetch-open-buildings, landuse/POI
+      // via a second direct Overpass call) — see fetchGeoData in lib/geo.ts.
+      const geo = await fetchGeoData(bb, boundaryPins, ['roads', 'features', 'buildings'], { useGoogle: true });
+
+      const fetchedRoads = geo.roads?.elements
+        ? clipRoadsToPolygon(geo.roads.elements, boundaryPins).map(c => ({
             id: crypto.randomUUID(),
             coords: c.coords,
             highway: c.highway,
             name: c.name,
             confirmed: false,
             source: 'osm' as const,
-            osm_id: c.osm_id
+            osm_id: c.osm_id,
+          }))
+        : [];
+      if (geo.errors.roads) console.warn('Auto roads fetch failed:', geo.errors.roads);
+
+      const fetchedBuildings = geo.buildings
+        ? geo.buildings.buildings
+            .filter((b: any) => b.area_sqm == null || b.area_sqm > 5)
+            .map((b: any) => ({
+              id: `building-${crypto.randomUUID()}`,
+              symbol_type: (b.buildingType || 'pucca_house') as SymbolType,
+              lat: b.lat, lng: b.lng,
+              number: null,
+              placed_at: new Date().toISOString(),
+              auto_detected: true,
+            }))
+        : [];
+      if (geo.errors.buildings) console.warn('Auto buildings fetch failed:', geo.errors.buildings);
+
+      let featureRes = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } as any };
+      if (geo.features?.elements) {
+        featureRes = processOverpassData(geo.features.elements, boundaryPins, area);
+      } else if (geo.errors.features) {
+        console.warn('Auto landcover OSM fetch failed:', geo.errors.features);
+      }
+
+      // Farmland coverage looked thin from OSM alone — ask the gateway for the
+      // Dynamic World satellite classification as a second, targeted call. This
+      // stays a two-stage fetch (not bundled into the first call) so blocks
+      // that don't need it never pay the extra Earth Engine round trip.
+      let finalLanduseAreas = featureRes.landuseAreas;
+      if (featureRes.stats.farmlandArea < area * 0.4) {
+        const lcGeo = await fetchGeoData(bb, boundaryPins, ['landcover']);
+        if (lcGeo.landcover) {
+          const rawAreas: any[] = (lcGeo.landcover.features || []).map((f: any) => ({
+            type: f.properties?.label || f.properties?.type || 'farmland',
+            points: (f.geometry?.coordinates?.[0] || []),
           }));
-        } catch (e) {
-          console.warn("Auto roads fetch failed:", e);
-          return [];
-        }
-      })();
-
-      // Promise 2: Fetch Buildings
-      const buildingsPromise = (async () => {
-        try {
-          const res = await supabase.functions.invoke('fetch-open-buildings', {
-            body: {
-              north: bb.north,
-              south: bb.south,
-              east: bb.east,
-              west: bb.west,
-              boundary: boundaryPins.map(p => ({ lat: p.lat, lng: p.lng })),
-              useGoogle: true,
-            }
-          });
-          if (res.error) return [];
-          const all = res.data?.buildings || [];
-          const valid = all.filter((b: any) => b.area_sqm == null || b.area_sqm > 5);
-          return valid.map((b: any) => ({
-            id: `building-${crypto.randomUUID()}`,
-            symbol_type: (b.buildingType || 'pucca_house') as SymbolType,
-            lat: b.lat, lng: b.lng,
-            number: null,
-            placed_at: new Date().toISOString(),
-            auto_detected: true,
-          }));
-        } catch (e) {
-          console.warn("Auto buildings fetch failed:", e);
-          return [];
-        }
-      })();
-
-      // Promise 3: Fetch Landcover & POIs
-      const landcoverPromise = (async () => {
-        const q = buildComprehensiveQuery(bb, 0.002);
-        let res = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } };
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-          const r = await fetchOverpass(q, controller.signal);
-          clearTimeout(timeoutId);
-          if (r.ok) {
-            const d = await r.json();
-            res = processOverpassData(d.elements || [], boundaryPins, area);
+          const newAreas = rawAreas.filter((l) =>
+            Array.isArray(l.points) && l.points.length >= 3 &&
+            pointInPolygon({ lat: l.points[0][1], lng: l.points[0][0] }, boundaryPins)
+          );
+          if (newAreas.length) {
+            finalLanduseAreas = [...finalLanduseAreas, ...newAreas.map((l) => ({
+              type: l.type,
+              points: l.points.map((p: any) => ({ lat: p[1], lng: p[0] })),
+            }))];
           }
-        } catch (e) {
-          console.warn("Auto landcover OSM fetch failed:", e);
+        } else if (lcGeo.errors.landcover) {
+          console.warn('Auto landcover Dynamic World fetch failed:', lcGeo.errors.landcover);
         }
+      }
 
-        let finalLanduseAreas = res.landuseAreas;
-        if (res.stats.farmlandArea < area * 0.4) {
-          try {
-            const resLandcover = await supabase.functions.invoke('fetch-landcover', {
-              body: { north: bb.north, south: bb.south, east: bb.east, west: bb.west }
-            });
-            const lc = resLandcover.data;
-            const rawAreas: any[] = lc?.landuseAreas
-              ? lc.landuseAreas.map((l: any) => ({ type: l.type, points: l.points }))
-              : (lc?.features || []).map((f: any) => ({
-                  type: f.properties?.label || f.properties?.type || 'farmland',
-                  points: (f.geometry?.coordinates?.[0] || []),
-                }));
-            const newAreas = rawAreas.filter((l) =>
-              Array.isArray(l.points) && l.points.length >= 3 &&
-              pointInPolygon({ lat: l.points[0][1], lng: l.points[0][0] }, boundaryPins)
-            );
-            if (newAreas.length) {
-              finalLanduseAreas = [...finalLanduseAreas, ...newAreas.map((l) => ({
-                type: l.type,
-                points: l.points.map((p: any) => ({ lat: p[1], lng: p[0] }))
-              }))];
-            }
-          } catch (e) {
-            console.warn("Auto landcover Dynamic World fetch failed:", e);
-          }
-        }
-        return { ...res, landuseAreas: finalLanduseAreas };
-      })();
-
-      const [fetchedRoads, fetchedBuildings, lcResult] = await Promise.all([
-        roadsPromise,
-        buildingsPromise,
-        landcoverPromise
-      ]);
-
-      const combinedSymbols = [...fetchedBuildings, ...lcResult.symbols];
+      const combinedSymbols = [...fetchedBuildings, ...featureRes.symbols];
 
       if (onUpdateMapData) {
         onUpdateMapData({
           roads: fetchedRoads,
           symbols: combinedSymbols,
-          farmlandBlocks: lcResult.farmlands,
-          waterBodies: lcResult.waterBodies,
-          forests: lcResult.forests,
-          landuseAreas: lcResult.landuseAreas,
-          landmarks: lcResult.landmarks
+          farmlandBlocks: featureRes.farmlands,
+          waterBodies: featureRes.waterBodies,
+          forests: featureRes.forests,
+          landuseAreas: finalLanduseAreas,
+          landmarks: featureRes.landmarks
         });
       }
 
       setRdLoad(false);
-      setBldgMsg(`✅ Auto-populated: ${fetchedRoads.length} roads, ${fetchedBuildings.length} buildings, ${lcResult.waterBodies.length} water bodies, ${lcResult.forests.length} forests, and ${lcResult.landmarks.length} landmarks.`);
+      const failedLayers = Object.keys(geo.errors);
+      const failNote = failedLayers.length ? ` (${failedLayers.join(', ')} failed — retry from their own steps)` : '';
+      setBldgMsg(`✅ Auto-populated: ${fetchedRoads.length} roads, ${fetchedBuildings.length} buildings, ${featureRes.waterBodies.length} water bodies, ${featureRes.forests.length} forests, and ${featureRes.landmarks.length} landmarks.${failNote}`);
     } catch (err) {
       setRdLoad(false);
       setBldgMsg('⚠️ Automatic population encountered some issues.');
@@ -680,23 +629,9 @@ export default function MapWorkspace(props: Props) {
     setRdErr('');
     try {
       const bb = getBbox(boundaryPins);
-      const pad = 0.003;
-      const q = `[out:json][timeout:30][bbox:${bb.south - pad},${bb.west - pad},${bb.north + pad},${bb.east + pad}];
-        (
-          way["highway"];
-          way["highway"~"footway|path|track|steps|cycleway|pedestrian|living_street"];
-          way["footway"="crossing"];
-          way["path"];
-          way["track"];
-        );
-        out geom;`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const r = await fetchOverpass(q, controller.signal);
-      clearTimeout(timeoutId);
-      if (!r.ok) throw new Error('Failed to fetch roads');
-      const d = await r.json();
-      const cl = clipRoadsToPolygon(d.elements || [], boundaryPins);
+      const geo = await fetchGeoData(bb, boundaryPins, ['roads']);
+      if (geo.errors.roads) throw new Error(geo.errors.roads);
+      const cl = clipRoadsToPolygon(geo.roads?.elements || [], boundaryPins);
       console.log(`🗺️ [OSM] Loaded ${cl.length} roads for bounding box.`);
       if (cl.length === 0) {
         setRdErr('No roads found in this area. You can draw roads manually in the next step.');
@@ -723,25 +658,16 @@ export default function MapWorkspace(props: Props) {
     setBldgMsg(useGoogle ? '🏠 Detecting buildings (incl. Google)…' : '🏠 Detecting buildings…');
     try {
       const bb = getBbox(boundaryPins);
-      const res = await supabase.functions.invoke('fetch-open-buildings', {
-        body: {
-          north: bb.north,
-          south: bb.south,
-          east: bb.east,
-          west: bb.west,
-          boundary: boundaryPins.map(p => ({ lat: p.lat, lng: p.lng })),
-          useGoogle,
-        }
-      });
+      const geo = await fetchGeoData(bb, boundaryPins, ['buildings'], { useGoogle });
 
-      if (res.error) {
+      if (geo.errors.buildings) {
         setBldgMsg('⚠️ Building detection failed (network). Place houses manually.');
-        console.error('fetch-open-buildings error:', res.error);
+        console.error('fetch-geodata buildings error:', geo.errors.buildings);
         return;
       }
 
-      const all = res.data?.buildings || [];
-      const src = res.data?.sources;
+      const all = geo.buildings?.buildings || [];
+      const src = geo.buildings?.sources;
       // Edge function now filters to the boundary polygon, so we only drop sub-5 m² noise
       const valid = all.filter((b: any) => b.area_sqm == null || b.area_sqm > 5);
 
@@ -775,26 +701,17 @@ export default function MapWorkspace(props: Props) {
     if (boundaryPins.length < 3) return;
     try {
       const bb = getBbox(boundaryPins);
-      const q = buildComprehensiveQuery(bb, 0.002);
       const area = polygonArea(boundaryPins);
-      let res = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } };
-      
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-        const r = await fetchOverpass(q, controller.signal);
-        clearTimeout(timeoutId);
-        if (r.ok) {
-          const d = await r.json();
-          res = processOverpassData(d.elements || [], boundaryPins, area);
-          console.log(`🗺️ [OSM] Auto-Detect found: ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farms, ${res.waterBodies.length} water bodies, ${res.forests.length} forests, ${res.landmarks.length} landmarks. Total landuse coverage: ${(res.stats.farmlandArea / area * 100).toFixed(1)}%`);
-        } else {
-          console.warn("Overpass API returned non-OK status.");
-        }
-      } catch (err) {
-        console.warn("Overpass API failed or timed out. Continuing with empty OSM data.", err);
+      let res = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } as any };
+
+      const geo = await fetchGeoData(bb, boundaryPins, ['features']);
+      if (geo.features?.elements) {
+        res = processOverpassData(geo.features.elements, boundaryPins, area);
+        console.log(`🗺️ [OSM] Auto-Detect found: ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farms, ${res.waterBodies.length} water bodies, ${res.forests.length} forests, ${res.landmarks.length} landmarks. Total landuse coverage: ${(res.stats.farmlandArea / area * 100).toFixed(1)}%`);
+      } else {
+        console.warn("Overpass fetch failed or timed out. Continuing with empty OSM data.", geo.errors.features);
       }
-      
+
       setAutoData({
         buildings: res.symbols.length,
         farmlands: res.farmlands.length,
@@ -807,22 +724,16 @@ export default function MapWorkspace(props: Props) {
       
       let finalLanduseAreas = [...(landuseAreas || []), ...res.landuseAreas];
       
-      // Phase 4: Fallback to Google Dynamic World via Supabase Edge Function if OSM landuse coverage is low (< 40%)
+      // Phase 4: Fallback to Google Dynamic World (via the gateway) if OSM landuse coverage is low (< 40%)
       if (res.stats.farmlandArea < area * 0.4) {
-        try {
-          const resLandcover = await supabase.functions.invoke('fetch-landcover', {
-            body: { north: bb.north, south: bb.south, east: bb.east, west: bb.west }
-          });
-          // The edge function returns GeoJSON { features: [...] }; older code expected
-          // `landuseAreas`. Accept either shape so the fallback actually works.
-          const lc = resLandcover.data;
-          const rawAreas: any[] = lc?.landuseAreas
-            ? lc.landuseAreas.map((l: any) => ({ type: l.type, points: l.points }))
-            : (lc?.features || []).map((f: any) => ({
-                type: f.properties?.label || f.properties?.type || 'farmland',
-                // GeoJSON Polygon: coordinates[0] is the outer ring of [lng,lat] pairs.
-                points: (f.geometry?.coordinates?.[0] || []),
-              }));
+        const lcGeo = await fetchGeoData(bb, boundaryPins, ['landcover']);
+        if (lcGeo.landcover) {
+          // The gateway returns GeoJSON { features: [...] }.
+          const rawAreas: any[] = (lcGeo.landcover.features || []).map((f: any) => ({
+            type: f.properties?.label || f.properties?.type || 'farmland',
+            // GeoJSON Polygon: coordinates[0] is the outer ring of [lng,lat] pairs.
+            points: (f.geometry?.coordinates?.[0] || []),
+          }));
           const newAreas = rawAreas.filter((l) =>
             Array.isArray(l.points) && l.points.length >= 3 &&
             pointInPolygon({ lat: l.points[0][1], lng: l.points[0][0] }, boundaryPins)
@@ -834,8 +745,8 @@ export default function MapWorkspace(props: Props) {
               points: l.points.map((p: any) => ({ lat: p[1], lng: p[0] }))
             }))];
           }
-        } catch (err) {
-          console.error("Failed to fetch Google Dynamic World landcover:", err);
+        } else if (lcGeo.errors.landcover) {
+          console.error("Failed to fetch Dynamic World landcover:", lcGeo.errors.landcover);
         }
       }
 

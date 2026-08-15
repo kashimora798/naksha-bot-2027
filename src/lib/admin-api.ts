@@ -75,6 +75,84 @@ export interface AdminAssignment {
   user_mobile?: string | null;
 }
 
+// ─── Dashboard Stats (from single RPC) ──────────────────────────────────────
+
+export interface DashboardKPIs {
+  total_users: number;
+  paid_conversion_pct: number;
+  total_revenue_paise: number;
+  active_this_week: number;
+}
+
+export interface DashboardTimelineDay {
+  day: string;
+  new_users: number;
+  new_projects: number;
+  revenue_paise: number;
+}
+
+export interface DashboardFunnel {
+  signups: number;
+  onboarding_done: number;
+  first_map: number;
+  paid_or_donated: number;
+}
+
+export interface DashboardRevenueBreakdown {
+  maps_paise: number;
+  sessions_paise: number;
+  donations_paise: number;
+  upi_paise: number;
+}
+
+export interface DashboardCohortRetention {
+  d1_pct: number;
+  d7_pct: number;
+  d30_pct: number;
+}
+
+export interface DashboardGeoRow {
+  tehsil: string;
+  town_village: string;
+  user_count: number;
+  pct: number;
+}
+
+export interface DashboardLiveFunnel {
+  started: number;
+  regen_used: number;
+  paid: number;
+}
+
+export interface DashboardStats {
+  kpis: DashboardKPIs;
+  timeline: DashboardTimelineDay[];
+  funnel: DashboardFunnel;
+  revenue_breakdown: DashboardRevenueBreakdown;
+  cohort_retention: DashboardCohortRetention;
+  geo: DashboardGeoRow[];
+  live_funnel: DashboardLiveFunnel;
+}
+
+export interface UserEvent {
+  id: string;
+  user_id: string | null;
+  fingerprint_id: string | null;
+  event_type: string;
+  ip_address: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  lat: number | null;
+  lng: number | null;
+  page_path: string | null;
+  metadata: any;
+  created_at: string;
+  // joined
+  user_name?: string | null;
+}
+
+// Legacy type kept for compatibility with non-dashboard admin screens
 export interface AdminStats {
   total_users: number;
   total_projects: number;
@@ -98,95 +176,105 @@ export async function checkIsAdmin(): Promise<boolean> {
   return data?.is_admin === true;
 }
 
-// ─── Stats ────────────────────────────────────────────────────────────────────
+// ─── Dashboard RPC (single round-trip) ───────────────────────────────────────
 
-export async function fetchAdminStats(): Promise<AdminStats> {
-  const [users, projects, sessions, feedbacks] = await Promise.all([
-    supabase.from('user_profiles').select('id, created_at, updated_at', { count: 'exact' }).range(0, 9999),
-    supabase.from('projects').select('user_id, created_at, updated_at, payment_status', { count: 'exact' }).range(0, 9999),
-    supabase.from('live_exports').select('payment_status', { count: 'exact' }),
-    supabase.from('feedbacks').select('id', { count: 'exact', head: true }),
-  ]);
+export async function fetchDashboardStats(days: number = 30): Promise<DashboardStats> {
+  const { data, error } = await supabase.rpc('admin_dashboard_stats', {
+    p_days: days,
+    p_tz: 'Asia/Kolkata',
+  });
+  if (error) throw error;
+  return data as DashboardStats;
+}
 
-  if (users.error) throw users.error;
-  if (projects.error) throw projects.error;
-  if (sessions.error) throw sessions.error;
-  if (feedbacks.error) throw feedbacks.error;
+// ─── User Activity (fingerprint log) ─────────────────────────────────────────
 
-  const usersList = users.data || [];
-  const projectsList = projects.data || [];
+export async function fetchUserEvents(limit: number = 100): Promise<UserEvent[]> {
+  const { data, error } = await supabase
+    .from('user_events')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  if (!data?.length) return [];
 
-  const paidProjects = projectsList.filter(p => p.payment_status === 'paid').length;
-  const paidSessions = (sessions.data || []).filter(s => s.payment_status === 'paid').length;
+  const userIds = [...new Set((data).filter(e => e.user_id).map(e => e.user_id))];
+  let nameMap: Record<string, string | null> = {};
+  if (userIds.length) {
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('id, full_name')
+      .in('id', userIds);
+    (profiles || []).forEach(p => { nameMap[p.id] = p.full_name; });
+  }
 
-  // A returning user is one who has updated their profile or has a project created/updated on a different calendar day than signup.
-  const returningUsersSet = new Set<string>();
+  return data.map(e => ({ ...e, user_name: e.user_id ? (nameMap[e.user_id] ?? null) : null }));
+}
 
-  const toLocalDateStr = (dStr: string) => {
-    const d = new Date(dStr);
-    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+// ─── Log UPI payment (admin only, calls Postgres fn) ─────────────────────────
+
+export async function adminLogUpiPayment(
+  amountRupees: number,
+  upiRef?: string,
+  note?: string
+): Promise<void> {
+  const { error } = await supabase.rpc('admin_log_upi_payment', {
+    p_amount_rupees: amountRupees,
+    p_upi_ref:       upiRef || null,
+    p_note:          note   || null,
+    p_source_id:     null,
+  });
+  if (error) throw error;
+}
+
+// ─── CSV Export ───────────────────────────────────────────────────────────────
+
+export function exportCSV(filename: string, rows: Record<string, any>[]): void {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const escape  = (v: any) => {
+    const s = v == null ? '' : String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s;
   };
-
-  const signupDates: Record<string, string> = {};
-  usersList.forEach(u => {
-    if (u.id && u.created_at) {
-      signupDates[u.id] = toLocalDateStr(u.created_at);
-    }
-  });
-
-  // Check project dates
-  projectsList.forEach(p => {
-    if (!p.user_id) return;
-    const signupDate = signupDates[p.user_id];
-    if (!signupDate) return;
-
-    if (p.created_at) {
-      const pCreated = toLocalDateStr(p.created_at);
-      if (pCreated !== signupDate) {
-        returningUsersSet.add(p.user_id);
-      }
-    }
-    if (p.updated_at) {
-      const pUpdated = toLocalDateStr(p.updated_at);
-      if (pUpdated !== signupDate) {
-        returningUsersSet.add(p.user_id);
-      }
-    }
-  });
-
-  // Also check user profile updates
-  usersList.forEach(u => {
-    if (!u.id || !u.created_at || !u.updated_at) return;
-    const signupDate = toLocalDateStr(u.created_at);
-    const lastUpdate = toLocalDateStr(u.updated_at);
-    if (signupDate !== lastUpdate) {
-      returningUsersSet.add(u.id);
-    }
-  });
-
-  return {
-    total_users: users.count ?? 0,
-    total_projects: projects.count ?? 0,
-    paid_projects: paidProjects,
-    total_sessions: sessions.count ?? 0,
-    paid_sessions: paidSessions,
-    total_feedback: feedbacks.count ?? 0,
-    returning_users: returningUsersSet.size,
-  };
+  const csv = [
+    headers.join(','),
+    ...rows.map(r => headers.map(h => escape(r[h])).join(',')),
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `${filename}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-export async function fetchAdminUsers(): Promise<AdminUser[]> {
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .order('created_at', { ascending: false });
+export async function fetchAdminUsers(
+  page: number = 1,
+  limit: number = 20,
+  search?: string
+): Promise<{ users: AdminUser[]; total: number }> {
+  const start = (page - 1) * limit;
+  const end   = start + limit - 1;
+
+  let query = supabase.from('user_profiles').select('*', { count: 'exact' });
+
+  if (search && search.trim()) {
+    const q = `%${search.trim()}%`;
+    query = query.or(`full_name.ilike.${q},mobile.ilike.${q},tehsil.ilike.${q},town_village.ilike.${q}`);
+  }
+
+  const { data, error, count } = await query
+    .order('created_at', { ascending: false })
+    .range(start, end);
+
   if (error) throw error;
 
-  // Fetch per-user project counts
   const ids = (data || []).map(u => u.id);
-  if (!ids.length) return [];
+  if (!ids.length) return { users: [], total: count || 0 };
 
   const [projectCounts, sessionCounts] = await Promise.all([
     supabase.from('projects').select('user_id').in('user_id', ids),
@@ -199,11 +287,13 @@ export async function fetchAdminUsers(): Promise<AdminUser[]> {
   const scMap: Record<string, number> = {};
   (sessionCounts.data || []).forEach(s => { scMap[s.user_id] = (scMap[s.user_id] || 0) + 1; });
 
-  return (data || []).map(u => ({
+  const users = (data || []).map(u => ({
     ...u,
     project_count: pcMap[u.id] || 0,
     live_session_count: scMap[u.id] || 0,
   }));
+
+  return { users, total: count || 0 };
 }
 
 export async function fetchAdminUserDetail(userId: string): Promise<{
@@ -235,11 +325,9 @@ export async function fetchAdminProjects(
   paymentStatus?: 'all' | 'paid' | 'unpaid'
 ): Promise<{ projects: AdminProject[]; total: number }> {
   const start = (page - 1) * limit;
-  const end = start + limit - 1;
+  const end   = start + limit - 1;
 
-  let query = supabase
-    .from('projects')
-    .select('*', { count: 'exact' });
+  let query = supabase.from('projects').select('*', { count: 'exact' });
 
   if (paymentStatus && paymentStatus !== 'all') {
     query = query.eq('payment_status', paymentStatus);
@@ -280,8 +368,8 @@ export async function fetchAdminProjects(
 
   const projects = (data || []).map(p => ({
     ...p,
-    owner_name: profileMap[p.user_id]?.full_name ?? null,
-    owner_mobile: profileMap[p.user_id]?.mobile ?? null,
+    owner_name:   profileMap[p.user_id]?.full_name ?? null,
+    owner_mobile: profileMap[p.user_id]?.mobile    ?? null,
   }));
 
   return { projects, total: count || 0 };
@@ -347,8 +435,8 @@ export async function fetchProjectAssignments(projectId: string): Promise<AdminA
 
   return data.map(a => ({
     ...a,
-    user_name: profileMap[a.user_id]?.full_name ?? null,
-    user_mobile: profileMap[a.user_id]?.mobile ?? null,
+    user_name:   profileMap[a.user_id]?.full_name ?? null,
+    user_mobile: profileMap[a.user_id]?.mobile    ?? null,
   }));
 }
 
@@ -399,8 +487,8 @@ export async function fetchAdminFeedback(): Promise<AdminFeedback[]> {
 
   return (data || []).map(f => ({
     ...f,
-    owner_name: f.user_id ? (profileMap[f.user_id]?.full_name ?? null) : null,
-    owner_mobile: f.user_id ? (profileMap[f.user_id]?.mobile ?? null) : null,
+    owner_name:   f.user_id ? (profileMap[f.user_id]?.full_name ?? null) : null,
+    owner_mobile: f.user_id ? (profileMap[f.user_id]?.mobile    ?? null) : null,
   }));
 }
 
@@ -439,8 +527,8 @@ export async function fetchAdminDonations(): Promise<AdminDonation[]> {
 
   return (data || []).map(d => ({
     ...d,
-    owner_name: d.user_id ? (profileMap[d.user_id]?.full_name ?? null) : null,
-    owner_mobile: d.user_id ? (profileMap[d.user_id]?.mobile ?? null) : null,
+    owner_name:   d.user_id ? (profileMap[d.user_id]?.full_name ?? null) : null,
+    owner_mobile: d.user_id ? (profileMap[d.user_id]?.mobile    ?? null) : null,
   }));
 }
 
@@ -452,7 +540,7 @@ export async function verifyDonation(id: string, isPaid: boolean): Promise<void>
     .select();
   if (error) throw error;
   if (!data || data.length === 0) {
-    throw new Error("No rows updated. Make sure the database schema is updated and policies allow updates.");
+    throw new Error('No rows updated. Make sure the database schema is updated and policies allow updates.');
   }
 }
 
@@ -464,9 +552,11 @@ export async function deleteDonation(id: string): Promise<void> {
     .select();
   if (error) throw error;
   if (!data || data.length === 0) {
-    throw new Error("No rows deleted. Make sure the database schema is updated and policies allow deletes.");
+    throw new Error('No rows deleted. Make sure the database schema is updated and policies allow deletes.');
   }
 }
+
+// ─── Legacy: kept for compatibility with other admin screens ─────────────────
 
 export interface DailyStat {
   date: string;
@@ -474,65 +564,8 @@ export interface DailyStat {
   newProjects: number;
 }
 
-export async function fetchAdminTimelineStats(days: number = 14): Promise<DailyStat[]> {
-  const [usersRes, projectsRes] = await Promise.all([
-    supabase.from('user_profiles').select('created_at'),
-    supabase.from('projects').select('created_at')
-  ]);
-
-  if (usersRes.error) throw usersRes.error;
-  if (projectsRes.error) throw projectsRes.error;
-
-  const users = usersRes.data || [];
-  const projects = projectsRes.data || [];
-
-  const statsMap: Record<string, { newUsers: number; newProjects: number }> = {};
-
-  const toLocalDateString = (dateInput: string) => {
-    const d = new Date(dateInput);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  // Initialize the last N days
-  const now = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-    const dateStr = toLocalDateString(d.toISOString());
-    statsMap[dateStr] = { newUsers: 0, newProjects: 0 };
-  }
-
-  // Aggregate users
-  users.forEach(u => {
-    if (!u.created_at) return;
-    const dateStr = toLocalDateString(u.created_at);
-    if (statsMap[dateStr]) {
-      statsMap[dateStr].newUsers += 1;
-    }
-  });
-
-  // Aggregate projects
-  projects.forEach(p => {
-    if (!p.created_at) return;
-    const dateStr = toLocalDateString(p.created_at);
-    if (statsMap[dateStr]) {
-      statsMap[dateStr].newProjects += 1;
-    }
-  });
-
-  return Object.keys(statsMap).sort().map(date => ({
-    date,
-    newUsers: statsMap[date].newUsers,
-    newProjects: statsMap[date].newProjects
-  }));
-}
-
 export async function searchAdminUsers(queryText: string): Promise<AdminUser[]> {
-  let query = supabase
-    .from('user_profiles')
-    .select('*');
+  let query = supabase.from('user_profiles').select('*');
 
   if (queryText.trim()) {
     const q = `%${queryText.trim()}%`;

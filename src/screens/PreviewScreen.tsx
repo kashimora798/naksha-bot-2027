@@ -588,7 +588,6 @@ export default function PreviewScreen({ mapData, onBack, onExitToDashboard, onUp
           isOpen={showDonation}
           onClose={() => setShowDonation(false)}
           onMute24h={() => setShowDonation(false)}
-          isPrintArea={true}
         />
 
         {showFeedback && (

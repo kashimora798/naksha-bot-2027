@@ -3,12 +3,12 @@ import { supabase } from '../lib/supabase';
 import { load } from '@cashfreepayments/cashfree-js';
 import { Sheet } from './ui/Sheet';
 import { Button } from './ui/Button';
+import { useMediaQuery } from '../lib/useMediaQuery';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onMute24h: () => void;
-  isPrintArea: boolean;
 }
 
 // ─── LANGUAGE CONTENT ─────────────────────────────────────────
@@ -27,8 +27,9 @@ interface LangContent {
   cashfree: string;
   upiBackup: string;
   waShare: string;
-  cantHelp: string;
   mute: string;
+  supportersLabel: string;
+  storyCaption: string;
   impactMap: Record<number, string>;
   otherWaysTitle: string;
   otherWays: string[];
@@ -48,8 +49,9 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
     cashfree: 'Cashfree से Pay करें',
     upiBackup: 'UPI ID: 8318810984-1@nyes',
     waShare: 'WhatsApp पर Share करें',
-    cantHelp: 'माफ़ करें, मैं अभी मदद नहीं कर सकता',
     mute: '24 घंटे के लिए बंद करें',
+    supportersLabel: 'छात्र अब तक मदद कर चुके हैं 🙏',
+    storyCaption: 'साइबर कैफे से लेकर हज़ारों छात्रों की मदद तक — मेरी पूरी कहानी वीडियो में।',
     impactMap: { 50: 'एक दिन का school lunch', 100: 'एक हफ्ते की पढ़ाई मदद', 500: 'एक महीने का internet', 1000: 'परीक्षा फॉर्म की फीस' },
     otherWaysTitle: 'पुराना Laptop / Computer donate कर सकते हैं',
     otherWays: [
@@ -71,8 +73,9 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
     cashfree: 'Pay via Cashfree',
     upiBackup: 'UPI ID: 8318810984-1@nyes',
     waShare: 'Share on WhatsApp',
-    cantHelp: "Sorry, I can't help right now",
     mute: 'Remind me later',
+    supportersLabel: 'students have already chipped in 🙏',
+    storyCaption: 'From a cyber café with no laptop to helping thousands of students — my story, in under a minute.',
     impactMap: { 50: "= his daily school lunch 🍱", 100: "= a week of study support ✏️", 500: "= one month's internet 💻", 1000: "= exam form fees 🎓" },
     otherWaysTitle: 'Donate an old Laptop or Computer',
     otherWays: [
@@ -94,8 +97,9 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
     cashfree: 'Cashfree দিয়ে পেমেন্ট',
     upiBackup: 'UPI ID: 8318810984-1@nyes',
     waShare: 'WhatsApp-এ শেয়ার করুন',
-    cantHelp: 'দুঃখিত, এখন সাহায্য করতে পারছি না',
     mute: 'পরে মনে করিয়ে দিন',
+    supportersLabel: 'জন ছাত্র ইতিমধ্যে সাহায্য করেছেন 🙏',
+    storyCaption: 'ল্যাপটপ ছাড়া সাইবার ক্যাফে থেকে হাজারো ছাত্রের সাহায্য পর্যন্ত — আমার গল্প।',
     impactMap: { 50: '= একদিনের স্কুল লাঞ্চ', 100: '= এক সপ্তাহের পড়াশোনার সাহায্য', 500: '= এক মাসের ইন্টারনেট', 1000: '= পরীক্ষার ফর্মের ফি' },
     otherWaysTitle: 'পুরনো ল্যাপটপ বা কম্পিউটার দান করুন',
     otherWays: [
@@ -117,8 +121,9 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
     cashfree: 'Cashfree மூலம் செலுத்துங்கள்',
     upiBackup: 'UPI ID: 8318810984-1@nyes',
     waShare: 'WhatsApp-ல் பகிருங்கள்',
-    cantHelp: 'மன்னிக்கவும், இப்போது உதவ முடியவில்லை',
     mute: 'பிறகு நினைவூட்டுங்கள்',
+    supportersLabel: 'மாணவர்கள் ஏற்கனவே உதவியுள்ளனர் 🙏',
+    storyCaption: 'லேப்டாப் இல்லாமல் சைபர் கஃபேயில் தொடங்கி, ஆயிரக்கணக்கான மாணவர்களுக்கு உதவும் வரை — எனது கதை.',
     impactMap: { 50: '= ஒரு நாள் பள்ளி மதிய உணவு', 100: '= ஒரு வார கல்வி உதவி', 500: '= ஒரு மாத இணையம்', 1000: '= தேர்வு படிவக் கட்டணம்' },
     otherWaysTitle: 'பழைய லேப்டாப் அல்லது கணினியை நன்கொடையாக வழங்கலாம்',
     otherWays: [
@@ -140,8 +145,9 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
     cashfree: 'Cashfree ৰে পেমেণ্ট',
     upiBackup: 'UPI ID: 8318810984-1@nyes',
     waShare: 'WhatsApp-ত শ্বেয়াৰ কৰক',
-    cantHelp: 'দুঃখিত, এতিয়া সহায় কৰিব নোৱাৰো',
     mute: 'পিছত মনত পেলাওক',
+    supportersLabel: 'জন ছাত্ৰই ইতিমধ্যে সহায় কৰিছে 🙏',
+    storyCaption: 'লেপটপ নোহোৱাকৈ চাইবাৰ কেফেৰ পৰা হাজাৰ হাজাৰ ছাত্ৰক সহায় কৰালৈ — মোৰ কাহিনী।',
     impactMap: { 50: '= এদিনৰ স্কুল লাঞ্চ', 100: '= এসপ্তাহৰ পঢ়া-শুনাৰ সহায়', 500: '= এমাহৰ ইণ্টাৰনেট', 1000: '= পৰীক্ষাৰ ফৰ্মৰ মাচুল' },
     otherWaysTitle: 'পুৰণি লেপটপ বা কম্পিউটাৰ দান কৰিব পাৰে',
     otherWays: [
@@ -163,8 +169,9 @@ const LANG_CONTENT: Record<LangKey, LangContent> = {
     cashfree: 'Cashfree দিয়ে পেমেন্ট',
     upiBackup: 'UPI ID: 8318810984-1@nyes',
     waShare: 'WhatsApp-এ শেয়ার করুন',
-    cantHelp: 'দুঃখিত, এখন সাহায্য করতে পারছি না',
     mute: 'পরে মনে করিয়ে দিন',
+    supportersLabel: 'জন ছাত্র ইতিমধ্যে সাহায্য করেছেন 🙏',
+    storyCaption: 'ল্যাপটপ ছাড়া সাইবার ক্যাফে থেকে হাজারো ছাত্রের সাহায্য পর্যন্ত — আমার গল্প।',
     impactMap: { 50: '= একদিনের স্কুল খাবার', 100: '= এক সপ্তাহের পড়ার সাহায্য', 500: '= এক মাসের ইন্টারনেট', 1000: '= পরীক্ষার ফর্ম ফি' },
     otherWaysTitle: 'পুরনো ল্যাপটপ বা কম্পিউটার দান করুন',
     otherWays: [
@@ -199,7 +206,7 @@ const fixedAmounts = [50, 100, 500, 1000];
 const WA_SHARE_TEXT = `मैंने एक साथी छात्र की मदद की 🙏\n\nNakshaBot से HLB नक्शा मिनटों में — बिल्कुल मुफ्त!\n\nTry it: https://examsetu.dev`;
 const VIDEO_URL = "https://ybrtqteoagkptglqedsw.supabase.co/storage/v1/object/sign/t/Video%20Project%201%20(1)%20(1)%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lM2I3OGM3OC1lNTFlLTQ1MzEtOTViMC1iY2VkMTMwZGE2ZjAiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ0L1ZpZGVvIFByb2plY3QgMSAoMSkgKDEpICgxKS5tcDQiLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzg2MTk2OTQ3LCJleHAiOjE4MTc3MzI5NDd9.GcUdabBxHfEFMqu9Z8WNIIwcqHzmEH_dx8On46weUZc";
 
-export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea }: Props) {
+export default function DonationPopup({ isOpen, onClose, onMute24h }: Props) {
   const [lang, setLang] = useState<LangKey>('en');
   const [customAmount, setCustomAmount] = useState('100');
   const [customNote, setCustomNote] = useState('');
@@ -211,8 +218,15 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
   // Lightbox modal for QR code
   const [showQrShowbox, setShowQrShowbox] = useState(false);
 
-  // Lazy loaded video URL (loaded only after popup fully opens)
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  // Real (not fabricated) social-proof numbers, pulled from paid donations only.
+  // We only ever show this once the count clears a threshold — a tiny real
+  // number reads worse than no number at all, and we never invent one.
+  const [supportStats, setSupportStats] = useState<{ count: number; total: number } | null>(null);
+
+  // Device awareness so the primary "easy to pay" CTA matches how the person
+  // can actually complete it: a UPI deep link opens an app on a phone, but is
+  // dead weight on a desktop browser, where the QR / card option should lead.
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   useEffect(() => {
     if (isOpen) {
@@ -229,18 +243,23 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
         .catch(() => { setLang('en'); })
         .finally(() => { clearTimeout(timer); setGeoLoading(false); });
 
-      // Lazy load video after popup opens completely
-      const vTimer = setTimeout(() => {
-        setVideoSrc(VIDEO_URL);
-      }, 350);
+      // Pull only the `amount` column for paid donations — enough to compute
+      // an honest count + total, without pulling donor names/notes into the client.
+      supabase
+        .from('donations')
+        .select('amount')
+        .eq('is_paid', true)
+        .then(({ data }) => {
+          if (!data || data.length < 15) return; // don't show a discouragingly small number
+          const total = data.reduce((sum, d: any) => sum + (Number(d.amount) || 0), 0);
+          setSupportStats({ count: data.length, total });
+        });
 
       return () => {
         clearTimeout(timer);
-        clearTimeout(vTimer);
         controller.abort();
       };
     } else {
-      setVideoSrc(null);
       setShowQrShowbox(false);
     }
   }, [isOpen]);
@@ -300,43 +319,49 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
           {L.subtitle}
           {geoLoading && <span className="ml-1 opacity-50 text-[9px]">· detecting location…</span>}
         </p>
-        <p className="text-[10px] font-black text-rose-600 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded-md mt-1 inline-flex items-center gap-1">
-          <span>👇</span>
-          <span>{lang === 'hi' ? 'बंद करने के लिए नीचे तक स्क्रॉल करें' : 'Scroll to bottom to close popup'}</span>
-        </p>
+        {supportStats && (
+          <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md mt-1 inline-flex items-center gap-1">
+            <span>🎉</span>
+            <span>{supportStats.count}+ {L.supportersLabel}</span>
+          </p>
+        )}
       </div>
     </div>
   );
 
   return (
     <>
-      <Sheet open={isOpen} onClose={undefined} title={headerTitle} maxWidth="sm">
+      <Sheet open={isOpen} onClose={onClose} title={headerTitle} maxWidth="sm">
         <div className="space-y-3 text-sm text-[var(--color-ink)]">
 
           {/* ── PITCH ── */}
           <div className="bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-3.5 space-y-2">
             <p className="text-xs leading-relaxed text-slate-700">{L.pitch}</p>
 
-            {/* ── TRUST VIDEO (Lazy loaded, 9:16 Portrait Ratio) ── */}
-            {videoSrc && (
-              <div className="mt-2 pt-2 border-t border-orange-200/60 flex flex-col items-center">
-                <div className="flex items-center justify-between w-full mb-1">
-                  <span className="text-[10px] font-bold text-orange-800 flex items-center gap-1">
-                    🎥 Watch: Kratagya Singh , Who built NakshaBot
+            {/* ── VIDEO LINK — a link to watch, not an inline player.
+                Keeps the popup light (no video payload loads until they
+                actually tap it) and is honest about what it is: a link out. ── */}
+            <div className="mt-2 pt-2 border-t border-orange-200/60">
+              <p className="text-[11px] text-slate-600 leading-relaxed mb-2">{L.storyCaption}</p>
+              <a
+                href={VIDEO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2.5 bg-white/70 hover:bg-white border border-orange-300 rounded-xl px-3 py-2.5 transition-colors group"
+              >
+                <span className="shrink-0 w-9 h-9 rounded-full bg-orange-500 group-hover:bg-orange-600 text-white flex items-center justify-center text-sm shadow-sm transition-colors">
+                  ▶
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[11px] font-bold text-orange-900 truncate">
+                    🎥 Watch: Kratagya Singh, who built NakshaBot
                   </span>
-                  <span className="text-[9px] bg-orange-200 text-orange-900 font-bold px-1.5 py-0.5 rounded">9:16 Story</span>
-                </div>
-                <div className="relative w-full max-w-[210px] aspect-[9/16] bg-black rounded-xl overflow-hidden shadow-md border border-orange-300">
-                  <video
-                    src={videoSrc}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-              </div>
-            )}
+                  <span className="block text-[9px] text-orange-700 font-medium">
+                    Short video · opens in a new tab
+                  </span>
+                </span>
+              </a>
+            </div>
           </div>
 
           {/* ── LANG + QR ROW ── */}
@@ -454,26 +479,57 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
             )}
           </div>
 
-          {/* ── PAY BUTTONS ── */}
-          <div className="flex gap-2">
-            <a
-              href={upiLink}
-              className="flex-1 py-3 bg-[var(--color-success)] hover:opacity-90 text-white text-center font-black text-xs rounded-xl shadow transition-all flex items-center justify-center gap-1"
-            >
-              📱 {L.upiPay}
-            </a>
-            <Button
-              type="button"
-              variant="filled"
-              disabled={loadingPayment}
-              className="flex-1 text-xs font-black"
-              onClick={handleGeneratePayment}
-            >
-              {loadingPayment
-                ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
-                : <>💳 {L.cashfree}</>
-              }
-            </Button>
+          {/* ── PAY BUTTONS — one clear primary action, matched to the device ──
+              UPI deep links open a real app on a phone but do nothing useful on
+              a desktop browser, so which option leads flips with isDesktop. The
+              amount is shown right on the button so there's no separate "confirm
+              amount" step. */}
+          <div className="space-y-2">
+            {isDesktop ? (
+              <>
+                <Button
+                  type="button"
+                  variant="filled"
+                  fullWidth
+                  disabled={loadingPayment}
+                  className="text-sm font-black py-3.5"
+                  onClick={handleGeneratePayment}
+                >
+                  {loadingPayment
+                    ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+                    : <>💳 {L.cashfree} · ₹{selectedAmt || 100}</>
+                  }
+                </Button>
+                <a
+                  href={upiLink}
+                  className="w-full py-2 bg-[var(--color-surface-2)] hover:bg-slate-100 border border-[var(--color-hairline)] text-[var(--color-ink-secondary)] text-center font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1"
+                >
+                  📱 {L.upiPay} <span className="opacity-60 font-medium">({L.scanLabel})</span>
+                </a>
+              </>
+            ) : (
+              <>
+                <a
+                  href={upiLink}
+                  className="w-full py-3.5 bg-[var(--color-success)] hover:opacity-90 text-white text-center font-black text-sm rounded-xl shadow transition-all flex items-center justify-center gap-1.5"
+                >
+                  📱 {L.upiPay} · ₹{selectedAmt || 100}
+                </a>
+                <Button
+                  type="button"
+                  variant="tinted"
+                  fullWidth
+                  disabled={loadingPayment}
+                  className="text-xs font-bold"
+                  onClick={handleGeneratePayment}
+                >
+                  {loadingPayment
+                    ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"/>
+                    : <>💳 {L.cashfree}</>
+                  }
+                </Button>
+              </>
+            )}
           </div>
 
           {/* ── WHATSAPP SHARE ── */}
@@ -509,19 +565,18 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
             )}
           </div>
 
-          {/* ── DISMISS BUTTON — Highlighted & Clear ── */}
-          <div className="pt-1 border-t border-[var(--color-hairline)] space-y-1">
-            <p className="text-[10px] text-center text-slate-400 font-semibold">
-              {lang === 'hi' ? 'पॉपअप बंद करने के लिए नीचे दिए गए बटन पर क्लिक करें:' : 'Click below to close this dialog:'}
-            </p>
+          {/* ── MAYBE LATER — plain, no guilt copy, no scroll-gating.
+              The header ✕ (and backdrop/Esc, via the real onClose passed to
+              Sheet) already close this instantly; this just adds an explicit
+              24h snooze for someone who wants that instead. */}
+          <div className="pt-1 border-t border-[var(--color-hairline)]">
             <button
               type="button"
-              onClick={isPrintArea ? onClose : onMute24h}
+              onClick={onMute24h}
               disabled={loadingPayment}
-              className="w-full py-2.5 px-3 bg-gradient-to-r from-rose-50 to-pink-50 hover:from-rose-100 hover:to-pink-100 text-rose-700 hover:text-rose-900 border-2 border-rose-300 font-black text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-50"
+              className="w-full py-2 text-[var(--color-ink-tertiary)] hover:text-[var(--color-ink-secondary)] font-semibold text-xs rounded-xl transition-colors cursor-pointer disabled:opacity-50"
             >
-              <span>😞 {isPrintArea ? L.cantHelp : L.mute}</span>
-              <span className="text-[10px] bg-rose-200/80 text-rose-900 px-1.5 py-0.5 rounded font-bold">✕ Close</span>
+              {L.mute}
             </button>
           </div>
         </div>

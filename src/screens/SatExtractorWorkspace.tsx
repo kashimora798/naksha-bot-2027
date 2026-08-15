@@ -13,6 +13,7 @@ interface Props {
   projectId: string | null;
   update: (data: Partial<MapData>) => void;
   onSaveAndExit: () => void;
+  onExtractSuccess?: () => void;
 }
 
 // Calculate bearing between two points to align text labels
@@ -105,7 +106,7 @@ function declutterPOIs(pois: Landmark[], minDistanceDeg = 0.00045): Landmark[] {
   return result;
 }
 
-export default function SatExtractorWorkspace({ user, mapData, projectId, update, onSaveAndExit }: Props) {
+export default function SatExtractorWorkspace({ user, mapData, projectId, update, onSaveAndExit, onExtractSuccess }: Props) {
   const [hlbCode, setHlbCode] = useState(mapData.hlbNumber || '');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   
@@ -939,6 +940,13 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
           hideSymbols: !showBuildingsInPdf,
           hideSerpentineArrows: !showArrowsInPdf
         });
+
+        // Ask for support only after the person has their map in hand —
+        // a small delay so it doesn't collide with the browser's own
+        // save/print dialog.
+        if (onExtractSuccess) {
+          setTimeout(() => onExtractSuccess(), 1200);
+        }
 
       } catch (err) {
         console.error('Failed to export PDF:', err);

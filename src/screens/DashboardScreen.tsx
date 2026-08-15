@@ -868,7 +868,6 @@ export default function DashboardScreen({
         isOpen={showDonate}
         onClose={() => setShowDonate(false)}
         onMute24h={() => setShowDonate(false)}
-        isPrintArea={false}
       />
 
       {/* Profile Modal */}

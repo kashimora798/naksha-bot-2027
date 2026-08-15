@@ -51,7 +51,15 @@ export default function App() {
 
   // Donation popup states
   const [showDonationPopup, setShowDonationPopup] = useState(false);
-  const [popupSource, setPopupSource] = useState<'login' | 'print' | null>(null);
+  const [popupSource, setPopupSource] = useState<'login' | 'print' | 'satellite' | null>(null);
+
+  // "Remind me later" was writing this flag but nothing ever read it back —
+  // the popup would still fire again on the very next trigger. This actually
+  // honors the snooze.
+  const isDonationPopupMuted = () => {
+    const until = localStorage.getItem('donation_popup_muted_until');
+    return !!until && Date.now() < Number(until);
+  };
 
   const update = useCallback((u: Partial<MapData>) => setMapData(p => ({ ...p, ...u })), []);
   // inMap: true for all map-workspace steps (3–6). MapWorkspace is ALWAYS mounted
@@ -308,7 +316,7 @@ export default function App() {
 
   useEffect(() => {
     if (isSignedIn) {
-      if (step === 8) {
+      if (step === 8 && !isDonationPopupMuted()) {
         setPopupSource('print');
         setShowDonationPopup(true);
       }
@@ -616,6 +624,11 @@ export default function App() {
                 projectId={projectId}
                 update={update}
                 onSaveAndExit={() => { forceSave(); setStep(0); setMaxStep(0); setProjectId(null); setIsDemoMode(false); }}
+                onExtractSuccess={() => {
+                  if (isDonationPopupMuted()) return;
+                  setPopupSource('satellite');
+                  setShowDonationPopup(true);
+                }}
               />
             </ErrorBoundary>
           </div>
@@ -628,7 +641,6 @@ export default function App() {
           localStorage.setItem('donation_popup_muted_until', (Date.now() + 24 * 60 * 60 * 1000).toString());
           setShowDonationPopup(false);
         }}
-        isPrintArea={popupSource === 'print'}
       />
     </div>
   );

@@ -549,6 +549,8 @@ export interface DetectedData {
   landuseAreas: LanduseArea[];
   landmarks: Landmark[];
   stats: AreaStats;
+  rawElements: any[];
+  dataSource?: string;
 }
 
 export function processOverpassData(
@@ -706,7 +708,7 @@ export function processOverpassData(
   }
 
   return {
-    symbols, farmlands, waterBodies, forests, landuseAreas, landmarks,
+    symbols, farmlands, waterBodies, forests, landuseAreas, landmarks, rawElements: elements,
     stats: {
       buildings: symbols.length, houses: houseCount, apartments: aptCount, nonResidential: nonRes,
       roads: 0, farmlandCount: farmlands.length, farmlandArea: Math.round(farmArea),
@@ -906,47 +908,193 @@ export async function snapRoadsToOSM(surveySegments: any[], boundaryPolygon: any
 }
 
 // ─── OVERPASS API FALLBACK SYSTEM ──────────────────────────
+// This list MUST stay in sync with OVERPASS_ENDPOINTS in
+// supabase/functions/_shared/overpass.ts and extractor-backend/osm_enrichment.py.
+// overpass.openstreetmap.ru was dropped and two mirrors added based on real
+// failure-rate observations — if you change this list, update the other two.
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
   'https://z.overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.openstreetmap.ru/api/interpreter'
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
-export async function fetchOverpass(query: string, signal?: AbortSignal): Promise<Response> {
+export async function fetchOverpass(query: string, signal?: AbortSignal, maxRetries = 2): Promise<Response> {
   let lastError: any = null;
-  
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      console.log(`[Overpass] Trying endpoint: ${endpoint}`);
-      // Send query in application/x-www-form-urlencoded body (required by Overpass POST)
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: 'data=' + encodeURIComponent(query),
-        signal
-      });
 
-      if (response.ok) {
-        console.log(`[Overpass] Successfully fetched from: ${endpoint}`);
-        return response;
-      }
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      if (signal?.aborted) throw new Error('Aborted');
+      try {
+        console.log(`[Overpass] Attempt ${attempt + 1}: Trying ${endpoint}`);
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: 'data=' + encodeURIComponent(query),
+          signal
+        });
 
-      console.warn(`[Overpass] Endpoint ${endpoint} returned status ${response.status}`);
-      lastError = new Error(`Overpass returned status ${response.status}`);
-      if (response.status === 429) {
-        continue; // Try next endpoint immediately
+        if (response.ok) {
+          // Overpass sometimes returns 200 OK but the body is an HTML error page
+          // or the literal text 'Error: runtime error' — a naive .json() call on
+          // that would throw somewhere downstream with a confusing error, so
+          // catch it here where we know exactly what went wrong.
+          const text = await response.text();
+          if (text.trim().startsWith('<') || text.trim().startsWith('Error:')) {
+            throw new Error(`Overpass pseudo-200 error: ${text.substring(0, 100)}`);
+          }
+
+          console.log(`[Overpass] Successfully fetched from: ${endpoint}`);
+          return new Response(text, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers
+          });
+        }
+
+        console.warn(`[Overpass] Endpoint ${endpoint} returned status ${response.status}`);
+        lastError = new Error(`Overpass returned status ${response.status}`);
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          throw err;
+        }
+        console.warn(`[Overpass] Failed to connect to ${endpoint}:`, err.message);
+        lastError = err;
       }
-    } catch (err) {
-      console.warn(`[Overpass] Failed to connect to ${endpoint}:`, err);
-      lastError = err;
+    }
+    if (attempt < maxRetries && !signal?.aborted) {
+      await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
     }
   }
-  
-  throw lastError || new Error('All Overpass endpoints failed');
+
+  throw lastError || new Error('All Overpass endpoints failed after retries');
+}
+
+// ─── GOOGLE PLACES CLIENT-SIDE SUPPLEMENT ──────────────────
+// Augments Overpass-sourced POIs/landmarks with Google Places results.
+// Routed through a public CORS proxy (corsproxy.io) since the Places API
+// doesn't set CORS headers for direct browser calls — this is a real
+// dependency on a third-party service with no uptime guarantee, worth
+// keeping in mind if POI augmentation ever silently stops working.
+//
+// SECURITY NOTE: GOOGLE_MAPS_API_KEY below is a real, live credential
+// embedded in client-side source — it ships in the browser bundle and is
+// visible to anyone who opens dev tools. Restrict it to the Places API +
+// your production domain (HTTP referrer restriction) in Google Cloud
+// Console, or better, move this call behind an edge function so the key
+// never reaches the client at all. Not fixed here since rotating/restricting
+// it is a Google Cloud Console action outside this codebase.
+const GOOGLE_MAPS_API_KEY = 'AIzaSyAizQ1DVMhbpUqnSztH9MbQOJUY7oW7j80';
+
+export async function fetchGooglePlacesAndRoads(bbox: { south: number, west: number, north: number, east: number }, signal?: AbortSignal) {
+  const centerLat = (bbox.south + bbox.north) / 2;
+  const centerLng = (bbox.east + bbox.west) / 2;
+  // rough radius in meters for the bounding box
+  const radius = Math.min(50000, Math.ceil(distanceBetween({ lat: bbox.south, lng: bbox.west }, { lat: bbox.north, lng: bbox.east }) / 2));
+
+  let results: any[] = [];
+
+  try {
+    // Use corsproxy.io to bypass CORS issues for browser requests to Google REST APIs
+    const targetUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${centerLat},${centerLng}&radius=${radius}&key=${GOOGLE_MAPS_API_KEY}`;
+    const url = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+    const response = await fetch(url, { signal });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.results) {
+        results = data.results;
+      }
+    }
+  } catch (err) {
+    console.warn("Google Places API failed", err);
+    throw err;
+  }
+  return results;
+}
+
+// Base OSM geometry (buildings/farmland/roads/POIs) via the resilient
+// fetch-geodata gateway, optionally augmented with Google Places on top.
+// Previously this combined both steps with a *direct client-side* Overpass
+// call for the base geometry; the base fetch now goes through the same
+// mirror-fallback gateway every other screen uses, so a flaky Overpass
+// mirror is handled the same way everywhere — Google Places augmentation
+// (and its corsproxy.io dependency) stays exactly as it was, as a
+// best-effort layer on top that never blocks the base result.
+export async function fetchMapFeatures(
+  boundary: Coordinate[],
+  totalArea: number,
+  signal?: AbortSignal
+): Promise<DetectedData> {
+  const bbox = getBbox(boundary);
+
+  const geo = await fetchGeoData(bbox, boundary, ['features']);
+  if (!geo.features) {
+    throw new Error(geo.errors.features || 'Overpass features fetch failed');
+  }
+  const detectedData = processOverpassData(geo.features.elements, boundary, totalArea);
+
+  try {
+    const googlePlaces = await fetchGooglePlacesAndRoads(bbox, signal);
+    if (googlePlaces && googlePlaces.length > 0) {
+      googlePlaces.forEach(place => {
+        if (!place.geometry || !place.geometry.location) return;
+        const lat = place.geometry.location.lat;
+        const lng = place.geometry.location.lng;
+        if (boundary.length >= 3 && !pointInPolygon({ lat, lng }, boundary)) return;
+
+        const name = place.name;
+        const types = place.types || [];
+        let st: any = 'point_of_interest';
+        if (types.includes('school')) st = 'school';
+        else if (types.includes('hospital')) st = 'hospital';
+        else if (types.includes('hindu_temple')) st = 'temple';
+        else if (types.includes('mosque')) st = 'mosque';
+        else if (types.includes('church')) st = 'church';
+        else if (types.includes('post_office')) st = 'post_office';
+        else if (types.includes('police')) st = 'police_station';
+
+        if (st !== 'point_of_interest') {
+          const exists = detectedData.symbols.some(s => distanceBetween({ lat: s.lat, lng: s.lng }, { lat, lng }) < 25);
+          if (!exists) {
+            detectedData.symbols.push({
+              id: crypto.randomUUID(),
+              symbol_type: st,
+              lat,
+              lng,
+              number: null,
+              placed_at: new Date().toISOString(),
+              auto_detected: true,
+              label: name
+            } as any);
+          }
+        }
+
+        const landmarkExists = detectedData.landmarks.some(l => distanceBetween({ lat: l.lat, lng: l.lng }, { lat, lng }) < 25);
+        if (!landmarkExists) {
+          detectedData.landmarks.push({
+            id: crypto.randomUUID(),
+            name,
+            type: st,
+            lat,
+            lng
+          });
+        }
+      });
+      detectedData.stats.landmarks = detectedData.landmarks.length;
+      detectedData.dataSource = 'Google Places API & OpenStreetMap (Overpass API)';
+    } else {
+      detectedData.dataSource = 'OpenStreetMap (Overpass API)';
+    }
+  } catch (err) {
+    console.warn("Google Maps augmentation failed, using Overpass base data", err);
+    detectedData.dataSource = 'OpenStreetMap (Overpass API)';
+  }
+
+  return detectedData;
 }
 
 // ═══════════════════════════════════════════════════════════

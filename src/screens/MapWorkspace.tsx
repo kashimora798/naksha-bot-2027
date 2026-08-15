@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, PlacedSymbol, RoadFeature, SymbolType, Block, FarmlandBlock, WaterBody, ForestArea, Landmark, AreaStats, MapData } from '../types';
 import { SYMBOL_DEFS, isHouseType, isPakkaRoad, getUnitCount, polyCenter } from '../types';
-import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, processOverpassData, isPolygonSelfIntersecting, fetchGeoData } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, polygonArea, bearingBetween, pointInPolygon, classifyBuilding, getPolygonCentroid, generateBlocks, getBestOrientation, generateSerpentinePath, getSerpentineOrder, isPolygonSelfIntersecting, fetchGeoData, fetchMapFeatures } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { declutterSymbols, buildRotationMap } from '../lib/declutter';
 import SymbolDrawer from '../components/SymbolDrawer';
@@ -254,10 +254,10 @@ export default function MapWorkspace(props: Props) {
     }
 
     const map = L.map(containerRef.current, { center: [center.lat, center.lng], zoom: 17, zoomControl: false, attributionControl: false });
-    tileRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
+    tileRef.current = L.tileLayer('https://mt1.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: 'Google Satellite' }).addTo(map);
     // Add Hybrid labels overlay for Places and Roads
-    tileLabelsRef.current = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
-    tileTransRef.current = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
+    tileLabelsRef.current = null;
+    tileTransRef.current = null;
     [bndGrp, blkGrp, rdGrp, drwGrp, srpGrp, watGrp, forGrp, lmkGrp, frmGrp, hlGrp, luGrp].forEach(g => {
       if (!map.hasLayer(g.current)) {
         g.current.addTo(map);
@@ -529,10 +529,10 @@ export default function MapWorkspace(props: Props) {
       const bb = getBbox(boundaryPins);
       const area = polygonArea(boundaryPins);
 
-      // One gateway call instead of three independent network paths (roads
-      // via direct Overpass, buildings via fetch-open-buildings, landuse/POI
-      // via a second direct Overpass call) — see fetchGeoData in lib/geo.ts.
-      const geo = await fetchGeoData(bb, boundaryPins, ['roads', 'features', 'buildings'], { useGoogle: true });
+      // Roads + buildings in one gateway call; features/POIs go through
+      // fetchMapFeatures below (gateway base data + Google Places on top),
+      // so we don't request 'features' here too.
+      const geo = await fetchGeoData(bb, boundaryPins, ['roads', 'buildings'], { useGoogle: true });
 
       const fetchedRoads = geo.roads?.elements
         ? clipRoadsToPolygon(geo.roads.elements, boundaryPins).map(c => ({
@@ -561,11 +561,11 @@ export default function MapWorkspace(props: Props) {
         : [];
       if (geo.errors.buildings) console.warn('Auto buildings fetch failed:', geo.errors.buildings);
 
-      let featureRes = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } as any };
-      if (geo.features?.elements) {
-        featureRes = processOverpassData(geo.features.elements, boundaryPins, area);
-      } else if (geo.errors.features) {
-        console.warn('Auto landcover OSM fetch failed:', geo.errors.features);
+      let featureRes: any = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } as any };
+      try {
+        featureRes = await fetchMapFeatures(boundaryPins, area);
+      } catch (e) {
+        console.warn('Auto landcover OSM fetch failed:', e);
       }
 
       // Farmland coverage looked thin from OSM alone — ask the gateway for the
@@ -702,14 +702,16 @@ export default function MapWorkspace(props: Props) {
     try {
       const bb = getBbox(boundaryPins);
       const area = polygonArea(boundaryPins);
-      let res = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } as any };
+      let res: any = { symbols: [] as any[], farmlands: [] as any[], waterBodies: [] as any[], forests: [] as any[], landmarks: [] as any[], landuseAreas: [] as any[], stats: { farmlandArea: 0 } as any };
 
-      const geo = await fetchGeoData(bb, boundaryPins, ['features']);
-      if (geo.features?.elements) {
-        res = processOverpassData(geo.features.elements, boundaryPins, area);
-        console.log(`🗺️ [OSM] Auto-Detect found: ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farms, ${res.waterBodies.length} water bodies, ${res.forests.length} forests, ${res.landmarks.length} landmarks. Total landuse coverage: ${(res.stats.farmlandArea / area * 100).toFixed(1)}%`);
-      } else {
-        console.warn("Overpass fetch failed or timed out. Continuing with empty OSM data.", geo.errors.features);
+      try {
+        res = await fetchMapFeatures(boundaryPins, area);
+        console.log(`🗺️ [MapFeatures] Auto-Detect found: ${res.symbols.length} POIs/buildings, ${res.farmlands.length} farms, ${res.waterBodies.length} water bodies, ${res.forests.length} forests, ${res.landmarks.length} landmarks. Total landuse coverage: ${(res.stats.farmlandArea / area * 100).toFixed(1)}%`);
+        if (res.dataSource) {
+          alert(`Map Features Auto-Detected using: ${res.dataSource}`);
+        }
+      } catch (err) {
+        console.warn("Overpass fetch failed or timed out. Continuing with empty OSM data.", err);
       }
 
       setAutoData({

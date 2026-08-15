@@ -467,7 +467,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
   // Auto Fetch OSM roads, water, and POIs
   const triggerOSMFetch = async (pins: Coordinate[]) => {
     setExtractStatus('Fetching roads, water bodies, and local POIs from OpenStreetMap...');
-    
+
     // Pad the bounding box slightly (~160 meters) to capture nearby roads and crossings
     const box = getBbox(pins);
     const pad = 0.0015;
@@ -477,32 +477,27 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       east: box.east + pad,
       west: box.west - pad
     };
-    
-    // Construct Overpass query
-    const overpassQuery = `
-      [out:json][timeout:25];
-      (
-        way["highway"](${bb.south},${bb.west},${bb.north},${bb.east});
-        way["natural"="water"](${bb.south},${bb.west},${bb.north},${bb.east});
-        way["landuse"="forest"](${bb.south},${bb.west},${bb.north},${bb.east});
-        way["natural"="wood"](${bb.south},${bb.west},${bb.north},${bb.east});
-        
-        // Fetch all named features (temples, buildings, mosques, shops, nurseries, landmarks)
-        node["name"](${bb.south},${bb.west},${bb.north},${bb.east});
-        way["name"][!"highway"](${bb.south},${bb.west},${bb.north},${bb.east});
-      );
-      out body geom;
-    `;
 
     try {
-      const r = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: overpassQuery
+      // Was a single direct fetch('https://overpass-api.de/api/interpreter', ...)
+      // with zero fallback — the one Overpass call in the codebase nobody had
+      // spotted yet. Now goes through the same resilient gateway every other
+      // screen uses (roads + water/forest/named-POI features in one request).
+      const geo = await fetchGeoData(bb, pins, ['roads', 'features']);
+      if (!geo.roads && !geo.features) {
+        throw new Error(geo.errors.roads || geo.errors.features || 'Overpass fetch failed');
+      }
+      const elements = [...(geo.roads?.elements || []), ...(geo.features?.elements || [])];
+      // The features layer also matches way["highway"] (for context around
+      // buildings/POIs), so the same OSM way can appear in both layers —
+      // dedupe by type+id before parsing or roads would render twice.
+      const seen = new Set<string>();
+      const dedupedElements = elements.filter((el: any) => {
+        const key = `${el.type}/${el.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
       });
-
-      if (!r.ok) throw new Error(`Overpass returned status ${r.status}`);
-      const data = await r.json();
-      const elements = data.elements || [];
 
       // Process elements
       const parsedRoads: RoadFeature[] = [];
@@ -510,7 +505,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       const parsedForests: ForestArea[] = [];
       const parsedPOIs: Landmark[] = [];
 
-      for (const el of elements) {
+      for (const el of dedupedElements) {
         const tags = el.tags || {};
         const elName = getOSMName(tags);
 

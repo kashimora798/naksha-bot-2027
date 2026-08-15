@@ -13,6 +13,8 @@
 // src/lib/geo.ts (client-side) and OVERPASS_ENDPOINTS in
 // extractor-backend/osm_enrichment.py (Python side) — three runtimes, three
 // copies, one logical list. If you add/remove a mirror, update all three.
+// overpass.openstreetmap.ru was dropped and two mirrors added based on real
+// failure-rate observations from production.
 // ============================================================================
 
 export const OVERPASS_ENDPOINTS = [
@@ -20,7 +22,8 @@ export const OVERPASS_ENDPOINTS = [
   'https://lz4.overpass-api.de/api/interpreter',
   'https://z.overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.openstreetmap.ru/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
 export interface OverpassResult {
@@ -67,7 +70,17 @@ export async function fetchOverpassWithFallback(
         continue;
       }
 
-      const data = await r.json();
+      // Overpass sometimes returns HTTP 200 with an HTML error page or the
+      // literal text "Error: runtime error" as the body — a naive .json()
+      // parse on that fails downstream with a confusing error. Same check
+      // as the client-side fetchOverpass() in src/lib/geo.ts.
+      const text = await r.text();
+      if (text.trim().startsWith('<') || text.trim().startsWith('Error:')) {
+        lastError = `${endpoint}: pseudo-200 error (${text.slice(0, 100)})`;
+        continue;
+      }
+
+      const data = JSON.parse(text);
       return { ok: true, elements: data.elements || [], endpointUsed: endpoint };
     } catch (err) {
       lastError = `${endpoint}: ${(err as any)?.name === 'AbortError' ? 'timeout' : String(err)}`;

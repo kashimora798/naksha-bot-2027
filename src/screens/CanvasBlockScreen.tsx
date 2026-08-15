@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import type { Coordinate, RoadFeature, PlacedSymbol, Block, MapData, SymbolType } from '../types';
 import { isHouseType, isNumberableSymbol, SYMBOL_DEFS, getUnitCount } from '../types';
-import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween, generateSerpentinePath, bearingBetween, processOverpassData, fetchGeoData } from '../lib/geo';
+import { getBbox, clipRoadsToPolygon, isPolygonSelfIntersecting, polygonArea, pointInPolygon, getSerpentineOrder, distanceBetween, generateSerpentinePath, bearingBetween, fetchGeoData, fetchMapFeatures } from '../lib/geo';
 import { getSmallSymbolSVG } from '../lib/symbols';
 import { detectBlocks, mergeBlocks, splitBlock, relabelBlocks, blockPoints, labelFor } from '../lib/blocks';
 import { placeGroupsInBlock, blockGrid, minEdgeDistM, type LayoutMode, type SymGroup } from '../lib/placement-blocks';
@@ -538,11 +538,8 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
     map.createPane('drawingPane');
     map.getPane('drawingPane')!.style.zIndex = '620';
 
-    tileRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
-    overlayTiles.current = [
-      L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map),
-      L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map),
-    ];
+    tileRef.current = L.tileLayer('https://mt1.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 22, attribution: 'Google Satellite' }).addTo(map);
+    overlayTiles.current = [];
     [bndGrp, blkGrp, fieldGrp, gridGrp, rdGrp, houseGrp, lmkGrp, drwGrp, srpGrp].forEach(g => { if (!map.hasLayer(g.current)) g.current.addTo(map); });
     map.on('click', (e: L.LeafletMouseEvent) => mapClickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng }));
     mapRef.current = map;
@@ -927,7 +924,7 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
       const fetched: RoadFeature[] = cl.map((c: any) => ({ id: crypto.randomUUID(), coords: c.coords, highway: c.highway, name: c.name, confirmed: true, source: 'osm' as const, osm_id: c.osm_id }));
       const userRoads = roads.filter(r => r.source === 'user');
       onUpdateMapData({ roads: [...userRoads, ...fetched] });
-      setRdMsg(fetched.length ? `Loaded ${fetched.length} roads` : 'No roads found — draw them manually.');
+      setRdMsg(fetched.length ? `Loaded ${fetched.length} roads with names` : 'No roads found — draw them manually.');
     } catch {
       setRdMsg('Could not load roads from OSM. Draw them manually.');
     } finally {
@@ -1358,18 +1355,19 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
         if (targetBlk) targetBoundary = blockPoints(targetBlk);
       }
 
-      const bb = getBbox(targetBoundary);
       const area = polygonArea(targetBoundary);
 
-      const geo = await fetchGeoData(bb, targetBoundary, ['features']);
-
-      if (!geo.features) {
-        setDetectMsg(`⚠️ OSM fetch failed (${geo.errors.features || 'unknown error'}). Try again shortly.`);
+      let res: any;
+      try {
+        res = await fetchMapFeatures(targetBoundary, area);
+        if (res.dataSource) {
+          setDetectMsg(`Detected via: ${res.dataSource}`);
+        }
+      } catch (err) {
+        setDetectMsg('⚠️ OSM/Google fetch failed. Try again shortly.');
         setDetectLoading(false);
         return;
       }
-
-      const res = processOverpassData(geo.features.elements, targetBoundary, area);
 
       // Combine symbols
       let updatedSymbols: PlacedSymbol[] = [];

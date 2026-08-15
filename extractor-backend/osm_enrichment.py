@@ -58,15 +58,15 @@ from PIL import Image
 
 # Mirror list — MUST stay in sync with OVERPASS_ENDPOINTS in
 # src/lib/geo.ts (client) and supabase/functions/_shared/overpass.ts (server).
-# Previously this pipeline had a single hardcoded endpoint with no fallback
-# at all, even though the TypeScript side already tries 5 mirrors in turn —
-# this was the one Overpass caller in the whole codebase with zero resilience.
+# overpass.openstreetmap.ru was dropped and two mirrors added based on real
+# failure-rate observations from production — keep all three lists matching.
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
     "https://z.overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.openstreetmap.ru/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 # Nominatim requires a real identifying User-Agent per their usage policy —
@@ -132,6 +132,13 @@ def fetch_osm_features(lonlat_ring: list, timeout: int = 60) -> list[dict]:
                 last_error = requests.HTTPError(f"{endpoint}: rate-limited (429)")
                 continue
             resp.raise_for_status()
+            # Overpass sometimes returns HTTP 200 with an HTML error page or
+            # the literal text "Error: runtime error" as the body — same
+            # check as the TS client/server implementations.
+            body = resp.text.strip()
+            if body.startswith("<") or body.startswith("Error:"):
+                last_error = requests.HTTPError(f"{endpoint}: pseudo-200 error ({body[:100]})")
+                continue
             return resp.json().get("elements", [])
         except requests.RequestException as err:
             last_error = err

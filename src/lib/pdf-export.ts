@@ -175,14 +175,12 @@ export function renderMapToCanvas(
   let pW: number, pE: number, pS: number, pN: number;
   if (options?.focusBounds) {
     const b = options.focusBounds;
-    const pLng = (b.east - b.west) * 0.15;
-    const pLat = (b.north - b.south) * 0.15;
-    pW = b.west - pLng; pE = b.east + pLng;
-    pS = b.south - pLat; pN = b.north + pLat;
+    pW = b.west; pE = b.east;
+    pS = b.south; pN = b.north;
   } else {
     const bb = getBbox(data.boundaryPins);
-    const pLng = (bb.east - bb.west) * 0.05 || 0.0005;
-    const pLat = (bb.north - bb.south) * 0.05 || 0.0005;
+    const pLng = (bb.east - bb.west) * 0.02 || 0.0003;
+    const pLat = (bb.north - bb.south) * 0.02 || 0.0003;
     pW = bb.west - pLng; pE = bb.east + pLng;
     pS = bb.south - pLat; pN = bb.north + pLat;
   }

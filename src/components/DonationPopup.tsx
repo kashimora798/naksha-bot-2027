@@ -329,25 +329,39 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
   // Automatic Location Detection on Mount
   useEffect(() => {
     if (isOpen) {
+      // Check cached language first to completely avoid repeated 429 API rate limits
+      const cachedLang = sessionStorage.getItem('naksha_detected_lang') as LangKey | null;
+      if (cachedLang && LANG_CONTENT[cachedLang]) {
+        setLang(cachedLang);
+        setGeoLoading(false);
+        return;
+      }
+
       setGeoLoading(true);
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3500);
+      const timer = setTimeout(() => controller.abort(), 2500);
 
       fetch('https://ipapi.co/json/', { signal: controller.signal })
-        .then(r => r.json())
+        .then(r => {
+          if (!r.ok) throw new Error(`HTTP error ${r.status}`);
+          return r.json();
+        })
         .then((d: any) => {
           const region: string = d?.region || d?.region_name || d?.city || '';
           const detectedLang = STATE_LANG_MAP[region] ?? 'en';
           setLang(detectedLang);
+          sessionStorage.setItem('naksha_detected_lang', detectedLang);
         })
         .catch(() => {
-          // Browser locale fallback if location API fails
+          // Browser locale fallback if location API is rate limited or unavailable
           const userLang = navigator.language || '';
-          if (userLang.startsWith('hi')) setLang('hi');
-          else if (userLang.startsWith('bn')) setLang('bn');
-          else if (userLang.startsWith('ta')) setLang('ta');
-          else if (userLang.startsWith('as')) setLang('as');
-          else setLang('en');
+          let fallback: LangKey = 'en';
+          if (userLang.startsWith('hi')) fallback = 'hi';
+          else if (userLang.startsWith('bn')) fallback = 'bn';
+          else if (userLang.startsWith('ta')) fallback = 'ta';
+          else if (userLang.startsWith('as')) fallback = 'as';
+          setLang(fallback);
+          sessionStorage.setItem('naksha_detected_lang', fallback);
         })
         .finally(() => { clearTimeout(timer); setGeoLoading(false); });
 

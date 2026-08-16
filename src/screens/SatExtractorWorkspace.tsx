@@ -974,6 +974,38 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     }, 150);
   };
 
+  // Zoom & Alignment Helpers for Preview Map
+  const fitPreviewToBoundary = () => {
+    const previewMap = previewMapRef.current;
+    if (!previewMap || !mapDataRef.current.boundaryPins || mapDataRef.current.boundaryPins.length < 3) return;
+    const poly = L.polygon(mapDataRef.current.boundaryPins.map(p => [p.lat, p.lng]));
+    previewMap.fitBounds(poly.getBounds(), { padding: [8, 8], maxZoom: 20 });
+  };
+
+  const handlePreviewZoomIn = () => {
+    previewMapRef.current?.zoomIn();
+  };
+
+  const handlePreviewZoomOut = () => {
+    previewMapRef.current?.zoomOut();
+  };
+
+  const handleResetRotation = () => {
+    setPrintRotation(0);
+    fitPreviewToBoundary();
+  };
+
+  // Re-fit & invalidate map size when orientation switches
+  useEffect(() => {
+    if (showPrintPreview && previewMapRef.current) {
+      const timer = setTimeout(() => {
+        previewMapRef.current?.invalidateSize();
+        fitPreviewToBoundary();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isLandscape, showPrintPreview]);
+
   // Initialize Print Preview Map
   useEffect(() => {
     if (!showPrintPreview || !previewMapContainerRef.current) return;
@@ -984,7 +1016,11 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
 
     const previewMap = L.map(previewMapContainerRef.current, {
       zoomControl: false,
-      attributionControl: false
+      attributionControl: false,
+      scrollWheelZoom: true,
+      dragging: true,
+      touchZoom: true,
+      doubleClickZoom: true,
     }).setView(centerLatLng, mapDataRef.current.center ? 16 : 13);
     previewMapRef.current = previewMap;
 
@@ -1002,7 +1038,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
         dashArray: '8, 5'
       }).addTo(previewMap);
       
-      previewMap.fitBounds(poly.getBounds(), { padding: [15, 15] });
+      previewMap.fitBounds(poly.getBounds(), { padding: [8, 8], maxZoom: 20 });
     }
 
     // Roads Group
@@ -1560,8 +1596,48 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="flex-1 flex items-center justify-center w-full max-h-[70vh] py-4"
+            className="flex-1 flex flex-col items-center justify-center w-full max-h-[70vh] py-2 gap-2"
           >
+            {/* Zoom & Alignment Floating Toolbar */}
+            <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg text-xs z-10">
+              <button
+                type="button"
+                onClick={handlePreviewZoomIn}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold rounded-full transition-all cursor-pointer flex items-center gap-1"
+                title="Zoom in closer"
+              >
+                <span>➕</span>
+                <span>Zoom In</span>
+              </button>
+              <button
+                type="button"
+                onClick={handlePreviewZoomOut}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold rounded-full transition-all cursor-pointer flex items-center gap-1"
+                title="Zoom out"
+              >
+                <span>➖</span>
+                <span>Zoom Out</span>
+              </button>
+              <div className="w-px h-3.5 bg-slate-700" />
+              <button
+                type="button"
+                onClick={fitPreviewToBoundary}
+                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-full transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                title="Fit boundary tightly to page"
+              >
+                <span>🎯</span>
+                <span>Fit Boundary Tight</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleResetRotation}
+                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 font-bold rounded-full transition-all cursor-pointer"
+                title="Reset angle to 0°"
+              >
+                <span>🔄 0°</span>
+              </button>
+            </div>
+
             <div 
               className="relative bg-slate-900 shadow-2xl overflow-hidden border border-slate-700 rounded-xl transition-all duration-150"
               style={{
@@ -1581,6 +1657,10 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
                 }}
               />
             </div>
+
+            <p className="text-[10px] text-emerald-400 font-bold text-center tracking-wide">
+              💡 Drag & zoom this preview map — your downloaded PDF will match this exact zoomed view!
+            </p>
           </div>
 
           {/* Controls Footer */}

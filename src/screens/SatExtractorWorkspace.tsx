@@ -927,8 +927,23 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
 
   // PDF Export Trigger
   const handleDownloadPDF = () => {
+    let focusBounds: { south: number; west: number; north: number; east: number } | undefined;
     const previewMap = previewMapRef.current;
-    if (!previewMap) return;
+    if (previewMap) {
+      try {
+        const bounds = previewMap.getBounds();
+        if (bounds && bounds.isValid()) {
+          focusBounds = {
+            south: bounds.getSouth(),
+            west: bounds.getWest(),
+            north: bounds.getNorth(),
+            east: bounds.getEast()
+          };
+        }
+      } catch (e) {
+        console.warn('Could not extract preview bounds, using boundary defaults:', e);
+      }
+    }
 
     setShowPrintPreview(false);
     setShowDonationPopup(true);
@@ -936,14 +951,6 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     
     setTimeout(() => {
       try {
-        const bounds = previewMap.getBounds();
-        const focusBounds = {
-          south: bounds.getSouth(),
-          west: bounds.getWest(),
-          north: bounds.getNorth(),
-          east: bounds.getEast()
-        };
-
         const docData: MapData = {
           ...mapDataRef.current,
           poiNamingApproach: mapDataRef.current.poiNamingApproach || 'label',
@@ -954,7 +961,8 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
           rotation: printRotation,
           inkMode: 'color',
           hideSymbols: !showBuildingsInPdf,
-          hideSerpentineArrows: !showArrowsInPdf
+          hideSerpentineArrows: !showArrowsInPdf,
+          ...(focusBounds ? { focusBounds } : {})
         });
 
       } catch (err) {

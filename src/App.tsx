@@ -185,9 +185,23 @@ export default function App() {
       supabase.from('projects').select('*').eq('id', adminViewId).maybeSingle().then(({ data }) => {
         if (data) {
           setProjectId(data.id);
+          setIsDemoMode(false);
           setMapData({ ...DEFAULT_MAP_DATA, ...data.data, projectId: data.id, paymentStatus: data.payment_status });
-          if ((data.data as any)?.mode === 'canvas') { setPreviewSource(11); setStep(11); }
-          else setStep(8);
+          const pMode = (data.data as any)?.mode;
+          if (pMode === 'canvas') {
+            setPreviewSource(11);
+            setStep(11);
+          } else if (pMode === 'sat-extractor' || pMode === 'satellite') {
+            setStep(15);
+          } else if (pMode === 'live-survey') {
+            setStep(10);
+          } else {
+            if (data.data?.blocks && data.data.blocks.length > 0) setStep(8);
+            else if (data.data?.symbols && data.data.symbols.length > 0) setStep(5);
+            else if (data.data?.roads && data.data.roads.length > 0) setStep(4);
+            else if (data.data?.boundaryClosed) setStep(3);
+            else setStep(3);
+          }
         }
       });
       window.history.replaceState({}, document.title, window.location.pathname);

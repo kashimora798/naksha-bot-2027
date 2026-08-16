@@ -930,6 +930,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     const previewMap = previewMapRef.current;
     if (!previewMap) return;
 
+    setShowPrintPreview(false);
     setShowDonationPopup(true);
     setExtractStatus('Generating high-resolution A4 map PDF...');
     
@@ -1653,7 +1654,10 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       <DonationPopup
         isOpen={showDonationPopup}
         onClose={() => setShowDonationPopup(false)}
-        onMute24h={() => setShowDonationPopup(false)}
+        onMute24h={() => {
+          localStorage.setItem('donation_popup_muted_until', (Date.now() + 24 * 60 * 60 * 1000).toString());
+          setShowDonationPopup(false);
+        }}
         isPrintArea={true}
       />
     </div>

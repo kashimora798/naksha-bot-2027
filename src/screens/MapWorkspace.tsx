@@ -693,7 +693,7 @@ export default function MapWorkspace(props: Props) {
       const cl = clipRoadsToPolygon(d.elements || [], boundaryPins);
       console.log(`🗺️ [OSM] Loaded ${cl.length} roads for bounding box.`);
       if (cl.length === 0) {
-        setRdErr('No roads found in this area. You can draw roads manually in the next step.');
+        setRdErr('No roads found from server for this area. You can draw roads manually or retry.');
       }
       onUpdateRoads(cl.map(c => ({
         id: crypto.randomUUID(),
@@ -706,7 +706,7 @@ export default function MapWorkspace(props: Props) {
       })));
     } catch (e) {
       console.warn("Road fetch failed (likely timeout). Returning empty roads.");
-      setRdErr('Could not load roads from OSM. Please draw manually.');
+      setRdErr('Could not fetch roads from server. Please draw roads manually or retry.');
     } finally {
       setRdLoad(false);
     }
@@ -1164,13 +1164,32 @@ export default function MapWorkspace(props: Props) {
     let body: React.ReactNode;
     if(rdLoad){
       body = <div className="flex flex-col items-center py-5 gap-3"><svg className="animate-spin h-8 w-8 text-[var(--color-saffron)]" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><p className="text-sm text-gray-600">Fetching roads from OpenStreetMap…</p></div>;
+    } else if(drwRd){
+      body = <div><p className="text-xs text-gray-600 text-center mb-2">Tap along the road on the map to place points.</p><label className="block text-xs font-semibold text-gray-700 mb-1">Road type</label><select value={drwType} onChange={e=>setDrwType(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-2 bg-white">{['residential','primary','secondary','tertiary','footway','track'].map(t=><option key={t} value={t}>{t}</option>)}</select>{drwPts.length>0&&<button onClick={undoDrwPt} className="w-full py-2.5 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600">↩ Undo last point</button>}</div>;
     } else if(rdErr){
-      body = <div><p className="text-sm text-red-600 text-center mb-2">{rdErr}</p><div className="flex gap-2"><button onClick={loadRd} className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-semibold text-sm min-h-[52px]">Retry</button></div></div>;
+      body = <div className="space-y-3">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+          <p className="text-xs text-amber-900 font-semibold leading-relaxed">{rdErr}</p>
+        </div>
+        <button
+          onClick={() => { setDrwRd(true); setDrwPts([]); drwGrp.current.clearLayers(); setRdErr(''); }}
+          className="w-full py-3.5 rounded-full text-sm font-bold text-white bg-[var(--color-saffron-container)] hover:bg-[var(--color-saffron)] shadow-md min-h-[52px] active:scale-[0.97] transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <span>✏️</span>
+          <span>Draw Road Manually</span>
+        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={loadRd}
+            className="flex-1 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl font-semibold text-xs min-h-[44px] transition-colors cursor-pointer"
+          >
+            🔄 Retry Fetch
+          </button>
+        </div>
+      </div>;
     } else if(revMode && roads.length>0){
       const r = roads[revIdx];
       body = <div><p className="text-sm font-semibold mb-2 text-center">Road {revIdx+1}/{roads.length}: <span className="text-[var(--color-saffron)]">{r.highway}</span></p><div className="flex gap-2"><button onClick={confirmOne} className="flex-1 py-3 bg-[var(--color-india-green)] text-white rounded-full font-bold text-sm min-h-[52px]">✓ Keep</button><button onClick={deleteOne} className="flex-1 py-3 bg-red-500 text-white rounded-full font-bold text-sm min-h-[52px]">✗ Delete</button></div><button onClick={()=>setRevMode(false)} className="w-full text-center text-sm text-gray-400 mt-2 py-2">Done reviewing</button></div>;
-    } else if(drwRd){
-      body = <div><p className="text-xs text-gray-600 text-center mb-2">Tap along the road on the map to place points.</p><label className="block text-xs font-semibold text-gray-700 mb-1">Road type</label><select value={drwType} onChange={e=>setDrwType(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-2 bg-white">{['residential','primary','secondary','tertiary','footway','track'].map(t=><option key={t} value={t}>{t}</option>)}</select>{drwPts.length>0&&<button onClick={undoDrwPt} className="w-full py-2.5 rounded-xl text-sm font-semibold bg-white border border-gray-200 text-gray-600">↩ Undo last point</button>}</div>;
     } else {
       body = <div className="space-y-2">
         <p className="text-xs text-gray-600 text-center">{roads.length} road{roads.length===1?'':'s'} fetched. Confirm them all, review one by one, or draw a missing lane.</p>

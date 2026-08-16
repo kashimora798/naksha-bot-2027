@@ -403,12 +403,12 @@ export async function fetchAdminSessions(): Promise<AdminSession[]> {
 
 // ─── Project Assignments ──────────────────────────────────────────────────────
 
-export async function createAdminProject(name: string): Promise<AdminProject> {
+export async function createAdminProject(name: string, mode: string = 'desk'): Promise<AdminProject> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) throw new Error('Not authenticated');
   const { data, error } = await supabase
     .from('projects')
-    .insert({ user_id: session.user.id, name, data: {} })
+    .insert({ user_id: session.user.id, name, data: { mode } })
     .select('*')
     .single();
   if (error) throw error;

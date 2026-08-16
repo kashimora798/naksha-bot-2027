@@ -38,6 +38,7 @@ export default function AdminProjectsScreen() {
   // Create project modal
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState('');
+  const [createMode, setCreateMode] = useState<'desk' | 'canvas' | 'sat-extractor'>('desk');
   const [creating, setCreating] = useState(false);
 
   // Assign modal state
@@ -115,9 +116,10 @@ export default function AdminProjectsScreen() {
     if (!createName.trim()) return;
     setCreating(true);
     try {
-      const proj = await createAdminProject(createName.trim());
+      const proj = await createAdminProject(createName.trim(), createMode);
       setShowCreate(false);
       setCreateName('');
+      setCreateMode('desk');
       openProject(proj.id);
     } catch (e: any) {
       setError(e.message || 'Failed to create project');
@@ -267,6 +269,7 @@ export default function AdminProjectsScreen() {
               <thead>
                 <tr className={`text-xs uppercase tracking-wider border-b ${isLight ? 'text-slate-500 border-slate-200' : 'text-gray-500 border-gray-800'}`}>
                   <th className="text-left py-3 pr-4">Project</th>
+                  <th className="text-left py-3 pr-4">Mode</th>
                   <th className="text-left py-3 pr-4">Owner</th>
                   <th className="text-left py-3 pr-4">Location</th>
                   <th className="text-left py-3 pr-4">Status</th>
@@ -276,10 +279,25 @@ export default function AdminProjectsScreen() {
                 </tr>
               </thead>
               <tbody>
-                {projects.map(p => (
+                {projects.map(p => {
+                  const projMode = p.data?.mode || 'desk';
+                  return (
                   <tr key={p.id} className={`border-b transition-colors ${isLight ? 'border-slate-100 hover:bg-slate-50' : 'border-gray-800/50 hover:bg-gray-800/30'}`}>
                     <td className={`py-3 pr-4 font-medium max-w-[180px] truncate ${isLight ? 'text-slate-900' : 'text-gray-200'}`}>
                       {p.name || 'Untitled'}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${
+                        projMode === 'sat-extractor' || projMode === 'satellite'
+                          ? 'bg-purple-500/10 text-purple-500 border-purple-500/30'
+                          : projMode === 'canvas'
+                          ? 'bg-blue-500/10 text-blue-500 border-blue-500/30'
+                          : projMode === 'live-survey'
+                          ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30'
+                          : 'bg-orange-500/10 text-orange-500 border-orange-500/30'
+                      }`}>
+                        {projMode === 'sat-extractor' || projMode === 'satellite' ? '🛰️ Satellite' : projMode === 'canvas' ? '🧩 Canvas' : projMode === 'live-survey' ? '📱 Live Survey' : '🗺️ Desk'}
+                      </span>
                     </td>
                     <td className="py-3 pr-4">
                       <Link
@@ -343,7 +361,7 @@ export default function AdminProjectsScreen() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );})}
                 {projects.length === 0 && (
                   <tr>
                     <td colSpan={7} className={`py-12 text-center ${isLight ? 'text-slate-400' : 'text-gray-600'}`}>No projects found</td>
@@ -443,15 +461,40 @@ export default function AdminProjectsScreen() {
             isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-gray-900 border-gray-800 text-gray-100'
           }`}>
             <h3 className="font-bold text-lg mb-4">Create Admin Project</h3>
+            <label className={`block text-xs font-semibold uppercase tracking-wider mb-1.5 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Project Name</label>
             <input
               type="text"
               value={createName}
               onChange={e => setCreateName(e.target.value)}
-              placeholder="Project Name…"
+              placeholder="e.g. Ward 12 Survey Map…"
               className={`w-full border rounded-lg px-4 py-2 text-sm mb-4 focus:outline-none focus:border-orange-500 ${
                 isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-gray-950 border-gray-700 text-gray-200'
               }`}
             />
+            <label className={`block text-xs font-semibold uppercase tracking-wider mb-1.5 ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Workspace Mode</label>
+            <div className="grid grid-cols-3 gap-2 mb-6">
+              {[
+                { id: 'desk', label: '🗺️ Desk Mode', desc: 'Standard Map' },
+                { id: 'canvas', label: '🧩 Canvas', desc: 'Block Canvas' },
+                { id: 'sat-extractor', label: '🛰️ Satellite', desc: 'Sat Extractor' },
+              ].map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setCreateMode(m.id as any)}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    createMode === m.id
+                      ? 'border-orange-500 bg-orange-500/10 text-orange-500 font-bold'
+                      : isLight
+                      ? 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                      : 'border-gray-800 bg-gray-950 text-gray-400 hover:bg-gray-800'
+                  }`}
+                >
+                  <div className="text-xs font-bold leading-tight">{m.label}</div>
+                  <div className="text-[10px] opacity-70 mt-0.5">{m.desc}</div>
+                </button>
+              ))}
+            </div>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowCreate(false)}

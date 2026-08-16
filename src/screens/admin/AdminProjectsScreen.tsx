@@ -8,6 +8,7 @@ import {
   revokeProjectAssignment,
   transferProjectOwner,
   searchAdminUsers,
+  formatWhatsAppNumber,
   type AdminProject,
   type AdminUser,
   type AdminAssignment,
@@ -325,7 +326,7 @@ export default function AdminProjectsScreen() {
                         </button>
                         {p.owner_mobile && (
                           <a
-                            href={`https://wa.me/91${p.owner_mobile.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${p.owner_name || 'there'}, this is regarding your NakshaBot map "${p.name || 'Untitled'}". Could you help us with a quick update? Thank you!`)}`}
+                            href={`https://wa.me/${formatWhatsAppNumber(p.owner_mobile)}?text=${encodeURIComponent(`Hi ${p.owner_name || 'there'}, this is regarding your NakshaBot map "${p.name || 'Untitled'}". Could you help us with a quick update? Thank you!`)}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={e => e.stopPropagation()}

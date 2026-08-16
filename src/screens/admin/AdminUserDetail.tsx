@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate, useOutletContext } from 'react-router-dom';
-import { fetchAdminUserDetail, type AdminUser, type AdminProject, type AdminSession } from '../../lib/admin-api';
+import { fetchAdminUserDetail, formatWhatsAppNumber, type AdminUser, type AdminProject, type AdminSession } from '../../lib/admin-api';
 import type { AdminTheme } from './AdminLayout';
 
 const FIELD = ({ label, value, isLight }: { label: string; value: string | number | boolean | null | undefined; isLight: boolean }) => (
@@ -78,7 +78,7 @@ export default function AdminUserDetail() {
         </h1>
         {profile.mobile && (
           <a
-            href={`https://wa.me/91${profile.mobile.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${profile.full_name || 'there'}, this is the NakshaBot team. We wanted to connect with you regarding your account.`)}`}
+            href={`https://wa.me/${formatWhatsAppNumber(profile.mobile)}?text=${encodeURIComponent(`Hi ${profile.full_name || 'there'}, this is the NakshaBot team. We wanted to connect with you regarding your account.`)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm"

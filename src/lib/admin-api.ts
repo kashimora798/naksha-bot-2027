@@ -579,3 +579,33 @@ export async function searchAdminUsers(queryText: string): Promise<AdminUser[]> 
   if (error) throw error;
   return data || [];
 }
+
+/**
+ * Formats a phone number for official WhatsApp wa.me links.
+ * Handles numbers with or without +91 / 91 / 0 prefix properly.
+ * E.g.
+ * "9876543210" -> "919876543210"
+ * "+919876543210" -> "919876543210"
+ * "919876543210" -> "919876543210"
+ * "09876543210" -> "919876543210"
+ */
+export function formatWhatsAppNumber(phone: string | undefined | null): string {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return `91${digits.slice(1)}`;
+  }
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits;
+  }
+  if (digits.length === 13 && digits.startsWith('091')) {
+    return digits.slice(1);
+  }
+  return digits;
+}
+

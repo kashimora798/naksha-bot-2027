@@ -214,16 +214,68 @@ export default function LiveLocationControl({
     }
   }, [center, boundaryPins, blocks, isFollowing, map, calculateDistanceToBoundary, updateMapOverlays, onLocationUpdate]);
 
+  const useHighAccuracyRef = useRef<boolean>(true);
+  const retryCountRef = useRef<number>(0);
+
+  // Progressive error handler with automatic fallback
   const handlePositionError = useCallback((err: GeolocationPositionError) => {
     setLoading(false);
-    let msg = 'Unable to retrieve location';
-    if (err.code === 1) msg = 'Location permission denied. Please allow location access in browser settings.';
-    else if (err.code === 2) msg = 'Location unavailable. Please check device GPS.';
-    else if (err.code === 3) msg = 'Location request timed out.';
-    setErrorMsg(msg);
-  }, []);
 
-  // Start GPS watching
+    if (err.code === 1) {
+      // Permission denied
+      setErrorMsg('Location permission denied. Please allow location access in your browser.');
+      setGpsActive(false);
+      setIsFollowing(false);
+      return;
+    }
+
+    if ((err.code === 3 || err.code === 2) && useHighAccuracyRef.current) {
+      // High accuracy timed out or unavailable -> automatically fallback to standard network/Wi-Fi geolocation
+      console.warn('[LiveLocation] High accuracy GPS timed out. Falling back to standard location...');
+      useHighAccuracyRef.current = false;
+      
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+
+      // Try quick fallback fix
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          handlePositionSuccess(p);
+          if (map) {
+            map.flyTo([p.coords.latitude, p.coords.longitude], Math.max(map.getZoom(), 16), { duration: 0.8 });
+          }
+        },
+        () => {
+          // If fallback getCurrentPosition also fails, keep watching with standard accuracy
+        },
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
+      );
+
+      // Re-arm watchPosition with standard accuracy
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        handlePositionSuccess,
+        (fallbackErr) => {
+          if (fallbackErr.code === 1) {
+            setErrorMsg('Location permission denied.');
+            setGpsActive(false);
+          } else {
+            setErrorMsg('Location unavailable. Please check your device location / GPS.');
+          }
+        },
+        { enableHighAccuracy: false, timeout: 25000, maximumAge: 30000 }
+      );
+      return;
+    }
+
+    // Generic error when all fallbacks fail
+    let msg = 'Unable to retrieve location';
+    if (err.code === 2) msg = 'Location unavailable. Please check device GPS or internet connection.';
+    else if (err.code === 3) msg = 'Location request timed out. Retrying with network location...';
+    setErrorMsg(msg);
+  }, [handlePositionSuccess, map]);
+
+  // Start GPS watching with instant fast fix + progressive accuracy
   const startWatchingGPS = useCallback(() => {
     if (!navigator.geolocation) {
       setErrorMsg('Geolocation is not supported by your browser');
@@ -234,21 +286,44 @@ export default function LiveLocationControl({
     setErrorMsg(null);
     setGpsActive(true);
     setIsFollowing(true);
+    useHighAccuracyRef.current = true;
+    retryCountRef.current = 0;
 
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
     }
 
+    // 1. Instant Fast Position (returns cached/network fix in <500ms without timing out)
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        handlePositionSuccess(p);
+        if (map) {
+          map.flyTo([p.coords.latitude, p.coords.longitude], Math.max(map.getZoom(), 16), {
+            duration: 0.8
+          });
+        }
+      },
+      () => {
+        // Silent catch: watchPosition will follow up
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 6000,
+        maximumAge: 300000
+      }
+    );
+
+    // 2. High-accuracy real-time continuous watch
     watchIdRef.current = navigator.geolocation.watchPosition(
       handlePositionSuccess,
       handlePositionError,
       {
         enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 1000
+        timeout: 15000,
+        maximumAge: 5000
       }
     );
-  }, [handlePositionSuccess, handlePositionError]);
+  }, [handlePositionSuccess, handlePositionError, map]);
 
   // Stop GPS watching
   const stopWatchingGPS = useCallback(() => {
@@ -282,20 +357,9 @@ export default function LiveLocationControl({
         easeLinearity: 0.25
       });
     } else {
-      setLoading(true);
-      navigator.geolocation.getCurrentPosition(
-        (p) => {
-          handlePositionSuccess(p);
-          setIsFollowing(true);
-          map.flyTo([p.coords.latitude, p.coords.longitude], Math.max(map.getZoom(), 17), {
-            duration: 0.8
-          });
-        },
-        handlePositionError,
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
+      startWatchingGPS();
     }
-  }, [map, gpsActive, currentPos, startWatchingGPS, handlePositionSuccess, handlePositionError]);
+  }, [map, gpsActive, currentPos, startWatchingGPS]);
 
   // Smoothly fit map view back to HLB boundary or center
   const fitHLBBoundary = useCallback(() => {

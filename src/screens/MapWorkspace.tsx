@@ -11,6 +11,7 @@ import { DEMO_BOUNDARY, DEMO_CENTER } from '../data/demo';
 import { supabase } from '../lib/supabase';
 import { findNearestRoadBearing, getBlockOrientation } from '../lib/pdf-export';
 import { useTranslation } from '../lib/i18n';
+import LiveLocationControl from '../components/LiveLocationControl';
 
 interface Props {
   step: number; center: Coordinate; boundaryPins: Coordinate[]; boundaryClosed: boolean;
@@ -1506,6 +1507,14 @@ export default function MapWorkspace(props: Props) {
       <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-[1001]">
         <button onClick={()=>mapRef.current?.zoomIn()} className="bg-white/95 backdrop-blur w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg font-bold text-gray-700 active:scale-95">+</button>
         <button onClick={()=>mapRef.current?.zoomOut()} className="bg-white/95 backdrop-blur w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg font-bold text-gray-700 active:scale-95">−</button>
+        <LiveLocationControl
+          map={ready ? mapRef.current : null}
+          center={center}
+          boundaryPins={boundaryPins}
+          blocks={blocks}
+          hlbCode={hlbNumber}
+          theme="light"
+        />
         <button onClick={()=>setShowSat(s=>!s)} className={`w-10 h-10 rounded-xl shadow flex items-center justify-center text-base active:scale-95 ${showSat?'bg-white/95 text-gray-700':'bg-blue-500 text-white'}`}>{showSat?'🗺️':'🛰️'}</button>
         {step>=3&&<button onClick={()=>setShowSidebar(true)} className="w-10 h-10 rounded-xl shadow flex items-center justify-center text-lg bg-white/95 font-bold text-gray-700 active:scale-95" title="Layers & data">☰</button>}
         {step>=5&&!isCropped&&(

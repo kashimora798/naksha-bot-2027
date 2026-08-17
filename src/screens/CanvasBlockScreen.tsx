@@ -9,6 +9,7 @@ import { placeGroupsInBlock, blockGrid, minEdgeDistM, type LayoutMode, type SymG
 import { renderMapToCanvas, findNearestRoadBearing } from '../lib/pdf-export';
 import { supabase } from '../lib/supabase';
 import { Sheet } from '../components/ui/Sheet';
+import LiveLocationControl from '../components/LiveLocationControl';
 
 interface Props {
   mapData: MapData;
@@ -1728,44 +1729,59 @@ export default function CanvasBlockScreen({ mapData, onUpdateMapData, onExitToDa
         </div>
       )}
 
-      {/* Smart Crop button — canvas phase, top-right */}
-      {phase === 'canvas' && !isCropped && (
-        <div className="absolute top-14 right-3 z-[1002] flex flex-col items-center gap-1">
-          <button
-            onClick={handleSmartCrop}
-            className="w-10 h-10 rounded-xl shadow-md bg-white/95 border border-black/10 flex items-center justify-center text-base active:scale-95 transition-transform"
-            title="Smart Crop — zoom to populated area"
-          >🔍</button>
-          <span className="text-[9px] text-gray-500 font-semibold leading-none text-center">Crop</span>
+      {/* Top-right control column */}
+      <div className="absolute top-14 right-3 z-[1002] flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-1">
+          <LiveLocationControl
+            map={ready ? mapRef.current : null}
+            center={mapData.center}
+            boundaryPins={mapData.boundaryPins}
+            blocks={mapData.blocks}
+            hlbCode={mapData.hlbNumber}
+            theme="light"
+          />
+          <span className="text-[9px] text-gray-500 font-semibold leading-none text-center">GPS</span>
         </div>
-      )}
-      {phase === 'canvas' && isCropped && (
-        <div className="absolute top-14 right-3 z-[1002] flex flex-col items-center gap-1">
-          <button
-            onClick={handleCropReset}
-            className="w-10 h-10 rounded-xl shadow-md bg-orange-500 text-white flex items-center justify-center text-base active:scale-95 transition-transform"
-            title="Reset crop — zoom out to full boundary"
-          >↩</button>
-          {cropZoom !== null && (
-            <span className="bg-black/70 text-white text-[9px] font-bold rounded px-1 py-0.5 leading-none">z{cropZoom}</span>
-          )}
-        </div>
-      )}
 
-      {phase === 'canvas' && (
-        <div className="absolute top-28 right-3 z-[1002] flex flex-col items-center gap-1">
-          <button
-            onClick={() => setShowSnakeView(s => !s)}
-            className={`w-10 h-10 rounded-xl shadow-md flex items-center justify-center text-lg active:scale-95 transition-all ${
-              showSnakeView ? 'bg-orange-500 text-white' : 'bg-white/95 border border-black/10 text-gray-700 hover:bg-orange-50'
-            }`}
-            title={showSnakeView ? "Exit Snake View" : "Snake View — Preview flow path"}
-          >
-            🐍
-          </button>
-          <span className="text-[9px] text-gray-500 font-semibold leading-none text-center">Snake</span>
-        </div>
-      )}
+        {/* Smart Crop button — canvas phase */}
+        {phase === 'canvas' && !isCropped && (
+          <div className="flex flex-col items-center gap-1">
+            <button
+              onClick={handleSmartCrop}
+              className="w-10 h-10 rounded-xl shadow-md bg-white/95 border border-black/10 flex items-center justify-center text-base active:scale-95 transition-transform"
+              title="Smart Crop — zoom to populated area"
+            >🔍</button>
+            <span className="text-[9px] text-gray-500 font-semibold leading-none text-center">Crop</span>
+          </div>
+        )}
+        {phase === 'canvas' && isCropped && (
+          <div className="flex flex-col items-center gap-1">
+            <button
+              onClick={handleCropReset}
+              className="w-10 h-10 rounded-xl shadow-md bg-orange-500 text-white flex items-center justify-center text-base active:scale-95 transition-transform"
+              title="Reset crop — zoom out to full boundary"
+            >↩</button>
+            {cropZoom !== null && (
+              <span className="bg-black/70 text-white text-[9px] font-bold rounded px-1 py-0.5 leading-none">z{cropZoom}</span>
+            )}
+          </div>
+        )}
+
+        {phase === 'canvas' && (
+          <div className="flex flex-col items-center gap-1">
+            <button
+              onClick={() => setShowSnakeView(s => !s)}
+              className={`w-10 h-10 rounded-xl shadow-md flex items-center justify-center text-lg active:scale-95 transition-all ${
+                showSnakeView ? 'bg-orange-500 text-white' : 'bg-white/95 border border-black/10 text-gray-700 hover:bg-orange-50'
+              }`}
+              title={showSnakeView ? "Exit Snake View" : "Snake View — Preview flow path"}
+            >
+              🐍
+            </button>
+            <span className="text-[9px] text-gray-500 font-semibold leading-none text-center">Snake</span>
+          </div>
+        )}
+      </div>
 
       {showSnakeView && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 bg-orange-600/95 text-white text-xs px-4 py-2 rounded-xl z-[1001] pointer-events-none shadow-lg text-center flex items-center gap-2">

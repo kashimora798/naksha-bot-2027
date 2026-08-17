@@ -8,6 +8,7 @@ import { getBbox, getOSMName, fetchOverpass } from '../lib/geo';
 import { exportPDF } from '../lib/pdf-export';
 import { browserEnv } from '../lib/render-env.browser';
 import DonationPopup from '../components/DonationPopup';
+import LiveLocationControl from '../components/LiveLocationControl';
 
 interface Props {
   user: any;
@@ -161,6 +162,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
   useEffect(() => { tempPointsRef.current = tempPoints; }, [tempPoints]);
   
   // Leaflet refs
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tempDrawGroup = useRef<L.FeatureGroup | null>(null);
@@ -200,6 +202,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
       attributionControl: false
     }).setView(centerLatLng, mapData.center ? 16 : 13);
     mapRef.current = map;
+    setMapInstance(map);
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -271,6 +274,7 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
     return () => {
       map.remove();
       mapRef.current = null;
+      setMapInstance(null);
     };
   }, []);
 
@@ -1518,6 +1522,18 @@ export default function SatExtractorWorkspace({ user, mapData, projectId, update
 
         {/* Leaflet container */}
         <div ref={mapContainerRef} className="absolute inset-0 z-10 print:h-screen print:w-screen" style={{ height: '100%', width: '100%', minHeight: '100%' }} />
+
+        {/* Floating Live GPS Location Control */}
+        <div className="absolute top-4 right-4 z-[1001] print:hidden">
+          <LiveLocationControl
+            map={mapInstance}
+            center={mapData.center}
+            boundaryPins={mapData.boundaryPins}
+            blocks={mapData.blocks}
+            hlbCode={hlbCode}
+            theme="dark"
+          />
+        </div>
 
         {/* Map Workspace Instructions Overlay */}
         {(!mapData.boundaryPins || mapData.boundaryPins.length === 0) && !extractStatus && (

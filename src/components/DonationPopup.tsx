@@ -3,12 +3,15 @@ import { supabase } from '../lib/supabase';
 import { load } from '@cashfreepayments/cashfree-js';
 import { Sheet } from './ui/Sheet';
 import { Button } from './ui/Button';
+import { savePendingDonation } from '../lib/donationRecovery';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onMute24h: () => void;
   isPrintArea: boolean;
+  initialAmount?: string;
+  initialNote?: string;
 }
 
 // ─── REGIONAL LANGUAGES SUPPORTED ─────────────────────────────
@@ -317,18 +320,28 @@ const fixedAmounts = [50, 100, 500, 1000];
 const WA_SHARE_TEXT = `मैंने एक साथी छात्र की मदद की 🙏\n\nNakshaBot से HLB नक्शा मिनटों में — बिल्कुल मुफ्त!\n\nTry it: https://examsetu.dev`;
 const VIDEO_URL = "https://ybrtqteoagkptglqedsw.supabase.co/storage/v1/object/sign/t/Video%20Project%201%20(1)%20(1)%20(1).mp4?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lM2I3OGM3OC1lNTFlLTQ1MzEtOTViMC1iY2VkMTMwZGE2ZjAiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ0L1ZpZGVvIFByb2plY3QgMSAoMSkgKDEpICgxKS5tcDQiLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzg2MTk2OTQ3LCJleHAiOjE4MTc3MzI5NDd9.GcUdabBxHfEFMqu9Z8WNIIwcqHzmEH_dx8On46weUZc";
 
-export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea }: Props) {
+export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea, initialAmount, initialNote }: Props) {
   const [lang, setLang] = useState<LangKey>('en'); // Default to English
-  const [customAmount, setCustomAmount] = useState('100');
-  const [customNote, setCustomNote] = useState('');
+  const [customAmount, setCustomAmount] = useState(initialAmount || '100');
+  const [customNote, setCustomNote] = useState(initialNote || '');
   const [copiedText, setCopiedText] = useState<'upi' | null>(null);
   const [loadingPayment, setLoadingPayment] = useState(false);
+  const [redirectingToCashfree, setRedirectingToCashfree] = useState(false);
+  const [redirectAmount, setRedirectAmount] = useState(100);
   const [showOtherWays, setShowOtherWays] = useState(false);
   const [geoLoading, setGeoLoading] = useState(true);
+
+  // Sync initialAmount if changed
+  useEffect(() => {
+    if (initialAmount) setCustomAmount(initialAmount);
+    if (initialNote) setCustomNote(initialNote);
+  }, [initialAmount, initialNote]);
 
   // Automatic Location Detection on Mount
   useEffect(() => {
     if (isOpen) {
+      // Reset redirection state when opening afresh
+      setRedirectingToCashfree(false);
       // Check cached language first to completely avoid repeated 429 API rate limits
       const cachedLang = sessionStorage.getItem('naksha_detected_lang') as LangKey | null;
       if (cachedLang && LANG_CONTENT[cachedLang]) {
@@ -389,22 +402,50 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
     const amt = parseFloat(customAmount);
     if (isNaN(amt) || amt <= 0) { alert('Please enter a valid amount'); return; }
     setLoadingPayment(true);
+    setRedirectingToCashfree(true);
+    setRedirectAmount(amt);
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      const donorName = customNote || user?.user_metadata?.full_name || user?.email || 'Donor';
       const { data: don, error: donErr } = await supabase
         .from('donations').insert({
-          amount: amt, name: customNote || 'Donor', note: customNote || 'NakshaBot Donation',
+          amount: amt, name: donorName, note: customNote || 'NakshaBot Donation',
           user_id: user?.id || null, payment_status: 'unpaid'
         }).select('id').single();
       if (donErr || !don) throw new Error(donErr?.message || 'Failed to create donation');
+
+      // Persist pending donation to recovery storage
+      savePendingDonation({
+        id: don.id,
+        amount: amt,
+        note: customNote || 'NakshaBot Donation',
+        donorName,
+        initiatedAt: Date.now()
+      });
+
       const { data: cfRes, error: cfErr } = await supabase.functions.invoke('create-cashfree-payment', {
         body: { kind: 'donation', projectId: don.id }
       });
       if (cfErr || !cfRes?.paymentSessionId) throw new Error('Failed to initiate payment');
+
+      savePendingDonation({
+        id: don.id,
+        amount: amt,
+        note: customNote || 'NakshaBot Donation',
+        donorName,
+        paymentSessionId: cfRes.paymentSessionId,
+        initiatedAt: Date.now()
+      });
+
       const cashfree = await load({ mode: cfRes.cashfreeMode === 'production' ? 'production' : 'sandbox' });
-      if (cashfree) await cashfree.checkout({ paymentSessionId: cfRes.paymentSessionId, redirectTarget: '_self' });
-      else throw new Error('Cashfree SDK failed to load');
+      if (cashfree) {
+        await cashfree.checkout({ paymentSessionId: cfRes.paymentSessionId, redirectTarget: '_self' });
+      } else {
+        throw new Error('Cashfree SDK failed to load');
+      }
     } catch (err: any) {
+      setRedirectingToCashfree(false);
       alert('Payment error: ' + err.message);
     } finally {
       setLoadingPayment(false);
@@ -428,6 +469,7 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
   );
 
   return (
+    <>
     <Sheet open={isOpen} onClose={undefined} title={headerTitle} maxWidth="sm">
       <div className="space-y-4 text-sm text-[var(--color-ink)] pb-2">
 
@@ -629,5 +671,50 @@ export default function DonationPopup({ isOpen, onClose, onMute24h, isPrintArea 
 
       </div>
     </Sheet>
+
+    {/* ── REDIRECTING TO CASHFREE SECURE MODAL ── */}
+    {redirectingToCashfree && (
+      <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-orange-200/80 text-center space-y-5 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          {/* Top decorative gradient bar */}
+          <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-500" />
+          
+          {/* Animated Shield Beacon */}
+          <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-orange-400/20 animate-ping" />
+            <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center text-3xl shadow-lg shadow-orange-500/30">
+              🔒
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <h3 className="text-lg font-black text-slate-900 font-public-sans tracking-tight">
+              Redirecting to Cashfree
+            </h3>
+            <p className="text-xs text-slate-500 font-medium">
+              Establishing 256-bit SSL encrypted secure checkout
+            </p>
+          </div>
+
+          <div className="bg-orange-50 border border-orange-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+            <span className="text-xs font-semibold text-orange-950">Contribution Amount</span>
+            <span className="text-base font-black text-orange-600 font-public-sans">₹{redirectAmount}</span>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 text-[11px] font-semibold text-slate-600">
+            <svg className="animate-spin h-4 w-4 text-orange-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span>Transferring to payment page…</span>
+          </div>
+
+          <p className="text-[10px] text-slate-400 font-medium">
+            ⚠️ Please do not close, refresh, or press back.
+          </p>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

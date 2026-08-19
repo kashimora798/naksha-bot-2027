@@ -8,6 +8,13 @@ import DonationPopup from '../components/DonationPopup';
 import { useTranslation, LanguageSelector } from '../lib/i18n';
 import { AppShell } from '../components/AppShell';
 import { Button, IconButton, Card, Badge, Input, Sheet, Skeleton } from '../components/ui';
+import {
+  PendingDonation,
+  savePendingDonation,
+  getPendingDonation,
+  clearPendingDonation,
+  isPendingDonationVisible
+} from '../lib/donationRecovery';
 
 export interface Project {
   id: string;
@@ -78,7 +85,141 @@ export default function DashboardScreen({
   const [showAnnouncementsModal, setShowAnnouncementsModal] = useState(false);
   const [showWhatsApp, setShowWhatsApp] = useState(false);
 
+  // Pending Incomplete Donation & Celebration States
+  const [pendingDonation, setPendingDonation] = useState<PendingDonation | null>(null);
+  const [showPendingDonationBanner, setShowPendingDonationBanner] = useState(false);
+  const [donateModalAmount, setDonateModalAmount] = useState<string>('100');
+  const [donateModalNote, setDonateModalNote] = useState<string>('');
+  const [showDonationCelebration, setShowDonationCelebration] = useState(false);
+  const [celebrationAmount, setCelebrationAmount] = useState<number>(100);
+
   const sessionPopupShown = useRef(false);
+
+  // Check for donation_return query param, query donations table for user, and detect abandoned donation
+  useEffect(() => {
+    let donationChannel: any = null;
+
+    async function checkDonationReturn() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const donationReturnId = urlParams.get('donation_return');
+
+      if (donationReturnId) {
+        // Clean URL parameter cleanly
+        window.history.replaceState({}, document.title, window.location.pathname);
+        try {
+          const { data } = await supabase.functions.invoke('verify-payment', {
+            body: { kind: 'donation', projectId: donationReturnId }
+          });
+
+          if (data?.paid) {
+            clearPendingDonation();
+            setCelebrationAmount(Number(data.donation?.amount) || 100);
+            setShowDonationCelebration(true);
+            setShowPendingDonationBanner(false);
+            return;
+          }
+        } catch (e) {
+          console.error('Error verifying donation return:', e);
+        }
+      }
+
+      // 1. Check user's donations table in Supabase directly
+      if (user?.id) {
+        try {
+          const { data: userDons } = await supabase
+            .from('donations')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+          if (userDons && userDons.length > 0) {
+            // Find most recent unpaid donation
+            const latestUnpaid = userDons.find(d => !d.is_paid && d.payment_status !== 'paid');
+            const latestPaid = userDons.find(d => d.is_paid || d.payment_status === 'paid');
+
+            // If the latest donation is paid, clear any pending intent
+            if (latestPaid && (!latestUnpaid || new Date(latestPaid.created_at) > new Date(latestUnpaid.created_at))) {
+              clearPendingDonation();
+              setShowPendingDonationBanner(false);
+              return;
+            }
+
+            if (latestUnpaid) {
+              const pendingData: PendingDonation = {
+                id: latestUnpaid.id,
+                amount: Number(latestUnpaid.amount) || 100,
+                note: latestUnpaid.note,
+                donorName: latestUnpaid.name,
+                paymentSessionId: latestUnpaid.payment_session_id,
+                initiatedAt: new Date(latestUnpaid.created_at).getTime()
+              };
+              savePendingDonation(pendingData);
+              setPendingDonation(pendingData);
+              setShowPendingDonationBanner(true);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('Error querying donations table:', e);
+        }
+      }
+
+      // 2. Fallback check for guest / localStorage pending donation
+      if (isPendingDonationVisible()) {
+        const pending = getPendingDonation();
+        if (pending) {
+          // Verify if marked paid in database
+          if (pending.id) {
+            const { data: dbDon } = await supabase
+              .from('donations')
+              .select('is_paid, payment_status, amount')
+              .eq('id', pending.id)
+              .maybeSingle();
+
+            if (dbDon?.is_paid || dbDon?.payment_status === 'paid') {
+              clearPendingDonation();
+              setShowPendingDonationBanner(false);
+              return;
+            }
+          }
+          setPendingDonation(pending);
+          setShowPendingDonationBanner(true);
+        }
+      }
+    }
+
+    checkDonationReturn();
+
+    // 3. Setup Supabase Realtime listener on donations table to auto-update UI when payment is done
+    if (user?.id) {
+      donationChannel = supabase
+        .channel(`user-donations-${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'donations',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload: any) => {
+            const updated = payload.new;
+            if (updated?.is_paid || updated?.payment_status === 'paid') {
+              clearPendingDonation();
+              setShowPendingDonationBanner(false);
+              setCelebrationAmount(Number(updated.amount) || 100);
+              setShowDonationCelebration(true);
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    return () => {
+      if (donationChannel) supabase.removeChannel(donationChannel);
+    };
+  }, [user?.id]);
 
   // Helper check map limit
   const checkLimitAndStart = (action: () => void) => {
@@ -477,6 +618,66 @@ export default function DashboardScreen({
           )}
         </div>
 
+        {/* ── HIGH-IMPACT EMOTIONAL RECOVERY CARD FOR INCOMPLETE DONATION ── */}
+        {showPendingDonationBanner && pendingDonation && (
+          <div className="relative overflow-hidden bg-gradient-to-br from-amber-50 via-orange-50/90 to-rose-50 border-2 border-orange-300 rounded-3xl p-5 sm:p-6 shadow-xl shadow-orange-500/10 transition-all animate-in fade-in slide-in-from-top-4 duration-300">
+            {/* Top gradient glow line */}
+            <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500" />
+
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+              <div className="flex items-start gap-4 max-w-2xl">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center text-2xl shrink-0 shadow-lg shadow-orange-500/30">
+                  🥺
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="bg-orange-500 text-white font-black text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-xs">
+                      अधूरा सहयोग रह गया · Incomplete Support
+                    </span>
+                    <span className="text-xs font-black text-orange-950 font-jetbrains-mono bg-orange-200/80 px-2 py-0.5 rounded-md">
+                      ₹{pendingDonation.amount} Pledged
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900 font-public-sans leading-snug">
+                    क्या पेमेंट में कोई दिक्कत आई? आपकी एक छोटी सी मदद बहुत मायने रखती है!
+                  </h3>
+                  <p className="text-xs sm:text-[13px] text-slate-700 leading-relaxed font-medium">
+                    NakshaBot is an independent student initiative built to keep high-precision Census mapping 100% free for enumerators & surveyors across India. Server compute & satellite tiles cost real money. Your pledge of <strong className="text-orange-950 font-black">₹{pendingDonation.amount}</strong> was left incomplete. Please take 30 seconds to complete your contribution — it keeps this tool running for every ground worker! 🙏❤️
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full md:w-auto shrink-0 pt-2 md:pt-0">
+                <Button
+                  onClick={() => {
+                    setDonateModalAmount(String(pendingDonation.amount));
+                    setDonateModalNote(pendingDonation.note || '');
+                    setShowDonate(true);
+                  }}
+                  variant="filled"
+                  size="md"
+                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs shadow-lg shadow-orange-500/25 px-4 py-2.5 rounded-xl border-none active:scale-95 whitespace-nowrap cursor-pointer"
+                >
+                  🚀 ₹{pendingDonation.amount} पूरा सहयोग करें
+                </Button>
+                <Button
+                  onClick={() => {
+                    setDonateModalAmount(String(pendingDonation.amount));
+                    setDonateModalNote(pendingDonation.note || '');
+                    setShowDonate(true);
+                  }}
+                  variant="tinted"
+                  size="md"
+                  className="text-xs font-bold bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 whitespace-nowrap cursor-pointer"
+                >
+                  📱 UPI QR
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="bg-rose-50 text-[var(--color-danger)] p-4 rounded-[var(--radius-md)] border border-rose-200 text-sm">{error}</div>
         )}
@@ -866,10 +1067,61 @@ export default function DashboardScreen({
       {/* Donation Modal */}
       <DonationPopup
         isOpen={showDonate}
-        onClose={() => setShowDonate(false)}
-        onMute24h={() => setShowDonate(false)}
+        onClose={() => {
+          setShowDonate(false);
+          if (isPendingDonationVisible()) {
+            setPendingDonation(getPendingDonation());
+            setShowPendingDonationBanner(true);
+          }
+        }}
+        onMute24h={() => {
+          setShowDonate(false);
+          if (isPendingDonationVisible()) {
+            setPendingDonation(getPendingDonation());
+            setShowPendingDonationBanner(true);
+          }
+        }}
         isPrintArea={false}
+        initialAmount={donateModalAmount}
+        initialNote={donateModalNote}
       />
+
+      {/* ── DONATION SUCCESS CELEBRATION MODAL ── */}
+      {showDonationCelebration && (
+        <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-emerald-200 text-center space-y-5 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-emerald-400 via-teal-500 to-green-500" />
+            
+            <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-emerald-400 to-teal-600 text-white flex items-center justify-center text-4xl shadow-xl shadow-emerald-500/25">
+              🎉
+            </div>
+
+            <div className="space-y-2">
+              <span className="bg-emerald-100 text-emerald-800 font-black text-[10px] uppercase tracking-wider px-3 py-1 rounded-full inline-block">
+                ✨ Official Angel Backer ✨
+              </span>
+              <h3 className="text-xl font-black text-slate-900 font-public-sans tracking-tight">
+                बहुत-बहुत धन्यवाद! Thank You! 🙏
+              </h3>
+              <p className="text-base font-black text-emerald-600 font-jetbrains-mono">
+                Contribution of ₹{celebrationAmount} Received
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                Your generous backing directly powers our servers and keeps high-precision NakshaBot mapping free for thousands of Census enumerators & surveyors across India. You are an invaluable part of this mission! ❤️
+              </p>
+            </div>
+
+            <Button
+              onClick={() => setShowDonationCelebration(false)}
+              variant="filled"
+              size="lg"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm py-3 rounded-2xl shadow-lg shadow-emerald-600/25 border-none cursor-pointer"
+            >
+              🚀 Continue to Dashboard
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Profile Modal */}
       {showProfile && (

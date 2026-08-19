@@ -95,6 +95,8 @@ export default function DashboardScreen({
   const [celebrationAmount, setCelebrationAmount] = useState<number>(100);
   const [directCashfreeLoading, setDirectCashfreeLoading] = useState(false);
   const [directCashfreeAmount, setDirectCashfreeAmount] = useState(100);
+  const [showDailyThankYou, setShowDailyThankYou] = useState(false);
+  const [dailyThankYouAmount, setDailyThankYouAmount] = useState<number>(0);
 
   const sessionPopupShown = useRef(false);
 
@@ -178,11 +180,26 @@ export default function DashboardScreen({
             .select('*')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
-            .limit(5);
+            .limit(10);
 
           if (userDons && userDons.length > 0) {
+            const paidDons = userDons.filter(d => d.is_paid || d.payment_status === 'paid');
             const latestUnpaid = userDons.find(d => !d.is_paid && d.payment_status !== 'paid');
             const latestPaid = userDons.find(d => d.is_paid || d.payment_status === 'paid');
+
+            // Daily Gratitude Popup: If user has paid donations, show thank you popup once per day
+            if (paidDons.length > 0) {
+              const totalContributed = paidDons.reduce((acc, d) => acc + (Number(d.amount) || 0), 0);
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const thankYouKey = `nakshabot_daily_thankyou_${user.id}`;
+              const lastThankYouDate = localStorage.getItem(thankYouKey);
+
+              if (lastThankYouDate !== todayStr && !donationReturnId) {
+                setDailyThankYouAmount(totalContributed || Number(paidDons[0].amount) || 100);
+                setShowDailyThankYou(true);
+                localStorage.setItem(thankYouKey, todayStr);
+              }
+            }
 
             // If the latest donation is paid, clear any pending intent
             if (latestPaid && (!latestUnpaid || new Date(latestPaid.created_at) > new Date(latestUnpaid.created_at))) {
@@ -1243,6 +1260,55 @@ export default function DashboardScreen({
             <p className="text-[10px] text-slate-400 font-medium">
               ⚠️ Please do not close, refresh, or press back.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── DAILY GRATITUDE THANK YOU MODAL (1 time a day for verified supporters) ── */}
+      {showDailyThankYou && (
+        <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-amber-200/90 text-center space-y-5 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Top golden gradient bar */}
+            <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500" />
+            
+            {/* Pulsing Gratitude Icon */}
+            <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-amber-400/20 animate-ping" />
+              <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center text-3xl shadow-lg shadow-amber-500/30">
+                🙏
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-100 to-orange-100 border border-amber-300/80 text-amber-900 font-black text-[10px] uppercase tracking-wider px-3 py-1 rounded-full shadow-xs">
+                <span>👑</span>
+                <span>सच्चा साथी · Verified Backer</span>
+                <span>✨</span>
+              </div>
+              <h3 className="text-xl font-black text-slate-900 font-public-sans tracking-tight">
+                {`सादर धन्यवाद, ${(userProfile?.full_name || user?.user_metadata?.full_name || user?.email || 'Partner').split(' ')[0]}!`}
+              </h3>
+              {dailyThankYouAmount > 0 && (
+                <div className="inline-block bg-orange-50 text-orange-700 border border-orange-200 font-black text-xs px-3 py-0.5 rounded-lg font-jetbrains-mono">
+                  ₹{dailyThankYouAmount} Total Verified Contribution
+                </div>
+              )}
+              <p className="text-xs text-slate-600 leading-relaxed font-medium pt-1">
+                आपके बहुमूल्य सहयोग से NakshaBot आज पूरे देश के हजारों सर्वेक्षकों के लिए 100% मुफ्त और निर्बाध चल रहा है। आपकी मदद से हमारे सर्वर और हाई-रेजोल्यूशन AI मैपिंग सेवाएं निरंतर जारी हैं।
+              </p>
+              <p className="text-[11px] text-slate-400 font-medium italic">
+                “Your generous support powers independent development and keeps Census mapping free for every ground worker.”
+              </p>
+            </div>
+
+            <Button
+              onClick={() => setShowDailyThankYou(false)}
+              variant="filled"
+              size="lg"
+              className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-white font-black text-sm py-3 rounded-2xl shadow-lg shadow-orange-500/25 border-none cursor-pointer active:scale-98"
+            >
+              ✨ काम शुरू करें / Continue to Dashboard
+            </Button>
           </div>
         </div>
       )}

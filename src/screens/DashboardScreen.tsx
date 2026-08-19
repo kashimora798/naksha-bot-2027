@@ -8,6 +8,7 @@ import DonationPopup from '../components/DonationPopup';
 import { useTranslation, LanguageSelector } from '../lib/i18n';
 import { AppShell } from '../components/AppShell';
 import { Button, IconButton, Card, Badge, Input, Sheet, Skeleton } from '../components/ui';
+import { load } from '@cashfreepayments/cashfree-js';
 import {
   PendingDonation,
   savePendingDonation,
@@ -92,8 +93,48 @@ export default function DashboardScreen({
   const [donateModalNote, setDonateModalNote] = useState<string>('');
   const [showDonationCelebration, setShowDonationCelebration] = useState(false);
   const [celebrationAmount, setCelebrationAmount] = useState<number>(100);
+  const [directCashfreeLoading, setDirectCashfreeLoading] = useState(false);
+  const [directCashfreeAmount, setDirectCashfreeAmount] = useState(100);
 
   const sessionPopupShown = useRef(false);
+
+  // Direct checkout launcher: opens Cashfree directly without showing the donation popup
+  const handleDirectComplete = async (pending: PendingDonation) => {
+    const amt = pending.amount || 100;
+    setDirectCashfreeLoading(true);
+    setDirectCashfreeAmount(amt);
+
+    try {
+      // Re-invoke Cashfree order session with the donation ID
+      const { data: cfRes, error: cfErr } = await supabase.functions.invoke('create-cashfree-payment', {
+        body: { kind: 'donation', projectId: pending.id }
+      });
+
+      if (cfErr || !cfRes?.paymentSessionId) {
+        throw new Error(cfErr?.message || 'Failed to initiate Cashfree checkout');
+      }
+
+      savePendingDonation({
+        ...pending,
+        paymentSessionId: cfRes.paymentSessionId,
+        initiatedAt: Date.now()
+      });
+
+      const cashfree = await load({ mode: cfRes.cashfreeMode === 'production' ? 'production' : 'sandbox' });
+      if (cashfree) {
+        await cashfree.checkout({ paymentSessionId: cfRes.paymentSessionId, redirectTarget: '_self' });
+      } else {
+        throw new Error('Cashfree SDK failed to load');
+      }
+    } catch (err: any) {
+      console.error('Direct Cashfree checkout error:', err);
+      setDirectCashfreeLoading(false);
+      // Graceful fallback to opening donation modal
+      setDonateModalAmount(String(amt));
+      setDonateModalNote(pending.note || '');
+      setShowDonate(true);
+    }
+  };
 
   // Check for donation_return query param, query donations table for user, and detect abandoned donation
   useEffect(() => {
@@ -106,20 +147,26 @@ export default function DashboardScreen({
       if (donationReturnId) {
         // Clean URL parameter cleanly
         window.history.replaceState({}, document.title, window.location.pathname);
-        try {
-          const { data } = await supabase.functions.invoke('verify-payment', {
-            body: { kind: 'donation', projectId: donationReturnId }
-          });
+        
+        // Multi-attempt verification with backoff to handle slight gateway delay
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const { data } = await supabase.functions.invoke('verify-payment', {
+              body: { kind: 'donation', projectId: donationReturnId }
+            });
 
-          if (data?.paid) {
-            clearPendingDonation();
-            setCelebrationAmount(Number(data.donation?.amount) || 100);
-            setShowDonationCelebration(true);
-            setShowPendingDonationBanner(false);
-            return;
+            if (data?.paid) {
+              clearPendingDonation();
+              setPendingDonation(null);
+              setCelebrationAmount(Number(data.donation?.amount) || 100);
+              setShowDonationCelebration(true);
+              setShowPendingDonationBanner(false);
+              return;
+            }
+          } catch (e) {
+            console.error('Error verifying donation return:', e);
           }
-        } catch (e) {
-          console.error('Error verifying donation return:', e);
+          if (attempt < 2) await new Promise(r => setTimeout(r, 1200));
         }
       }
 
@@ -134,13 +181,13 @@ export default function DashboardScreen({
             .limit(5);
 
           if (userDons && userDons.length > 0) {
-            // Find most recent unpaid donation
             const latestUnpaid = userDons.find(d => !d.is_paid && d.payment_status !== 'paid');
             const latestPaid = userDons.find(d => d.is_paid || d.payment_status === 'paid');
 
             // If the latest donation is paid, clear any pending intent
             if (latestPaid && (!latestUnpaid || new Date(latestPaid.created_at) > new Date(latestUnpaid.created_at))) {
               clearPendingDonation();
+              setPendingDonation(null);
               setShowPendingDonationBanner(false);
               return;
             }
@@ -169,7 +216,6 @@ export default function DashboardScreen({
       if (isPendingDonationVisible()) {
         const pending = getPendingDonation();
         if (pending) {
-          // Verify if marked paid in database
           if (pending.id) {
             const { data: dbDon } = await supabase
               .from('donations')
@@ -179,6 +225,7 @@ export default function DashboardScreen({
 
             if (dbDon?.is_paid || dbDon?.payment_status === 'paid') {
               clearPendingDonation();
+              setPendingDonation(null);
               setShowPendingDonationBanner(false);
               return;
             }
@@ -207,6 +254,7 @@ export default function DashboardScreen({
             const updated = payload.new;
             if (updated?.is_paid || updated?.payment_status === 'paid') {
               clearPendingDonation();
+              setPendingDonation(null);
               setShowPendingDonationBanner(false);
               setCelebrationAmount(Number(updated.amount) || 100);
               setShowDonationCelebration(true);
@@ -220,6 +268,33 @@ export default function DashboardScreen({
       if (donationChannel) supabase.removeChannel(donationChannel);
     };
   }, [user?.id]);
+
+  // Fast periodic check every 3.5s while pending donation is shown
+  useEffect(() => {
+    if (!showPendingDonationBanner || !pendingDonation?.id) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const { data: dbDon } = await supabase
+          .from('donations')
+          .select('is_paid, payment_status, amount')
+          .eq('id', pendingDonation.id)
+          .maybeSingle();
+
+        if (dbDon?.is_paid || dbDon?.payment_status === 'paid') {
+          clearPendingDonation();
+          setPendingDonation(null);
+          setShowPendingDonationBanner(false);
+          setCelebrationAmount(Number(dbDon.amount) || pendingDonation.amount);
+          setShowDonationCelebration(true);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [showPendingDonationBanner, pendingDonation?.id]);
 
   // Helper check map limit
   const checkLimitAndStart = (action: () => void) => {
@@ -650,16 +725,23 @@ export default function DashboardScreen({
               {/* Action Buttons */}
               <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full md:w-auto shrink-0 pt-2 md:pt-0">
                 <Button
-                  onClick={() => {
-                    setDonateModalAmount(String(pendingDonation.amount));
-                    setDonateModalNote(pendingDonation.note || '');
-                    setShowDonate(true);
-                  }}
+                  onClick={() => handleDirectComplete(pendingDonation)}
                   variant="filled"
                   size="md"
-                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs shadow-lg shadow-orange-500/25 px-4 py-2.5 rounded-xl border-none active:scale-95 whitespace-nowrap cursor-pointer"
+                  disabled={directCashfreeLoading}
+                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs shadow-lg shadow-orange-500/25 px-4 py-2.5 rounded-xl border-none active:scale-95 whitespace-nowrap cursor-pointer disabled:opacity-50"
                 >
-                  🚀 ₹{pendingDonation.amount} पूरा सहयोग करें
+                  {directCashfreeLoading ? (
+                    <span className="flex items-center gap-1.5">
+                      <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Opening Cashfree…</span>
+                    </span>
+                  ) : (
+                    `🚀 ₹${pendingDonation.amount} पूरा सहयोग करें`
+                  )}
                 </Button>
                 <Button
                   onClick={() => {
@@ -1119,6 +1201,48 @@ export default function DashboardScreen({
             >
               🚀 Continue to Dashboard
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── DIRECT CASHFREE REDIRECTION MODAL FROM DASHBOARD ── */}
+      {directCashfreeLoading && (
+        <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-orange-200/80 text-center space-y-5 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-500" />
+            
+            <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-orange-400/20 animate-ping" />
+              <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center text-3xl shadow-lg shadow-orange-500/30">
+                🔒
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-black text-slate-900 font-public-sans tracking-tight">
+                Redirecting to Cashfree
+              </h3>
+              <p className="text-xs text-slate-500 font-medium">
+                Establishing 256-bit SSL encrypted secure checkout
+              </p>
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+              <span className="text-xs font-semibold text-orange-950">Contribution Amount</span>
+              <span className="text-base font-black text-orange-600 font-public-sans">₹{directCashfreeAmount}</span>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 text-[11px] font-semibold text-slate-600">
+              <svg className="animate-spin h-4 w-4 text-orange-500" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <span>Transferring to payment page…</span>
+            </div>
+
+            <p className="text-[10px] text-slate-400 font-medium">
+              ⚠️ Please do not close, refresh, or press back.
+            </p>
           </div>
         </div>
       )}

@@ -28,15 +28,15 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } },
     )
-    const { data: { user } } = await userClient.auth.getUser()
-    if (!user) return json({ error: 'Not authenticated' }, 401)
-
     const { projectId, kind } = await req.json()
     if (!projectId) return json({ error: 'Missing projectId' }, 400)
     const isLive = kind === 'live'
     const isRegen = kind === 'regen'
     const isLiveRegen = kind === 'live_regen'
     const isDonation = kind === 'donation'
+
+    const { data: { user } } = await userClient.auth.getUser()
+    if (!user && !isDonation) return json({ error: 'Not authenticated' }, 401)
  
     const admin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
